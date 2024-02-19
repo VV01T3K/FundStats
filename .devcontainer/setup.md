@@ -12,3 +12,5 @@ bunx --bun astro build
 
 <!-- bun i @vercel/speed-insights -->
 <!-- bun i @vercel/analytics -->
+
+sudo apt-get update && sudo apt-get install -y libnss3

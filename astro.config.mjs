@@ -1,9 +1,12 @@
-import { defineConfig } from 'astro/config';
-
+import { defineConfig } from "astro/config";
 import sentry from "@sentry/astro";
 import spotlightjs from "@spotlightjs/astro";
 
+import vercel from "@astrojs/vercel/serverless";
+
 // https://astro.build/config
 export default defineConfig({
-  integrations: [sentry(), spotlightjs()]
+    integrations: [sentry(), spotlightjs()],
+    output: "hybrid",
+    adapter: vercel(),
 });
