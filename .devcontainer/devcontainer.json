@@ -8,7 +8,10 @@
 		"vscode": {
 			"extensions": [
 				"astro-build.astro-vscode",
-				"GitHub.copilot-chat"
+				"GitHub.copilot-chat",
+				"oven.bun-vscode",
+				"haydenbleasel.vercel-vscode",
+				"esbenp.prettier-vscode"
 			]
 		}
 	}

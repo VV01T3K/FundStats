@@ -11,6 +11,8 @@
     "astro": "astro"
   },
   "dependencies": {
+    "@sentry/astro": "^7.101.1",
+    "@spotlightjs/astro": "^1.0.15",
     "astro": "^4.4.0",
     "bun": "^1.0.27"
   }
