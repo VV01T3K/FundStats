@@ -10,7 +10,8 @@
 				"astro-build.astro-vscode",
 				"GitHub.copilot-chat",
 				"oven.bun-vscode",
-				"haydenbleasel.vercel-vscode"
+				"haydenbleasel.vercel-vscode",
+				"esbenp.prettier-vscode"
 			]
 		}
 	}
