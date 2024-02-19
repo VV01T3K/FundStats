@@ -9,3 +9,5 @@ bun add -d @types/bun
 
 bunx --bun astro dev
 bunx --bun astro build
+
+bun i @vercel/speed-insights
