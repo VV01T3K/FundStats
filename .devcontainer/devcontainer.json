@@ -15,7 +15,9 @@
 				"oven.bun-vscode",
 				"haydenbleasel.vercel-vscode",
 				"esbenp.prettier-vscode",
-				"bradlc.vscode-tailwindcss"
+				"bradlc.vscode-tailwindcss",
+				"dotenv.dotenv-vscode",
+				"johnpapa.vscode-cloak"
 			]
 		}
 	}
