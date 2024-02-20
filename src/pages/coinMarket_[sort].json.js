@@ -1,8 +1,6 @@
 export const prerender = false;
 
 export async function GET({ params }) {
-    const test = `It was the best of times, it was the worst of times.`;
-    await Bun.write("output.txt", test);
     const options = {
         method: "GET",
         headers: {
