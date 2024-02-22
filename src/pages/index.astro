@@ -1,15 +1,8 @@
 ---
 import Layout from "../layouts/Layout.astro";
 import "@/styles/globals.css";
-import {
-    Table,
-    TableBody,
-    TableCaption,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table";
+import { MyAsideCard } from "@/components/ui/MyAsideCard";
+import { Button } from "@/components/ui/button";
 ---
 
 <Layout title="Welcome to Astro.">
@@ -44,129 +37,23 @@ import {
         </svg>
         <h1>Welcome to <span class="text-gradient">Astro</span></h1>
         <p class="instructions">
-            To get started, open the directory <code>src/pages</code> in your project.<br />
-            <strong>Code Challenge:</strong> Tweak the "Welcome to Astro" message above.
+            <MyAsideCard client:load />
+            <Button
+                hx-trigger="load, click delay:100s"
+                hx-target="p"
+                hx-post="/partials/PaprikaTable"
+                hx-swap="afterend"
+            >
+                Click Me test
+            </Button>
         </p>
-        <Table>
-            <TableCaption>A list of your recent invoices.</TableCaption>
-            <TableHeader>
-                <TableRow>
-                    <TableHead class="w-[100px]">Invoice</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Method</TableHead>
-                    <TableHead class="text-right">Amount</TableHead>
-                </TableRow>
-            </TableHeader>
-            <TableBody>
-                <TableRow>
-                    <TableCell class="font-medium">INV001</TableCell>
-                    <TableCell>Paid</TableCell>
-                    <TableCell>Credit Card</TableCell>
-                    <TableCell class="text-right">$250.00</TableCell>
-                </TableRow>
-                <TableRow>
-                    <TableCell class="font-medium">INV001</TableCell>
-                    <TableCell>Paid</TableCell>
-                    <TableCell>Credit Card</TableCell>
-                    <TableCell class="text-right">$250.00</TableCell>
-                </TableRow>
-                <TableRow>
-                    <TableCell class="font-medium">INV001</TableCell>
-                    <TableCell>Paid</TableCell>
-                    <TableCell>Credit Card</TableCell>
-                    <TableCell class="text-right">$250.00</TableCell>
-                </TableRow>
-                <TableRow>
-                    <TableCell class="font-medium">INV001</TableCell>
-                    <TableCell>Paid</TableCell>
-                    <TableCell>Credit Card</TableCell>
-                    <TableCell class="text-right">$250.00</TableCell>
-                </TableRow>
-                <TableRow>
-                    <TableCell class="font-medium">INV001</TableCell>
-                    <TableCell>Paid</TableCell>
-                    <TableCell>Credit Card</TableCell>
-                    <TableCell class="text-right">$250.00</TableCell>
-                </TableRow>
-                <TableRow>
-                    <TableCell class="font-medium">INV001</TableCell>
-                    <TableCell>Paid</TableCell>
-                    <TableCell>Credit Card</TableCell>
-                    <TableCell class="text-right">$250.00</TableCell>
-                </TableRow>
-                <TableRow>
-                    <TableCell class="font-medium">INV001</TableCell>
-                    <TableCell>Paid</TableCell>
-                    <TableCell>Credit Card</TableCell>
-                    <TableCell class="text-right">$250.00</TableCell>
-                </TableRow>
-                <TableRow>
-                    <TableCell class="font-medium">INV001</TableCell>
-                    <TableCell>Paid</TableCell>
-                    <TableCell>Credit Card</TableCell>
-                    <TableCell class="text-right">$250.00</TableCell>
-                </TableRow>
-                <TableRow>
-                    <TableCell class="font-medium">INV001</TableCell>
-                    <TableCell>Paid</TableCell>
-                    <TableCell>Credit Card</TableCell>
-                    <TableCell class="text-right">$250.00</TableCell>
-                </TableRow>
-                <TableRow>
-                    <TableCell class="font-medium">INV001</TableCell>
-                    <TableCell>Paid</TableCell>
-                    <TableCell>Credit Card</TableCell>
-                    <TableCell class="text-right">$250.00</TableCell>
-                </TableRow>
-                <TableRow>
-                    <TableCell class="font-medium">INV001</TableCell>
-                    <TableCell>Paid</TableCell>
-                    <TableCell>Credit Card</TableCell>
-                    <TableCell class="text-right">$250.00</TableCell>
-                </TableRow>
-                <TableRow>
-                    <TableCell class="font-medium">INV001</TableCell>
-                    <TableCell>Paid</TableCell>
-                    <TableCell>Credit Card</TableCell>
-                    <TableCell class="text-right">$250.00</TableCell>
-                </TableRow>
-                <TableRow>
-                    <TableCell class="font-medium">INV001</TableCell>
-                    <TableCell>Paid</TableCell>
-                    <TableCell>Credit Card</TableCell>
-                    <TableCell class="text-right">$250.00</TableCell>
-                </TableRow>
-                <TableRow>
-                    <TableCell class="font-medium">INV001</TableCell>
-                    <TableCell>Paid</TableCell>
-                    <TableCell>Credit Card</TableCell>
-                    <TableCell class="text-right">$250.00</TableCell>
-                </TableRow>
-                <TableRow>
-                    <TableCell class="font-medium">INV001</TableCell>
-                    <TableCell>Paid</TableCell>
-                    <TableCell>Credit Card</TableCell>
-                    <TableCell class="text-right">$250.00</TableCell>
-                </TableRow>
-                <TableRow>
-                    <TableCell class="font-medium">INV001</TableCell>
-                    <TableCell>Paid</TableCell>
-                    <TableCell>Credit Card</TableCell>
-                    <TableCell class="text-right">$250.00</TableCell>
-                </TableRow>
-                <TableRow>
-                    <TableCell class="font-medium">INV001</TableCell>
-                    <TableCell>Paid</TableCell>
-                    <TableCell>Credit Card</TableCell>
-                    <TableCell class="text-right">$250.00</TableCell>
-                </TableRow>
-            </TableBody>
-        </Table>
     </main>
 </Layout>
 
 <style>
     main {
+        min-height: 100vh;
+        min-height: 100dvh;
         margin: auto;
         padding: 1rem;
         width: 800px;

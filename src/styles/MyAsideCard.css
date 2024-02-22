@@ -1,0 +1,23 @@
+.imgButton {
+    width: max-content;
+    height: max-content;
+    aspect-ratio: 1/1;
+    border-radius: 20%;
+    border-width: .2rem;
+    margin-inline: 1rem;
+    transition: scale .3s;
+}
+
+.imgButton:hover {
+    scale: 1.05;
+}
+
+.imgButton img {
+    width: 6rem;
+    height: 6rem;
+}
+
+.flex {
+    display: flex;
+    align-items: center;
+}
