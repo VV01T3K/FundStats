@@ -2,10 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+* {
+  color-scheme: dark;
+}
+
+body {
+  background-color: hsl(259, 45%, 8%);
+  color: hsl(var(--foreground));
+}
+
 @layer base {
-  * {
-    color-scheme: dark;
-  }
 
   :root {
     --background: 0 0% 100%;
