@@ -26,10 +26,10 @@ export const MyAsideCard: Component = () => {
                 <div class="myflex">
                     <DrawerClose>
                         <Button class="imgButton" variant="outline">
-                            <img src="coinmarketcap.svg" alt="coinmarketcap" />
+                            test
                         </Button>
                         <Button class="imgButton" variant="outline">
-                            <img src="coinpaprika.svg" alt="coinpaprika" />
+                            test
                         </Button>
                     </DrawerClose>
                 </div>
