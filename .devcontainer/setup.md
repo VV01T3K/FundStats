@@ -1,14 +1,10 @@
-sudo apt update && sudo apt upgrade -y
-npm install -g npm@10.4.0
-npm install bun
-curl -fsSL https://bun.sh/install | bash
-bunx @astrojs/upgrade
 bun install
-
-bun add -d @types/bun
+bunx @astrojs/upgrade
 
 bunx --bun astro dev
+
 bunx --bun astro build
 
+<!-- bun add -d @types/bun -->
 <!-- bun i @vercel/speed-insights -->
 <!-- bun i @vercel/analytics -->
