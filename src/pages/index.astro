@@ -1,5 +1,5 @@
 ---
-import Layout from "../layouts/Layout.astro";
+import Layout from "@/layouts/Layout.astro";
 import "@/styles/globals.css";
 import { Button } from "@/components/ui/button";
 // import { MyAsideCard } from "@/components/ui/MyAsideCard";
@@ -16,7 +16,7 @@ import TableSlot from "@/components/TableSlot.astro";
             <!-- !! add delay -->
             <Button
                 variant="outline"
-                hx-trigger=" click"
+                hx-trigger="load, click"
                 hx-get="/partials/PaprikaTable_1y"
                 hx-swap="innerHTML transition:true"
                 hx-indicator="#spinner"
