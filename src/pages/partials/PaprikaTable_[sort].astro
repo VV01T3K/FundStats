@@ -14,9 +14,10 @@ import {
 
 import { Icon } from "astro-icon/components";
 
-import { getColorClass, getHighlightClass } from "@/lib/myutils";
+import { getColorClass, getHighlightClass } from "../../lib/myutils";
 
-const sort = "1y";
+const { sort } = Astro.params as { sort: "1q" | "1y" };
+
 const options = {
     method: "GET",
     headers: {
@@ -66,19 +67,28 @@ const threshold = 50;
         <TableRow>
             <TableHead class="w-[230px]">ID</TableHead>
             <TableHead>Name</TableHead>
-            <TableHead class="text-right pr-20">{`Change (${sort})`}</TableHead>
+            <TableHead
+                class="text-right pr-20 hover:text-blue-500 cursor-pointer"
+                hx-trigger=" click"
+                hx-get=`/partials/PaprikaTable_${sort === "1y" ? "1q" : "1y"}`
+                hx-swap="innerHTML transition:true"
+                hx-indicator="#spinner"
+                hx-target="#response-div"
+            >
+                {`Change (${sort})`}<Icon style={"display: inline"} size={16} name="line-md:arrow-down" />
+            </TableHead>
         </TableRow>
     </TableHeader>
     <TableBody>
         {
             coins.map((coin: Coin, index: number) => (
-                <TableRow class={getHighlightClass(coin.price_stats.usd.change_1y ?? 0, threshold)}>
+                <TableRow class={getHighlightClass(coin.price_stats.usd[`change_${sort}`] ?? 0, threshold)}>
                     <TableCell>{index + 1}</TableCell>
                     <TableCell>{coin.name}</TableCell>
                     <TableCell
-                        class={`text-right pr-20 ${getColorClass(coin.price_stats.usd.change_1y ?? 0)}`}
+                        class={`text-right pr-20 ${getColorClass(coin.price_stats.usd[`change_${sort}`] ?? 0)}`}
                     >
-                        {coin.price_stats.usd.change_1y} %
+                        {coin.price_stats.usd[`change_${sort}`]} %
                     </TableCell>
                 </TableRow>
             ))

@@ -17,7 +17,7 @@ import TableSlot from "@/components/TableSlot.astro";
             <Button
                 variant="outline"
                 hx-trigger=" click"
-                hx-get="/partials/PaprikaTable"
+                hx-get="/partials/PaprikaTable_1y"
                 hx-swap="innerHTML transition:true"
                 hx-indicator="#spinner"
                 hx-target="#response-div"
@@ -64,13 +64,18 @@ import TableSlot from "@/components/TableSlot.astro";
     }
     #spinner {
         position: absolute;
+        transition:
+            opacity 0.1s,
+            scale 0.05s;
     }
     .htmx-indicator {
-        display: none;
+        scale: 0.5;
+        opacity: 0;
     }
     .htmx-request .htmx-indicator,
     .htmx-request.htmx-indicator {
-        display: inline-block;
+        scale: 1;
+        opacity: 1;
     }
     .upperlayer {
         z-index: 10;
