@@ -11,10 +11,19 @@ import {
     TableHeader,
     TableRow,
 } from "../../components/ui/table";
+
+import { Icon } from "astro-icon/components";
 ---
 
 <Table>
-    <TableCaption>A list of your recent invoices.</TableCaption>
+    <TableCaption>
+        <a style="display: flex;justify-content: center; align-items: center;" href="#top"
+            ><Icon size={16} name="line-md:upload-loop" />Go to the top of the page<Icon
+                size={16}
+                name="line-md:upload-loop"
+            /></a
+        >
+    </TableCaption>
     <TableHeader>
         <TableRow>
             <TableHead class="w-[100px]">Invoice</TableHead>

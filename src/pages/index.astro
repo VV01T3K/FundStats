@@ -6,39 +6,65 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "astro-icon/components";
 ---
 
-<Layout title="Welcome to Astro.">
+<Layout title="CryptoStats">
     <main>
         <Icon class="astro-a" name="astro" />
-        <h1 class="upperlayer">Welcome to <span class="text-gradient">Astro</span></h1>
+        <h1 class="upperlayer">Welcome to <span class="text-gradient">CryptoStats</span></h1>
         <p class="instructions upperlayer">
             <!-- !! add delay -->
             <Button
+                variant="outline"
                 hx-trigger="load, click"
                 hx-target="p"
-                hx-post="/partials/PaprikaTable"
-                hx-swap="outerHTML transition:true settle:0.5s"
+                hx-get="/partials/PaprikaTable"
+                hx-swap="innerHTML transition:true"
                 hx-indicator="#spinner"
                 hx-target="#response-div"
             >
-                <Icon class="but-icon" name="coinpaprika" />
+                <Icon size={64} class="but-icon" name="coinpaprika" />
             </Button>
+            <Icon size={64} id="spinner" class="htmx-indicator ml-2" name="svg-spinners:clock" />
             <Button
-                hx-trigger="load, click"
+                variant="outline"
+                hx-trigger="click"
                 hx-target="p"
-                hx-post="/partials/PaprikaTable"
-                hx-swap="outerHTML transition:true settle:0.5s"
+                hx-get="/partials/CoinmarketcapTable"
+                hx-swap="innerHTML transition:true"
                 hx-indicator="#spinner"
                 hx-target="#response-div"
             >
-                <Icon name="coinmarketcap" />
+                <Icon size={64} name="coinmarketcap" />
             </Button>
-            <Icon id="spinner" class="htmx-indicator ml-2" name="svg-spinners:pulse" />
         </p>
         <div id="response-div"></div>
     </main>
 </Layout>
 
 <style>
+    html {
+        scroll-behavior: smooth;
+    }
+    body {
+        overflow-y: scroll; /* Show scrollbars */
+    }
+    Button {
+        width: max-content;
+        height: max-content;
+        aspect-ratio: 1/1;
+        border-width: 0.15rem;
+        border-color: var(--accent-light);
+        border-radius: 1rem;
+        transition: scale 0.2s;
+    }
+    button:hover {
+        background-color: rgba(164, 102, 240, 0.264);
+    }
+    button:active {
+        scale: 0.95;
+    }
+    #spinner {
+        position: absolute;
+    }
     .htmx-indicator {
         display: none;
     }
@@ -46,7 +72,6 @@ import { Icon } from "astro-icon/components";
     .htmx-request.htmx-indicator {
         display: inline-block;
     }
-
     .upperlayer {
         z-index: 10;
         position: relative;
@@ -56,8 +81,10 @@ import { Icon } from "astro-icon/components";
         min-height: 100dvh;
         margin: auto;
         padding: 1rem;
-        width: 800px;
-        max-width: calc(100% - 2rem);
+        width: 100%;
+        max-width: 70vw;
+        width: max-content;
+        min-width: min-content;
         color: white;
         font-size: 20px;
         line-height: 1.6;
@@ -79,7 +106,7 @@ import { Icon } from "astro-icon/components";
         margin-bottom: 1em;
     }
     .text-gradient {
-        background-image: linear-gradient(45deg, rgb(136, 58, 234), rgb(224, 204, 250) 30%, white 60%);
+        background-image: linear-gradient(45deg, rgb(136, 58, 234), rgb(224, 204, 250) 50%, white 40%);
         -webkit-background-clip: text;
         background-clip: text;
         -webkit-text-fill-color: transparent;
@@ -94,22 +121,8 @@ import { Icon } from "astro-icon/components";
         background: linear-gradient(rgba(var(--accent-dark), 66%), rgba(var(--accent-dark), 33%));
         padding: 1.5rem;
         border-radius: 8px;
-    }
-    .instructions code {
-        font-size: 0.8em;
-        font-weight: bold;
-        background: rgba(var(--accent-light), 12%);
-        color: rgb(var(--accent-light));
-        border-radius: 4px;
-        padding: 0.3em 0.4em;
-    }
-    .instructions strong {
-        color: rgb(var(--accent-light));
-    }
-    .link-card-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(24ch, 1fr));
-        gap: 2rem;
-        padding: 0;
+        display: flex;
+        justify-content: space-evenly;
+        align-items: center;
     }
 </style>
