@@ -1,0 +1,212 @@
+---
+export const partial = true;
+export const prerender = false;
+
+import {
+    Table,
+    TableBody,
+    TableCaption,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "../../components/ui/table";
+
+import { Icon } from "astro-icon/components";
+
+import { getColorClass, getHighlightClass } from "../../lib/myutils";
+
+const { sort } = Astro.params as { sort: "1q" | "1y" };
+
+const options = {
+    method: "GET",
+    headers: {
+        "sec-ch-ua": '"Not A(Brand";v="99", "Brave";v="121", "Chromium";v="121"',
+        Accept: "application/json, text/plain, */*",
+        Referer: "https://coinpaprika.com/",
+        DNT: "1",
+        "sec-ch-ua-mobile": "?0",
+        "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "sec-ch-ua-platform": '"Windows"',
+    },
+};
+const url = `https://api-frontend.coinpaprika.com/ajax/coins/1?section=longterm&all=false&expand=longterm%2Cprice_stats&sort%5Bsort%5D=change_${sort}_chart&sort%5Bsortorder%5D=desc&tagID=&filters%5Bcoins%5D=true&filters%5Btokens%5D=true&currency=pln`;
+const response = await fetch(url, options);
+const data = await response.json();
+const coins = data.data;
+// console.log(coins);
+
+interface PriceStats {
+    usd: {
+        change_1q: number;
+        change_1y: number;
+    };
+    // add other properties as needed
+}
+interface Coin {
+    id: number;
+    name: string;
+    price_stats: PriceStats;
+    // add other properties as needed
+}
+
+const threshold = 50;
+---
+
+<Table>
+    <TableCaption>
+        <a style="display: flex;justify-content: center; align-items: center;" href="#top"
+            ><Icon size={16} name="line-md:upload-loop" />Go to the top of the page<Icon
+                size={16}
+                name="line-md:upload-loop"
+            /></a
+        >
+    </TableCaption>
+    <TableHeader>
+        <TableRow>
+            <TableHead class="w-[230px]">ID</TableHead>
+            <TableHead>Name</TableHead>
+            <TableHead
+                class="text-right pr-20 hover:text-blue-500 cursor-pointer"
+                hx-trigger=" click"
+                hx-get=`/partials/PaprikaTable_${sort === "1y" ? "1q" : "1y"}`
+                hx-swap="innerHTML transition:true"
+                hx-indicator="#spinner"
+                hx-target="#response-div"
+            >
+                {`Change (${sort})`}<Icon style={"display: inline"} size={16} name="line-md:arrow-down" />
+            </TableHead>
+        </TableRow>
+    </TableHeader>
+    <TableBody>
+        {
+            coins.map((coin: Coin, index: number) => (
+                <TableRow class={getHighlightClass(coin.price_stats.usd[`change_${sort}`] ?? 0, threshold)}>
+                    <TableCell>{index + 1}</TableCell>
+                    <TableCell>{coin.name}</TableCell>
+                    <TableCell
+                        class={`text-right pr-20 ${getColorClass(coin.price_stats.usd[`change_${sort}`] ?? 0)}`}
+                    >
+                        {coin.price_stats.usd[`change_${sort}`]} %
+                    </TableCell>
+                </TableRow>
+            ))
+        }
+    </TableBody>
+</Table>
+
+<!-- <Table>
+    <TableHeader>
+        <TableRow>
+            <TableHead class="w-[100px]">Invoice</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Method</TableHead>
+            <TableHead class="text-right">Amount</TableHead>
+        </TableRow>
+    </TableHeader>
+    <TableBody>
+        <TableRow>
+            <TableCell class="font-medium">INV001</TableCell>
+            <TableCell>Paid</TableCell>
+            <TableCell>Credit Card</TableCell>
+            <TableCell class="text-right">$250.00</TableCell>
+        </TableRow>
+        <TableRow>
+            <TableCell class="font-medium">INV001</TableCell>
+            <TableCell>Paid</TableCell>
+            <TableCell>Credit Card</TableCell>
+            <TableCell class="text-right">$250.00</TableCell>
+        </TableRow>
+        <TableRow>
+            <TableCell class="font-medium">INV001</TableCell>
+            <TableCell>Paid</TableCell>
+            <TableCell>Credit Card</TableCell>
+            <TableCell class="text-right">$250.00</TableCell>
+        </TableRow>
+        <TableRow>
+            <TableCell class="font-medium">INV001</TableCell>
+            <TableCell>Paid</TableCell>
+            <TableCell>Credit Card</TableCell>
+            <TableCell class="text-right">$250.00</TableCell>
+        </TableRow>
+        <TableRow>
+            <TableCell class="font-medium">INV001</TableCell>
+            <TableCell>Paid</TableCell>
+            <TableCell>Credit Card</TableCell>
+            <TableCell class="text-right">$250.00</TableCell>
+        </TableRow>
+        <TableRow>
+            <TableCell class="font-medium">INV001</TableCell>
+            <TableCell>Paid</TableCell>
+            <TableCell>Credit Card</TableCell>
+            <TableCell class="text-right">$250.00</TableCell>
+        </TableRow>
+        <TableRow>
+            <TableCell class="font-medium">INV001</TableCell>
+            <TableCell>Paid</TableCell>
+            <TableCell>Credit Card</TableCell>
+            <TableCell class="text-right">$250.00</TableCell>
+        </TableRow>
+        <TableRow>
+            <TableCell class="font-medium">INV001</TableCell>
+            <TableCell>Paid</TableCell>
+            <TableCell>Credit Card</TableCell>
+            <TableCell class="text-right">$250.00</TableCell>
+        </TableRow>
+        <TableRow>
+            <TableCell class="font-medium">INV001</TableCell>
+            <TableCell>Paid</TableCell>
+            <TableCell>Credit Card</TableCell>
+            <TableCell class="text-right">$250.00</TableCell>
+        </TableRow>
+        <TableRow>
+            <TableCell class="font-medium">INV001</TableCell>
+            <TableCell>Paid</TableCell>
+            <TableCell>Credit Card</TableCell>
+            <TableCell class="text-right">$250.00</TableCell>
+        </TableRow>
+        <TableRow>
+            <TableCell class="font-medium">INV001</TableCell>
+            <TableCell>Paid</TableCell>
+            <TableCell>Credit Card</TableCell>
+            <TableCell class="text-right">$250.00</TableCell>
+        </TableRow>
+        <TableRow>
+            <TableCell class="font-medium">INV001</TableCell>
+            <TableCell>Paid</TableCell>
+            <TableCell>Credit Card</TableCell>
+            <TableCell class="text-right">$250.00</TableCell>
+        </TableRow>
+        <TableRow>
+            <TableCell class="font-medium">INV001</TableCell>
+            <TableCell>Paid</TableCell>
+            <TableCell>Credit Card</TableCell>
+            <TableCell class="text-right">$250.00</TableCell>
+        </TableRow>
+        <TableRow>
+            <TableCell class="font-medium">INV001</TableCell>
+            <TableCell>Paid</TableCell>
+            <TableCell>Credit Card</TableCell>
+            <TableCell class="text-right">$250.00</TableCell>
+        </TableRow>
+        <TableRow>
+            <TableCell class="font-medium">INV001</TableCell>
+            <TableCell>Paid</TableCell>
+            <TableCell>Credit Card</TableCell>
+            <TableCell class="text-right">$250.00</TableCell>
+        </TableRow>
+        <TableRow>
+            <TableCell class="font-medium">INV001</TableCell>
+            <TableCell>Paid</TableCell>
+            <TableCell>Credit Card</TableCell>
+            <TableCell class="text-right">$250.00</TableCell>
+        </TableRow>
+        <TableRow>
+            <TableCell class="font-medium">INV001</TableCell>
+            <TableCell>Paid</TableCell>
+            <TableCell>Credit Card</TableCell>
+            <TableCell class="text-right">$250.00</TableCell>
+        </TableRow>
+    </TableBody>
+</Table> -->
