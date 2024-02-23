@@ -12,3 +12,7 @@ bunx --bun astro build
 bun i -D @iconify-json/mdi
 
 line-md--upload-loop
+
+https://tailwindui.com/components
+https://panda-css.com/
+https://stylexjs.com/

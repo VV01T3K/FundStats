@@ -4,6 +4,8 @@ import "@/styles/globals.css";
 import { Button } from "@/components/ui/button";
 // import { MyAsideCard } from "@/components/ui/MyAsideCard";
 import { Icon } from "astro-icon/components";
+// import Card from "../components/Card.astro";
+import TableSlot from "@/components/TableSlot.astro";
 ---
 
 <Layout title="CryptoStats">
@@ -14,8 +16,7 @@ import { Icon } from "astro-icon/components";
             <!-- !! add delay -->
             <Button
                 variant="outline"
-                hx-trigger="load, click"
-                hx-target="p"
+                hx-trigger=" click"
                 hx-get="/partials/PaprikaTable"
                 hx-swap="innerHTML transition:true"
                 hx-indicator="#spinner"
@@ -27,7 +28,6 @@ import { Icon } from "astro-icon/components";
             <Button
                 variant="outline"
                 hx-trigger="click"
-                hx-target="p"
                 hx-get="/partials/CoinmarketcapTable"
                 hx-swap="innerHTML transition:true"
                 hx-indicator="#spinner"
@@ -36,7 +36,7 @@ import { Icon } from "astro-icon/components";
                 <Icon size={64} name="coinmarketcap" />
             </Button>
         </p>
-        <div id="response-div"></div>
+        <TableSlot id="response-div" />
     </main>
 </Layout>
 

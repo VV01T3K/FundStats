@@ -14,17 +14,39 @@ import {
 
 import { Icon } from "astro-icon/components";
 
-const response = await fetch("https://api.coinmarketcap.com/aggr/v3/web/homepage");
+import { getColorClass, getHighlightClass } from "@/lib/myutils";
+
+const options = {
+    method: "GET",
+    headers: {
+        accept: "application/json, text/plain, */*",
+        "accept-language": "pl-PL,pl;q=0.7",
+        Referer: "https://coinmarketcap.com/",
+        "Referrer-Policy": "origin-when-cross-origin",
+    },
+};
+const url = `https://api.coinmarketcap.com/data-api/v3/cryptocurrency/listing?start=1&limit=100&sortBy=rank&sortType=desc&convert=USD,BTC,ETH&cryptoType=all&tagType=all&audited=false&aux=ath,atl,high24h,low24h,num_market_pairs,cmc_rank,date_added,max_supply,circulating_supply,total_supply,volume_7d,volume_30d,self_reported_circulating_supply,self_reported_market_cap`;
+const response = await fetch(url, options);
 const data = await response.json();
-const coins = data.data.listing.cryptoCurrencyList;
+const coins = data.data.cryptoCurrencyList;
 // console.log(coins);
+
+interface Quote {
+    name: string;
+    percentChange30d: number;
+    percentChange60d: number;
+    percentChange90d: number;
+    // add other properties as needed
+}
 
 interface Coin {
     id: number;
     name: string;
-    symbol: string;
+    quotes: Quote[];
     // add other properties as needed
 }
+
+const threshold = 50;
 ---
 
 <Table>
@@ -38,20 +60,35 @@ interface Coin {
     </TableCaption>
     <TableHeader>
         <TableRow>
-            <TableHead>ID</TableHead>
+            <TableHead class="w-[230px]">ID</TableHead>
             <TableHead>Name</TableHead>
-            <TableHead>Symbol</TableHead>
+            <TableHead class="text-right">30d %</TableHead>
+            <TableHead class="text-right">60d %</TableHead>
+            <TableHead class="text-right pr-100">90d %</TableHead>
         </TableRow>
     </TableHeader>
     <TableBody>
         {
-            coins.map((coin: Coin) => (
-                <TableRow>
-                    <TableCell>{coin.id}</TableCell>
-                    <TableCell>{coin.name}</TableCell>
-                    <TableCell>{coin.symbol}</TableCell>
-                </TableRow>
-            ))
+            coins.map((coin: Coin, index: number) => {
+                const usdQuote = coin.quotes.find((quote) => quote.name === "USD");
+                return (
+                    <TableRow>
+                        <TableCell>{index + 1}</TableCell>
+                        <TableCell>{coin.name}</TableCell>
+                        <TableCell class={`text-right ${getColorClass(usdQuote?.percentChange30d ?? 0)}`}>
+                            {usdQuote?.percentChange30d.toFixed(2)} %
+                        </TableCell>
+                        <TableCell class={`text-right ${getColorClass(usdQuote?.percentChange60d ?? 0)}`}>
+                            {usdQuote?.percentChange60d.toFixed(2)} %
+                        </TableCell>
+                        <TableCell
+                            class={`text-right pr-100 ${getColorClass(usdQuote?.percentChange90d ?? 0)}`}
+                        >
+                            {usdQuote?.percentChange90d.toFixed(2)} %
+                        </TableCell>
+                    </TableRow>
+                );
+            })
         }
     </TableBody>
 </Table>

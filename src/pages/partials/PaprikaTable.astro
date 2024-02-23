@@ -14,6 +14,8 @@ import {
 
 import { Icon } from "astro-icon/components";
 
+import { getColorClass, getHighlightClass } from "@/lib/myutils";
+
 const sort = "1y";
 const options = {
     method: "GET",
@@ -34,12 +36,21 @@ const data = await response.json();
 const coins = data.data;
 // console.log(coins);
 
+interface PriceStats {
+    usd: {
+        change_1q: number;
+        change_1y: number;
+    };
+    // add other properties as needed
+}
 interface Coin {
     id: number;
     name: string;
-    symbol: string;
+    price_stats: PriceStats;
     // add other properties as needed
 }
+
+const threshold = 50;
 ---
 
 <Table>
@@ -53,23 +64,28 @@ interface Coin {
     </TableCaption>
     <TableHeader>
         <TableRow>
-            <TableHead>ID</TableHead>
+            <TableHead class="w-[230px]">ID</TableHead>
             <TableHead>Name</TableHead>
-            <TableHead>Symbol</TableHead>
+            <TableHead class="text-right pr-20">{`Change (${sort})`}</TableHead>
         </TableRow>
     </TableHeader>
     <TableBody>
         {
-            coins.map((coin: Coin) => (
-                <TableRow>
-                    <TableCell>{coin.id}</TableCell>
+            coins.map((coin: Coin, index: number) => (
+                <TableRow class={getHighlightClass(coin.price_stats.usd.change_1y ?? 0, threshold)}>
+                    <TableCell>{index + 1}</TableCell>
                     <TableCell>{coin.name}</TableCell>
-                    <TableCell>{coin.symbol}</TableCell>
+                    <TableCell
+                        class={`text-right pr-20 ${getColorClass(coin.price_stats.usd.change_1y ?? 0)}`}
+                    >
+                        {coin.price_stats.usd.change_1y} %
+                    </TableCell>
                 </TableRow>
             ))
         }
     </TableBody>
 </Table>
+
 <!-- <Table>
     <TableHeader>
         <TableRow>
