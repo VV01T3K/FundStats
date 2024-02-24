@@ -40,6 +40,7 @@ const queryOptions = new URLSearchParams({
     aux: "ath,atl,high24h,low24h,num_market_pairs,cmc_rank,date_added,max_supply,circulating_supply,total_supply,volume_7d,volume_30d,self_reported_circulating_supply,self_reported_market_cap",
 });
 const url = `https://api.coinmarketcap.com/data-api/v3/cryptocurrency/listing?${queryOptions}`;
+// https://api.coinmarketcap.com/data-api/v3/cryptocurrency/listing?start=1&limit=100&sortBy=rank&sortType=desc&convert=USD,BTC,ETH&cryptoType=all&tagType=all&audited=false&aux=ath,atl,high24h,low24h,num_market_pairs,cmc_rank,date_added,max_supply,circulating_supply,total_supply,volume_7d,volume_30d,self_reported_circulating_supply,self_reported_market_cap
 
 const response = await fetch(url, options);
 const data = await response.json();
@@ -74,11 +75,23 @@ interface Coin {
     quotes: Quote[];
     cmcRank: number;
 }
+
+const timestamp = new Date(data.status.timestamp);
+const day = timestamp.getDate();
+const month = timestamp.getMonth() + 1; // JavaScript months are 0-based
+const year = timestamp.getFullYear();
+const hours = timestamp.getHours();
+const minutes = timestamp.getMinutes();
+
+const currentTime = `${day}.${month}.${year} ${hours}:${minutes}`;
 ---
 
+<div class="text-base mt-5 opacity-60">
+    Time: {currentTime}
+</div>
 <Table>
     <TableCaption>
-        <a style="display: flex;justify-content: center; align-items: center;" href="#top"
+        <a class="flex text-base justify-center items-center" href="#top"
             ><Icon size={16} name="line-md:upload-loop" />Go to the top of the page<Icon
                 size={16}
                 name="line-md:upload-loop"
@@ -91,7 +104,7 @@ interface Coin {
             <TableHead>Name</TableHead>
             <TableHead
                 class={`text-right hover:text-blue-500 cursor-pointer ${sort === "7d" ? "text-violet-600" : ""}`}
-                hx-trigger=" click"
+                hx-trigger=" click throttle:1s"
                 hx-get=`/partials/CoinmarketcapTable-7d`
                 hx-swap="innerHTML transition:true"
                 hx-indicator="#spinner"
@@ -101,7 +114,7 @@ interface Coin {
             </TableHead>
             <TableHead
                 class={`text-right hover:text-blue-500 cursor-pointer ${sort === "30d" ? "text-violet-600" : ""}`}
-                hx-trigger=" click"
+                hx-trigger=" click throttle:1s"
                 hx-get=`/partials/CoinmarketcapTable-30d`
                 hx-swap="innerHTML transition:true"
                 hx-indicator="#spinner"
@@ -113,7 +126,7 @@ interface Coin {
             </TableHead>
             <TableHead
                 class=`text-right hover:text-blue-500 cursor-pointer ${sort === "60d" ? "text-violet-600" : ""}`
-                hx-trigger=" click"
+                hx-trigger=" click throttle:1s"
                 hx-get="/partials/CoinmarketcapTable-60d"
                 hx-swap="innerHTML transition:true"
                 hx-indicator="#spinner"
@@ -125,7 +138,7 @@ interface Coin {
             </TableHead>
             <TableHead
                 class=`text-right pr-100 hover:text-blue-500 cursor-pointer ${sort === "90d" ? "text-violet-600" : ""}`
-                hx-trigger=" click"
+                hx-trigger=" click throttle:1s"
                 hx-get="/partials/CoinmarketcapTable-90d"
                 hx-swap="innerHTML transition:true"
                 hx-indicator="#spinner"

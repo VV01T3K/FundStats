@@ -13,10 +13,9 @@ import CoinImage from "@/components/CoinImage.astro";
     <main>
         <h1 class="upperlayer">Welcome to <span class="text-gradient">CryptoStats</span></h1>
         <p class="instructions upperlayer">
-            <!-- !! add delay -->
             <Button
                 variant="outline"
-                hx-trigger="load, click"
+                hx-trigger="load, click throttle:1s"
                 hx-get="/partials/PaprikaTable-1y-50"
                 hx-swap="innerHTML transition:true"
                 hx-indicator="#spinner"
@@ -28,7 +27,7 @@ import CoinImage from "@/components/CoinImage.astro";
             <Icon size={64} id="spinner" class="htmx-indicator ml-2" name="svg-spinners:clock" />
             <Button
                 variant="outline"
-                hx-trigger="click"
+                hx-trigger="click throttle:1s"
                 hx-get="/partials/CoinmarketcapTable-30d"
                 hx-swap="innerHTML transition:true"
                 hx-indicator="#spinner"
