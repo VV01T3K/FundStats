@@ -16,3 +16,9 @@ line-md--upload-loop
 https://tailwindui.com/components
 https://panda-css.com/
 https://stylexjs.com/
+
+const imagePath = `Images/${coin.symbol}.jpg`;
+cacheImage(
+`https://s2.coinmarketcap.com/static/img/coins/64x64/${coin.id}.png`,
+`./src/${imagePath}`
+);

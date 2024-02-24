@@ -1,3 +1,13 @@
+import fs from "fs";
+
+export async function cacheImage(url: string, imagePath: string) {
+    if (!fs.existsSync(imagePath)) {
+        const response = await fetch(url);
+        const buffer = await response.arrayBuffer();
+        await fs.promises.writeFile(imagePath, Buffer.from(buffer));
+    }
+}
+
 export function getColorClass(value: number) {
     if (value < 0) {
         return "text-red-myred";

@@ -12,9 +12,12 @@ import {
     TableRow,
 } from "../../components/ui/table";
 
+import CachedImage from "@/components/CachedImage.astro";
+
+// import { Image } from "astro:assets";
 import { Icon } from "astro-icon/components";
 
-import { getColorClass } from "../../lib/myutils";
+import { getColorClass, cacheImage } from "../../lib/myutils";
 
 const { sort } = Astro.params as { sort: "30d" | "60d" | "90d" };
 
@@ -29,7 +32,7 @@ const options = {
 };
 const queryOptions = new URLSearchParams({
     start: "1",
-    limit: "100",
+    limit: "2",
     sortBy: `percent_change_${sort}`,
     sortType: "desc",
     convert: "USD,BTC,ETH",
@@ -42,21 +45,19 @@ const url = `https://api.coinmarketcap.com/data-api/v3/cryptocurrency/listing?${
 const response = await fetch(url, options);
 const data = await response.json();
 const coins = data.data.cryptoCurrencyList;
-// console.log(coins);
 
 interface Quote {
     name: string;
     percentChange30d: number;
     percentChange60d: number;
     percentChange90d: number;
-    // add other properties as needed
 }
 
 interface Coin {
     id: number;
     name: string;
+    symbol: string;
     quotes: Quote[];
-    // add other properties as needed
 }
 ---
 
@@ -71,7 +72,7 @@ interface Coin {
     </TableCaption>
     <TableHeader>
         <TableRow>
-            <TableHead class="w-[230px]">ID</TableHead>
+            <TableHead class="w-[100px]">ID</TableHead>
             <TableHead>Name</TableHead>
             <TableHead
                 class={`text-right hover:text-blue-500 cursor-pointer ${sort === "30d" ? "text-violet-600" : ""}`}
@@ -113,23 +114,33 @@ interface Coin {
     </TableHeader>
     <TableBody>
         {
-            coins.map((coin: Coin, index: number) => {
+            coins.map(async (coin: Coin, index: number) => {
                 const usdQuote = coin.quotes.find((quote) => quote.name === "USD");
+                const imagePath = `assets/${coin.symbol}.jpg`;
+                await cacheImage(
+                    `https://s2.coinmarketcap.com/static/img/coins/32x32/${coin.id}.png`,
+                    `./src/${imagePath}`
+                );
                 return (
                     <TableRow>
-                        <TableCell>{index + 1}</TableCell>
-                        <TableCell>{coin.name}</TableCell>
-                        <TableCell class={`text-right ${getColorClass(usdQuote?.percentChange30d ?? 0)}`}>
-                            {usdQuote?.percentChange30d.toFixed(2)} %
-                        </TableCell>
-                        <TableCell class={`text-right ${getColorClass(usdQuote?.percentChange60d ?? 0)}`}>
-                            {usdQuote?.percentChange60d.toFixed(2)} %
-                        </TableCell>
-                        <TableCell
-                            class={`text-right pr-100 ${getColorClass(usdQuote?.percentChange90d ?? 0)}`}
-                        >
-                            {usdQuote?.percentChange90d.toFixed(2)} %
-                        </TableCell>
+                        <TableRow>
+                            <TableCell>{index + 1}</TableCell>
+                            <TableCell>
+                                <CachedImage imagePath={`/src/${imagePath}`} altText={coin.name} />
+                                {coin.name}
+                            </TableCell>
+                            <TableCell class={`text-right ${getColorClass(usdQuote?.percentChange30d ?? 0)}`}>
+                                {usdQuote?.percentChange30d.toFixed(2)} %
+                            </TableCell>
+                            <TableCell class={`text-right ${getColorClass(usdQuote?.percentChange60d ?? 0)}`}>
+                                {usdQuote?.percentChange60d.toFixed(2)} %
+                            </TableCell>
+                            <TableCell
+                                class={`text-right pr-100 ${getColorClass(usdQuote?.percentChange90d ?? 0)}`}
+                            >
+                                {usdQuote?.percentChange90d.toFixed(2)} %
+                            </TableCell>
+                        </TableRow>
                     </TableRow>
                 );
             })
