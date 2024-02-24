@@ -12,7 +12,7 @@ import {
     TableRow,
 } from "../../components/ui/table";
 
-import CachedImage from "@/components/CachedImage.astro";
+import CoinImage from "@/components/CoinImage.astro";
 
 // import { Image } from "astro:assets";
 import { Icon } from "astro-icon/components";
@@ -32,7 +32,7 @@ const options = {
 };
 const queryOptions = new URLSearchParams({
     start: "1",
-    limit: "2",
+    limit: "100",
     sortBy: `percent_change_${sort}`,
     sortType: "desc",
     convert: "USD,BTC,ETH",
@@ -114,19 +114,14 @@ interface Coin {
     </TableHeader>
     <TableBody>
         {
-            coins.map(async (coin: Coin, index: number) => {
+            coins.map((coin: Coin, index: number) => {
                 const usdQuote = coin.quotes.find((quote) => quote.name === "USD");
-                const imagePath = `assets/${coin.symbol}.jpg`;
-                await cacheImage(
-                    `https://s2.coinmarketcap.com/static/img/coins/32x32/${coin.id}.png`,
-                    `./src/${imagePath}`
-                );
                 return (
                     <TableRow>
                         <TableRow>
                             <TableCell>{index + 1}</TableCell>
                             <TableCell>
-                                <CachedImage imagePath={`/src/${imagePath}`} altText={coin.name} />
+                                <CoinImage coinSymbol={coin.symbol} coinId={coin.id} />
                                 {coin.name}
                             </TableCell>
                             <TableCell class={`text-right ${getColorClass(usdQuote?.percentChange30d ?? 0)}`}>
