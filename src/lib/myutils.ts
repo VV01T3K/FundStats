@@ -1,6 +1,6 @@
 export function getColorClass(value: number) {
     if (value < 0) {
-        return "text-red-600";
+        return "text-red-myred";
     } else if (value > 0) {
         return "text-green-400";
     } else {

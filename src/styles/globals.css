@@ -3,6 +3,10 @@
 @tailwind utilities;
 
 
+.text-red-myred {
+  color: #FF2424;
+}
+
 @layer base {
   * {
     color-scheme: dark;
