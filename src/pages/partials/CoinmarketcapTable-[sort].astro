@@ -120,10 +120,7 @@ interface Coin {
                     <TableRow>
                         <TableRow>
                             <TableCell>{index + 1}</TableCell>
-                            <TableCell>
-                                <CoinImage coinSymbol={coin.symbol} coinId={coin.id} />
-                                {coin.name}
-                            </TableCell>
+                            <TableCell>{coin.name}</TableCell>
                             <TableCell class={`text-right ${getColorClass(usdQuote?.percentChange30d ?? 0)}`}>
                                 {usdQuote?.percentChange30d.toFixed(2)} %
                             </TableCell>
