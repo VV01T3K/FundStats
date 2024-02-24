@@ -11,6 +11,10 @@ body {
   color: hsl(var(--foreground));
 }
 
+.text-red-myred {
+  color: #FF2424;
+}
+
 @layer base {
 
   :root {

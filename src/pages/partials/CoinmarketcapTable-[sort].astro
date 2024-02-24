@@ -14,7 +14,9 @@ import {
 
 import { Icon } from "astro-icon/components";
 
-import { getColorClass, getHighlightClass } from "@/lib/myutils";
+import { getColorClass } from "../../lib/myutils";
+
+const { sort } = Astro.params as { sort: "30d" | "60d" | "90d" };
 
 const options = {
     method: "GET",
@@ -25,7 +27,18 @@ const options = {
         "Referrer-Policy": "origin-when-cross-origin",
     },
 };
-const url = `https://api.coinmarketcap.com/data-api/v3/cryptocurrency/listing?start=1&limit=100&sortBy=rank&sortType=desc&convert=USD,BTC,ETH&cryptoType=all&tagType=all&audited=false&aux=ath,atl,high24h,low24h,num_market_pairs,cmc_rank,date_added,max_supply,circulating_supply,total_supply,volume_7d,volume_30d,self_reported_circulating_supply,self_reported_market_cap`;
+const queryOptions = new URLSearchParams({
+    start: "1",
+    limit: "100",
+    sortBy: `percent_change_${sort}`,
+    sortType: "desc",
+    convert: "USD,BTC,ETH",
+    cryptoType: "all",
+    tagType: "all",
+    audited: "false",
+    aux: "ath,atl,high24h,low24h,num_market_pairs,cmc_rank,date_added,max_supply,circulating_supply,total_supply,volume_7d,volume_30d,self_reported_circulating_supply,self_reported_market_cap",
+});
+const url = `https://api.coinmarketcap.com/data-api/v3/cryptocurrency/listing?${queryOptions}`;
 const response = await fetch(url, options);
 const data = await response.json();
 const coins = data.data.cryptoCurrencyList;
@@ -45,8 +58,6 @@ interface Coin {
     quotes: Quote[];
     // add other properties as needed
 }
-
-const threshold = 50;
 ---
 
 <Table>
@@ -62,9 +73,42 @@ const threshold = 50;
         <TableRow>
             <TableHead class="w-[230px]">ID</TableHead>
             <TableHead>Name</TableHead>
-            <TableHead class="text-right">30d %</TableHead>
-            <TableHead class="text-right">60d %</TableHead>
-            <TableHead class="text-right pr-100">90d %</TableHead>
+            <TableHead
+                class={`text-right hover:text-blue-500 cursor-pointer ${sort === "30d" ? "text-violet-600" : ""}`}
+                hx-trigger=" click"
+                hx-get=`/partials/CoinmarketcapTable-30d`
+                hx-swap="innerHTML transition:true"
+                hx-indicator="#spinner"
+                hx-target="#response-div"
+            >
+                30d % {
+                    sort === "30d" && <Icon style={"display: inline"} size={16} name="line-md:arrow-down" />
+                }
+            </TableHead>
+            <TableHead
+                class=`text-right hover:text-blue-500 cursor-pointer ${sort === "60d" ? "text-violet-600" : ""}`
+                hx-trigger=" click"
+                hx-get="/partials/CoinmarketcapTable-60d"
+                hx-swap="innerHTML transition:true"
+                hx-indicator="#spinner"
+                hx-target="#response-div"
+            >
+                60d % {
+                    sort === "60d" && <Icon style={"display: inline"} size={16} name="line-md:arrow-down" />
+                }
+            </TableHead>
+            <TableHead
+                class=`text-right pr-100 hover:text-blue-500 cursor-pointer ${sort === "90d" ? "text-violet-600" : ""}`
+                hx-trigger=" click"
+                hx-get="/partials/CoinmarketcapTable-90d"
+                hx-swap="innerHTML transition:true"
+                hx-indicator="#spinner"
+                hx-target="#response-div"
+            >
+                90d % {
+                    sort === "90d" && <Icon style={"display: inline"} size={16} name="line-md:arrow-down" />
+                }
+            </TableHead>
         </TableRow>
     </TableHeader>
     <TableBody>
