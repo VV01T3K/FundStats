@@ -144,7 +144,7 @@ interface Coin {
                 return (
                     <TableRow>
                         <TableRow>
-                            <TableCell>{coin.cmcRank}</TableCell>
+                            <TableCell>{index}</TableCell>
                             <TableCell>{coin.name}</TableCell>
                             <TableCell class={`text-right ${getColorClass(usdQuote?.percentChange7d ?? 0)}`}>
                                 {usdQuote?.percentChange7d.toFixed(2)} %
