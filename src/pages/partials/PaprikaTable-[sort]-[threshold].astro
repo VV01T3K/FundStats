@@ -45,6 +45,7 @@ const queryOptions = new URLSearchParams({
     currency: "pln",
 });
 const url = `https://api-frontend.coinpaprika.com/ajax/coins/1?${queryOptions}`;
+// https://api-frontend.coinpaprika.com/ajax/coins/1?section=longterm&all=false&expand=longterm,price_stats&sort[sort]=change_1y_chart&sort[sortorder]=desc&tagID=&filters[coins]=true&filters[tokens]=true&currency=pln
 const response = await fetch(url, options);
 const data = await response.json();
 const coins = data.data;
@@ -75,6 +76,7 @@ interface Coin {
             hx-swap="innerHTML transition:true"
             hx-indicator="#spinner"
             hx-target="#response-div"
+            aria-label="change threshold to 10%"
         >
             10 %
         </Button>
@@ -86,6 +88,7 @@ interface Coin {
             hx-swap="innerHTML transition:true"
             hx-indicator="#spinner"
             hx-target="#response-div"
+            aria-label="change threshold to 20%"
         >
             20 %
         </Button>
@@ -97,6 +100,7 @@ interface Coin {
             hx-swap="innerHTML transition:true"
             hx-indicator="#spinner"
             hx-target="#response-div"
+            aria-label="change threshold to 30%"
         >
             30 %
         </Button>
@@ -108,6 +112,7 @@ interface Coin {
             hx-swap="innerHTML transition:true"
             hx-indicator="#spinner"
             hx-target="#response-div"
+            aria-label="change threshold to 40%"
         >
             40 %
         </Button>
@@ -119,6 +124,7 @@ interface Coin {
             hx-swap="innerHTML transition:true"
             hx-indicator="#spinner"
             hx-target="#response-div"
+            aria-label="change threshold to 50%"
         >
             50 %
         </Button>
