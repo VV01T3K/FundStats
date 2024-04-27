@@ -36,6 +36,17 @@ import CoinImage from "@/components/CoinImage.astro";
             >
                 <Icon size={64} name="coinmarketcap" />
             </Button>
+            <Button
+                variant="outline"
+                hx-trigger="click throttle:1s"
+                hx-get="/partials/mBankTable-1m"
+                hx-swap="innerHTML transition:true"
+                hx-indicator="#spinner"
+                hx-target="#response-div"
+                aria-label="Get mBank Table"
+            >
+                <Icon size={64} name="mbank" />
+            </Button>
         </p>
         <TableSlot id="response-div" />
     </main>
