@@ -20,14 +20,14 @@ import { getColorClass } from "../../lib/myutils";
 
 const { sort, type } = Astro.params as {
     sort: "1m" | "3m" | "6m" | "1y";
-    type: "1" | "2" | "3" | "5";
+    type: "0" | "1" | "2" | "3";
 };
 
 const fund_type = {
+    "0": "wszystkie",
     "1": "mieszane",
     "2": "dłużne",
     "3": "akcji",
-    "5": "alternatywne",
 };
 
 const options = {
@@ -45,9 +45,8 @@ const url = `https://www.mbank.pl/.includes/sfi/tab.inc.json`;
 const response = await fetch(url, options);
 const data = await response.json();
 
-const dane = data.stock_quot.filter((item: TFI) => {
-    return item.fund_type == Number(type);
-});
+const dane =
+    type !== "0" ? data.stock_quot.filter((item: TFI) => item.fund_type == Number(type)) : data.stock_quot;
 
 dane.sort((b: TFI, a: TFI) => {
     switch (sort) {
@@ -94,7 +93,7 @@ interface TFI {
             hx-target="#response-div"
             aria-label="change type to akcji"
         >
-            akcji
+            Akcji
         </Button>
         <Button
             variant={type === "1" ? "default" : "secondary"}
@@ -106,7 +105,7 @@ interface TFI {
             hx-target="#response-div"
             aria-label="change type to mieszane"
         >
-            mieszane
+            Mieszane
         </Button>
         <Button
             variant={type === "2" ? "default" : "secondary"}
@@ -118,19 +117,19 @@ interface TFI {
             hx-target="#response-div"
             aria-label="change type to dłużne"
         >
-            dłużne
+            Dłużne
         </Button>
         <Button
-            variant={type === "5" ? "default" : "secondary"}
+            variant={type === "0" ? "default" : "secondary"}
             class="text-lg transition-transform hover:scale-105 active:scale-95"
             hx-trigger=" click throttle:1s"
-            hx-get=`/partials/mBankTable-${sort}-5`
+            hx-get=`/partials/mBankTable-${sort}-0`
             hx-swap="innerHTML transition:true"
             hx-indicator="#spinner"
             hx-target="#response-div"
             aria-label="change type to alternatywne"
         >
-            alternatywne
+            Wszystkie
         </Button>
     </menu>
     <div class="text-base mt-5 opacity-60">
