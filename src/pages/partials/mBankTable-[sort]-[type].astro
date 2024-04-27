@@ -152,7 +152,7 @@ interface TFI {
                 <TableHead
                     class={`text-right hover:text-blue-500 cursor-pointer ${sort === "1m" ? "text-violet-600" : ""}`}
                     hx-trigger=" click throttle:1s"
-                    hx-get=`/partials/mBankTable-1m`
+                    hx-get=`/partials/mBankTable-1m-${type}`
                     hx-swap="innerHTML transition:true"
                     hx-indicator="#spinner"
                     hx-target="#response-div"
@@ -166,7 +166,7 @@ interface TFI {
                 <TableHead
                     class={`text-right hover:text-blue-500 cursor-pointer ${sort === "3m" ? "text-violet-600" : ""}`}
                     hx-trigger=" click throttle:1s"
-                    hx-get=`/partials/mBankTable-3m`
+                    hx-get=`/partials/mBankTable-3m-${type}`
                     hx-swap="innerHTML transition:true"
                     hx-indicator="#spinner"
                     hx-target="#response-div"
@@ -180,7 +180,7 @@ interface TFI {
                 <TableHead
                     class=`text-right hover:text-blue-500 cursor-pointer ${sort === "6m" ? "text-violet-600" : ""}`
                     hx-trigger=" click throttle:1s"
-                    hx-get="/partials/mBankTable-6m"
+                    hx-get=`/partials/mBankTable-6m-${type}`
                     hx-swap="innerHTML transition:true"
                     hx-indicator="#spinner"
                     hx-target="#response-div"
@@ -194,7 +194,7 @@ interface TFI {
                 <TableHead
                     class=`text-right pr-100 hover:text-blue-500 cursor-pointer ${sort === "1y" ? "text-violet-600" : ""}`
                     hx-trigger=" click throttle:1s"
-                    hx-get="/partials/mBankTable-1y"
+                    hx-get=`/partials/mBankTable-1y-${type}`
                     hx-swap="innerHTML transition:true"
                     hx-indicator="#spinner"
                     hx-target="#response-div"
