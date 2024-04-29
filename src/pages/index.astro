@@ -15,7 +15,7 @@ import CoinImage from "@/components/CoinImage.astro";
         <p class="instructions upperlayer">
             <Button
                 variant="outline"
-                hx-trigger="load, click throttle:1s"
+                hx-trigger="click throttle:1s"
                 hx-get="/partials/PaprikaTable-1y-50"
                 hx-swap="innerHTML transition:true"
                 hx-indicator="#spinner"
@@ -38,7 +38,7 @@ import CoinImage from "@/components/CoinImage.astro";
             </Button>
             <Button
                 variant="outline"
-                hx-trigger="click throttle:1s"
+                hx-trigger="load, click throttle:1s"
                 hx-get="/partials/mBankTable-1m-3"
                 hx-swap="innerHTML transition:true"
                 hx-indicator="#spinner"
@@ -75,6 +75,7 @@ import CoinImage from "@/components/CoinImage.astro";
         scale: 0.95;
     }
     #spinner {
+        pointer-events: none;
         position: absolute;
         transition:
             opacity 0.1s,
