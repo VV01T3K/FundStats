@@ -49,6 +49,16 @@ const dane =
     type !== "0" ? data.stock_quot.filter((item: TFI) => item.fund_type == Number(type)) : data.stock_quot;
 
 dane.sort((b: TFI, a: TFI) => {
+    if (a?.StopaZw1m === "-") a.StopaZw1m = "0";
+    if (a?.StopaZw3m === "-") a.StopaZw3m = "0";
+    if (a?.StopaZw6m === "-") a.StopaZw6m = "0";
+    if (a?.StopaZw1r === "-") a.StopaZw1r = "0";
+
+    if (b?.StopaZw1m === "-") b.StopaZw1m = "0";
+    if (b?.StopaZw3m === "-") b.StopaZw3m = "0";
+    if (b?.StopaZw6m === "-") b.StopaZw6m = "0";
+    if (b?.StopaZw1r === "-") b.StopaZw1r = "0";
+
     switch (sort) {
         case "1m":
             return (
