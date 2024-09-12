@@ -1,7 +1,7 @@
 bun install
 bunx @astrojs/upgrade
 
-bunx --bun astro dev
+bunx --bun astro dev --host
 
 bunx --bun astro build
 
