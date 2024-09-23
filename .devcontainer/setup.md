@@ -4,7 +4,7 @@ bunx @astrojs/upgrade
 <!-- in devcontainer -->
 bunx --bun astro dev --host 
 <!-- in normal setup -->
-bunx --bun astro dev --host
+bunx --bun astro dev
 
 bunx --bun astro build
 
