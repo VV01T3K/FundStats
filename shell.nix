@@ -4,6 +4,7 @@ pkgs.mkShell {
   packages = with pkgs; [
     nodejs_22
     bun
+    unzip
     (pkgs.writeShellScriptBin "hello" ''
       #!/usr/bin/env bash
       echo "Hello, in my simple nix configuration for crypto-dad!"
