@@ -2,6 +2,8 @@
 export const partial = true;
 export const prerender = false;
 
+Astro.response.headers.set("Cache-Control", "private, max-age=1800");
+
 import {
     Table,
     TableBody,
