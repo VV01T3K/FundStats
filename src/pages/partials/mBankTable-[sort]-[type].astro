@@ -44,14 +44,12 @@ const options = {
 const url = `https://www.mbank.pl/api/sfi/funds.json`;
 
 const response = await fetch(url, options);
-const date = await response.json();
-
-console.log(date[0]);
+const data = await response.json();
 
 const dane =
   type !== "0"
-    ? date.filter((item: TFI) => item.category.value == fund_type[type])
-    : date;
+    ? data.filter((item: TFI) => item.category.value == fund_type[type])
+    : data;
 
 dane.sort((b: TFI, a: TFI) => {
   switch (sort) {
