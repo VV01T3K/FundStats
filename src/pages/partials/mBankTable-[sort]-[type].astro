@@ -140,10 +140,10 @@ interface TFI {
     </TableCaption>
     <TableHeader>
       <TableRow>
-        <TableHead class="w-[100px]">ID</TableHead>
-        <TableHead>Name</TableHead>
+        <TableHead class="w-[60px]">ID</TableHead>
+        <TableHead class="w-[375px]">Name</TableHead>
         <TableHead
-          class={`text-right hover:text-blue-500 cursor-pointer ${sort === "1m" ? "text-violet-600" : ""}`}
+          class={`w-[90px] text-right hover:text-blue-500 cursor-pointer ${sort === "1m" ? "text-violet-600" : ""}`}
           hx-trigger=" click throttle:1s"
           hx-get=`/partials/mBankTable-1m-${type}`
           hx-swap="innerHTML transition:true"
@@ -161,7 +161,7 @@ interface TFI {
           }
         </TableHead>
         <TableHead
-          class={`text-right hover:text-blue-500 cursor-pointer ${sort === "3m" ? "text-violet-600" : ""}`}
+          class={`w-[90px] text-right hover:text-blue-500 cursor-pointer ${sort === "3m" ? "text-violet-600" : ""}`}
           hx-trigger=" click throttle:1s"
           hx-get=`/partials/mBankTable-3m-${type}`
           hx-swap="innerHTML transition:true"
@@ -179,7 +179,7 @@ interface TFI {
           }
         </TableHead>
         <TableHead
-          class=`text-right hover:text-blue-500 cursor-pointer ${sort === "6m" ? "text-violet-600" : ""}`
+          class=`w-[90px] text-right hover:text-blue-500 cursor-pointer ${sort === "6m" ? "text-violet-600" : ""}`
           hx-trigger=" click throttle:1s"
           hx-get=`/partials/mBankTable-6m-${type}`
           hx-swap="innerHTML transition:true"
@@ -197,7 +197,7 @@ interface TFI {
           }
         </TableHead>
         <TableHead
-          class=`text-right pr-100 hover:text-blue-500 cursor-pointer ${sort === "1y" ? "text-violet-600" : ""}`
+          class=`w-[90px] text-right hover:text-blue-500 cursor-pointer ${sort === "1y" ? "text-violet-600" : ""}`
           hx-trigger=" click throttle:1s"
           hx-get=`/partials/mBankTable-1y-${type}`
           hx-swap="innerHTML transition:true"
@@ -221,33 +221,31 @@ interface TFI {
         dane.map((tfi: TFI, index: number) => {
           return (
             <TableRow>
-              <TableRow>
-                <TableCell>{index + 1}</TableCell>
-                <TableCell>
-                  {tfi.shortName}
-                  <p class="text-gray-500 text-xs">{tfi?.date}</p>
-                </TableCell>
-                <TableCell
-                  class={`text-right ${getColorClass(Number(tfi?.yield1m ?? 0))}`}
-                >
-                  {Number(tfi?.yield1m ?? 0).toFixed(2)} %
-                </TableCell>
-                <TableCell
-                  class={`text-right ${getColorClass(Number(tfi?.yield3m ?? 0))}`}
-                >
-                  {Number(tfi?.yield3m ?? 0).toFixed(2)} %
-                </TableCell>
-                <TableCell
-                  class={`text-right ${getColorClass(Number(tfi?.yield6m ?? 0))}`}
-                >
-                  {Number(tfi?.yield6m ?? 0).toFixed(2)} %
-                </TableCell>
-                <TableCell
-                  class={`text-right pr-100 ${getColorClass(Number(tfi?.yield12m ?? 0))}`}
-                >
-                  {Number(tfi?.yield12m ?? 0).toFixed(2)} %
-                </TableCell>
-              </TableRow>
+              <TableCell class="w-[60px]">{index + 1}</TableCell>
+              <TableCell class="w-[200px] max-w-[200px] group">
+                <div class="truncate group-hover:overflow-visible group-hover:whitespace-nowrap">{tfi.shortName}</div>
+                <p class="text-gray-500 text-xs truncate">{tfi?.date}</p>
+              </TableCell>
+              <TableCell
+                class={`w-[90px] text-right ${getColorClass(Number(tfi?.yield1m ?? 0))}`}
+              >
+                {Number(tfi?.yield1m ?? 0).toFixed(2)} %
+              </TableCell>
+              <TableCell
+                class={`w-[90px] text-right ${getColorClass(Number(tfi?.yield3m ?? 0))}`}
+              >
+                {Number(tfi?.yield3m ?? 0).toFixed(2)} %
+              </TableCell>
+              <TableCell
+                class={`w-[90px] text-right ${getColorClass(Number(tfi?.yield6m ?? 0))}`}
+              >
+                {Number(tfi?.yield6m ?? 0).toFixed(2)} %
+              </TableCell>
+              <TableCell
+                class={`w-[90px] text-right ${getColorClass(Number(tfi?.yield12m ?? 0))}`}
+              >
+                {Number(tfi?.yield12m ?? 0).toFixed(2)} %
+              </TableCell>
             </TableRow>
           );
         })
