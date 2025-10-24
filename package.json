@@ -10,25 +10,27 @@
     "astro": "astro"
   },
   "dependencies": {
-    "@astrojs/check": "0.9.4",
-    "@astrojs/mdx": "4.3.0",
-    "@astrojs/solid-js": "5.1.0",
+    "@astrojs/check": "0.9.5",
+    "@astrojs/mdx": "4.3.8",
+    "@astrojs/solid-js": "5.1.1",
     "@astrojs/tailwind": "6.0.2",
-    "@astrojs/vercel": "8.2.1",
+    "@astrojs/vercel": "9.0.0",
     "@kobalte/core": "^0.12.6",
-    "astro": "5.11.0",
+    "@vercel/analytics": "^1.5.0",
+    "@vercel/speed-insights": "^1.2.0",
+    "astro": "5.15.1",
     "astro-icon": "^1.1.5",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "corvu": "^0.4.8",
-    "solid-js": "^1.9.7",
+    "solid-js": "^1.9.9",
     "tailwind-merge": "^2.6.0",
-    "tailwindcss": "^3.4.17",
+    "tailwindcss": "^3.4.18",
     "tailwindcss-animate": "^1.0.7",
-    "typescript": "^5.8.3"
+    "typescript": "^5.9.3"
   },
   "devDependencies": {
-    "@iconify-json/line-md": "^1.2.8",
-    "@iconify-json/svg-spinners": "^1.2.2"
+    "@iconify-json/line-md": "^1.2.11",
+    "@iconify-json/svg-spinners": "^1.2.4"
   }
 }

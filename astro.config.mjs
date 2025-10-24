@@ -8,14 +8,19 @@ import vercel from "@astrojs/vercel";
 
 // https://astro.build/config
 export default defineConfig({
-    integrations: [
-        solidJs(),
-        tailwind({
-            applyBaseStyles: false,
-        }),
-        icon(),
-        mdx(),
-    ],
-    output: "server",
-    adapter: vercel(),
+  integrations: [
+    solidJs(),
+    tailwind({
+      applyBaseStyles: false,
+    }),
+    icon(),
+    mdx(),
+  ],
+  output: "server",
+  adapter: vercel({
+    imageService: true,
+    webAnalytics: {
+      enabled: true,
+    },
+  }),
 });
