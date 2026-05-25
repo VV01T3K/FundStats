@@ -1,0 +1,15 @@
+{
+  admin off
+}
+
+http://localhost {
+  redir https://localhost{uri}
+}
+
+https://localhost {
+  tls internal
+  route /v1/stream/* {
+    reverse_proxy host.docker.internal:4437
+  }
+  reverse_proxy host.docker.internal:3000
+}

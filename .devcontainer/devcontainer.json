@@ -13,15 +13,19 @@
   },
   "customizations": {
     "vscode": {
-      "extensions": ["VoidZero.vite-plus-extension-pack"]
+      "extensions": [
+        "VoidZero.vite-plus-extension-pack"
+      ]
     }
-  }
-  // ,
-  // "onCreateCommand": "vp install"
+  },
+  "onCreateCommand": "vp install && docker compose -f .devcontainer/compose.yaml up -d"
   // Features to add to the dev container. More info: https://containers.dev/features.
   // "features": {},
   // Use 'forwardPorts' to make a list of ports inside the container available locally.
-  // "forwardPorts": [],
+  ,
+  "forwardPorts": [
+    3443
+  ]
   // Use 'postCreateCommand' to run commands after the container is created.
   // "postCreateCommand": "yarn install",
   // Configure tool-specific properties.
