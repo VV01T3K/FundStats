@@ -1,25 +1,22 @@
 import { createFileRoute } from "@tanstack/solid-router";
 import { createMiddleware, createServerFn } from "@tanstack/solid-start";
+import { ELECTRIC_PROTOCOL_QUERY_PARAMS } from "@electric-sql/client";
 
 const electricTable = process.env.ELECTRIC_TABLE || "fund_stats";
-const electricProtocolQueryParams = new Set([
-  "live",
-  "live_sse",
-  "experimental_live_sse",
-  "handle",
-  "offset",
-  "cursor",
-  "expired_handle",
-  "log",
-  "subset__where",
-  "subset__limit",
-  "subset__offset",
-  "subset__order_by",
-  "subset__params",
-  "subset__where_expr",
-  "subset__order_by_expr",
-  "cache-buster",
-]);
+const defaultDevShapeUrl = "http://127.0.0.1:5133/v1/shape";
+const electricProtocolQueryParams = new Set(ELECTRIC_PROTOCOL_QUERY_PARAMS);
+
+function getElectricShapeUrl() {
+  if (process.env.ELECTRIC_SHAPE_URL) {
+    return process.env.ELECTRIC_SHAPE_URL;
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    return defaultDevShapeUrl;
+  }
+
+  return null;
+}
 
 const requestMiddleware = createMiddleware({ type: "request" }).server(({ request, next }) =>
   next({ context: { request } }),
@@ -28,7 +25,7 @@ const requestMiddleware = createMiddleware({ type: "request" }).server(({ reques
 export const proxyFundStatsShape = createServerFn({ method: "GET", strict: false })
   .middleware([requestMiddleware])
   .handler(async ({ context: { request } }) => {
-    const shapeUrl = process.env.ELECTRIC_SHAPE_URL;
+    const shapeUrl = getElectricShapeUrl();
 
     if (!shapeUrl) {
       return new Response(

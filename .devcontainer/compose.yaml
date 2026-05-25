@@ -1,17 +1,39 @@
 services:
   postgres:
-    image: postgres:18-alpine
+    image: postgres:17-alpine
+    command:
+      - postgres
+      - -c
+      - wal_level=logical
+      - -c
+      - max_replication_slots=10
     environment:
       POSTGRES_DB: fundstats
       POSTGRES_USER: fundstats
       POSTGRES_PASSWORD: fundstats
+    ports:
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}" ]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  electric:
+    image: electricsql/electric:latest
+    environment:
+      DATABASE_URL: postgresql://fundstats:fundstats@postgres:5432/fundstats?sslmode=disable
+      ELECTRIC_INSECURE: "true"
+      ELECTRIC_STORAGE_DIR: /var/lib/electric
+    ports:
+      - "5133:3000"
+    volumes:
+      - electric_data:/var/lib/electric
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   caddy:
     image: caddy:2.8-alpine
@@ -26,5 +48,6 @@ services:
 
 volumes:
   postgres_data:
+  electric_data:
   caddy_data:
   caddy_config:

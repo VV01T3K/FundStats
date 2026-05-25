@@ -13,19 +13,19 @@
   },
   "customizations": {
     "vscode": {
-      "extensions": [
-        "VoidZero.vite-plus-extension-pack"
-      ]
+      "extensions": ["VoidZero.vite-plus-extension-pack"]
     }
   },
-  "onCreateCommand": "vp install && docker compose -f .devcontainer/compose.yaml up -d"
+  "remoteEnv": {
+    "DATABASE_URL": "postgresql://fundstats:fundstats@127.0.0.1:5432/fundstats?sslmode=disable",
+    "ELECTRIC_SHAPE_URL": "http://127.0.0.1:5133/v1/shape",
+    "ELECTRIC_TABLE": "fund_stats"
+  },
+  "onCreateCommand": "vp install && docker compose -f .devcontainer/compose.yaml up -d",
   // Features to add to the dev container. More info: https://containers.dev/features.
   // "features": {},
   // Use 'forwardPorts' to make a list of ports inside the container available locally.
-  ,
-  "forwardPorts": [
-    3443
-  ]
+  "forwardPorts": [3443, 5133, 5432]
   // Use 'postCreateCommand' to run commands after the container is created.
   // "postCreateCommand": "yarn install",
   // Configure tool-specific properties.
