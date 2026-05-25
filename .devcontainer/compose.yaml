@@ -1,0 +1,37 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: fundstats
+      POSTGRES_USER: fundstats
+      POSTGRES_PASSWORD: fundstats
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    command:
+      - postgres
+      - -c
+      - wal_level=logical
+    ports:
+      - "5432:5432"
+
+  electric:
+    image: electricsql/electric
+    environment:
+      DATABASE_URL: postgresql://fundstats:fundstats@postgres:5432/fundstats?sslmode=disable
+      ELECTRIC_INSECURE: "true"
+      ELECTRIC_USAGE_REPORTING: "false"
+    ports:
+      - "5133:3000"
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - 8080:80
+      - 3443:443
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  postgres-data:
