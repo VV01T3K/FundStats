@@ -8,149 +8,161 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as ApiFundStatsRouteImport } from './routes/api/fund-stats'
-import { Route as ApiElectricFundStatsRouteImport } from './routes/api/electric/fund-stats'
-import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
-import { Route as ApiAiChatRouteImport } from './routes/api/ai/chat'
+import { Route as rootRouteImport } from "./routes/__root";
+import { Route as SkeletonRouteImport } from "./routes/skeleton";
+import { Route as IndexRouteImport } from "./routes/index";
+import { Route as ApiFundStatsRouteImport } from "./routes/api/fund-stats";
+import { Route as ApiElectricFundStatsRouteImport } from "./routes/api/electric/fund-stats";
+import { Route as ApiAuthSplatRouteImport } from "./routes/api/auth/$";
+import { Route as ApiAiChatRouteImport } from "./routes/api/ai/chat";
 
+const SkeletonRoute = SkeletonRouteImport.update({
+  id: "/skeleton",
+  path: "/skeleton",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+  id: "/",
+  path: "/",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const ApiFundStatsRoute = ApiFundStatsRouteImport.update({
-  id: '/api/fund-stats',
-  path: '/api/fund-stats',
+  id: "/api/fund-stats",
+  path: "/api/fund-stats",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const ApiElectricFundStatsRoute = ApiElectricFundStatsRouteImport.update({
-  id: '/api/electric/fund-stats',
-  path: '/api/electric/fund-stats',
+  id: "/api/electric/fund-stats",
+  path: "/api/electric/fund-stats",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
-  id: '/api/auth/$',
-  path: '/api/auth/$',
+  id: "/api/auth/$",
+  path: "/api/auth/$",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const ApiAiChatRoute = ApiAiChatRouteImport.update({
-  id: '/api/ai/chat',
-  path: '/api/ai/chat',
+  id: "/api/ai/chat",
+  path: "/api/ai/chat",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
-  '/api/fund-stats': typeof ApiFundStatsRoute
-  '/api/ai/chat': typeof ApiAiChatRoute
-  '/api/auth/$': typeof ApiAuthSplatRoute
-  '/api/electric/fund-stats': typeof ApiElectricFundStatsRoute
+  "/": typeof IndexRoute;
+  "/skeleton": typeof SkeletonRoute;
+  "/api/fund-stats": typeof ApiFundStatsRoute;
+  "/api/ai/chat": typeof ApiAiChatRoute;
+  "/api/auth/$": typeof ApiAuthSplatRoute;
+  "/api/electric/fund-stats": typeof ApiElectricFundStatsRoute;
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
-  '/api/fund-stats': typeof ApiFundStatsRoute
-  '/api/ai/chat': typeof ApiAiChatRoute
-  '/api/auth/$': typeof ApiAuthSplatRoute
-  '/api/electric/fund-stats': typeof ApiElectricFundStatsRoute
+  "/": typeof IndexRoute;
+  "/skeleton": typeof SkeletonRoute;
+  "/api/fund-stats": typeof ApiFundStatsRoute;
+  "/api/ai/chat": typeof ApiAiChatRoute;
+  "/api/auth/$": typeof ApiAuthSplatRoute;
+  "/api/electric/fund-stats": typeof ApiElectricFundStatsRoute;
 }
 export interface FileRoutesById {
-  __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
-  '/api/fund-stats': typeof ApiFundStatsRoute
-  '/api/ai/chat': typeof ApiAiChatRoute
-  '/api/auth/$': typeof ApiAuthSplatRoute
-  '/api/electric/fund-stats': typeof ApiElectricFundStatsRoute
+  __root__: typeof rootRouteImport;
+  "/": typeof IndexRoute;
+  "/skeleton": typeof SkeletonRoute;
+  "/api/fund-stats": typeof ApiFundStatsRoute;
+  "/api/ai/chat": typeof ApiAiChatRoute;
+  "/api/auth/$": typeof ApiAuthSplatRoute;
+  "/api/electric/fund-stats": typeof ApiElectricFundStatsRoute;
 }
 export interface FileRouteTypes {
-  fileRoutesByFullPath: FileRoutesByFullPath
+  fileRoutesByFullPath: FileRoutesByFullPath;
   fullPaths:
-    | '/'
-    | '/api/fund-stats'
-    | '/api/ai/chat'
-    | '/api/auth/$'
-    | '/api/electric/fund-stats'
-  fileRoutesByTo: FileRoutesByTo
+    | "/"
+    | "/skeleton"
+    | "/api/fund-stats"
+    | "/api/ai/chat"
+    | "/api/auth/$"
+    | "/api/electric/fund-stats";
+  fileRoutesByTo: FileRoutesByTo;
   to:
-    | '/'
-    | '/api/fund-stats'
-    | '/api/ai/chat'
-    | '/api/auth/$'
-    | '/api/electric/fund-stats'
+    | "/"
+    | "/skeleton"
+    | "/api/fund-stats"
+    | "/api/ai/chat"
+    | "/api/auth/$"
+    | "/api/electric/fund-stats";
   id:
-    | '__root__'
-    | '/'
-    | '/api/fund-stats'
-    | '/api/ai/chat'
-    | '/api/auth/$'
-    | '/api/electric/fund-stats'
-  fileRoutesById: FileRoutesById
+    | "__root__"
+    | "/"
+    | "/skeleton"
+    | "/api/fund-stats"
+    | "/api/ai/chat"
+    | "/api/auth/$"
+    | "/api/electric/fund-stats";
+  fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
-  ApiFundStatsRoute: typeof ApiFundStatsRoute
-  ApiAiChatRoute: typeof ApiAiChatRoute
-  ApiAuthSplatRoute: typeof ApiAuthSplatRoute
-  ApiElectricFundStatsRoute: typeof ApiElectricFundStatsRoute
+  IndexRoute: typeof IndexRoute;
+  SkeletonRoute: typeof SkeletonRoute;
+  ApiFundStatsRoute: typeof ApiFundStatsRoute;
+  ApiAiChatRoute: typeof ApiAiChatRoute;
+  ApiAuthSplatRoute: typeof ApiAuthSplatRoute;
+  ApiElectricFundStatsRoute: typeof ApiElectricFundStatsRoute;
 }
 
-declare module '@tanstack/solid-router' {
+declare module "@tanstack/solid-router" {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/fund-stats': {
-      id: '/api/fund-stats'
-      path: '/api/fund-stats'
-      fullPath: '/api/fund-stats'
-      preLoaderRoute: typeof ApiFundStatsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/electric/fund-stats': {
-      id: '/api/electric/fund-stats'
-      path: '/api/electric/fund-stats'
-      fullPath: '/api/electric/fund-stats'
-      preLoaderRoute: typeof ApiElectricFundStatsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/auth/$': {
-      id: '/api/auth/$'
-      path: '/api/auth/$'
-      fullPath: '/api/auth/$'
-      preLoaderRoute: typeof ApiAuthSplatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/ai/chat': {
-      id: '/api/ai/chat'
-      path: '/api/ai/chat'
-      fullPath: '/api/ai/chat'
-      preLoaderRoute: typeof ApiAiChatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
+    "/skeleton": {
+      id: "/skeleton";
+      path: "/skeleton";
+      fullPath: "/skeleton";
+      preLoaderRoute: typeof SkeletonRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/": {
+      id: "/";
+      path: "/";
+      fullPath: "/";
+      preLoaderRoute: typeof IndexRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/api/fund-stats": {
+      id: "/api/fund-stats";
+      path: "/api/fund-stats";
+      fullPath: "/api/fund-stats";
+      preLoaderRoute: typeof ApiFundStatsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/api/electric/fund-stats": {
+      id: "/api/electric/fund-stats";
+      path: "/api/electric/fund-stats";
+      fullPath: "/api/electric/fund-stats";
+      preLoaderRoute: typeof ApiElectricFundStatsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/api/auth/$": {
+      id: "/api/auth/$";
+      path: "/api/auth/$";
+      fullPath: "/api/auth/$";
+      preLoaderRoute: typeof ApiAuthSplatRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/api/ai/chat": {
+      id: "/api/ai/chat";
+      path: "/api/ai/chat";
+      fullPath: "/api/ai/chat";
+      preLoaderRoute: typeof ApiAiChatRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  SkeletonRoute: SkeletonRoute,
   ApiFundStatsRoute: ApiFundStatsRoute,
   ApiAiChatRoute: ApiAiChatRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiElectricFundStatsRoute: ApiElectricFundStatsRoute,
-}
+};
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
-  ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/solid-start'
-declare module '@tanstack/solid-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}
+  ._addFileTypes<FileRouteTypes>();
