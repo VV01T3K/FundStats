@@ -1,0 +1,255 @@
+---
+export const partial = true;
+export const prerender = false;
+
+Astro.response.headers.set("Cache-Control", "private, max-age=1800");
+
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../../components/ui/table";
+import { Button } from "../../components/ui/button";
+
+// import { Image } from "astro:assets";
+import { Icon } from "astro-icon/components";
+
+import { getColorClass } from "../../lib/myutils";
+
+const { sort, type } = Astro.params as {
+  sort: "1m" | "3m" | "6m" | "1y";
+  type: "0" | "1" | "2" | "3";
+};
+
+const fund_type = {
+  "0": "wszystkie",
+  "1": "mieszany",
+  "2": "dłużny",
+  "3": "akcyjny",
+};
+
+const options = {
+  method: "GET",
+  headers: {
+    accept: "*/*",
+    Referer: "https://www.mbank.pl/serwis-ekonomiczny/notowania-funduszy/",
+    "Referrer-Policy": "no-referrer-when-downgrade",
+  },
+};
+
+const url = `https://www.mbank.pl/api/sfi/funds.json`;
+
+const response = await fetch(url, options);
+const data = await response.json();
+
+const dane =
+  type !== "0"
+    ? data.filter((item: TFI) => item.category.value == fund_type[type])
+    : data;
+
+dane.sort((b: TFI, a: TFI) => {
+  switch (sort) {
+    case "1m":
+      return Number(a?.yield1m ?? 0) - Number(b?.yield1m ?? 0);
+    case "3m":
+      return Number(a?.yield3m ?? 0) - Number(b?.yield3m ?? 0);
+    case "6m":
+      return Number(a?.yield6m ?? 0) - Number(b?.yield6m ?? 0);
+    case "1y":
+      return Number(a?.yield12m ?? 0) - Number(b?.yield12m ?? 0);
+  }
+});
+
+interface TFI {
+  id: number;
+  date: string;
+  shortName: string;
+  yield1m: number;
+  yield3m: number;
+  yield6m: number;
+  yield12m: number;
+  category: {
+    value: string;
+  };
+}
+---
+
+<div>
+  <menu class="flex justify-evenly">
+    <Button
+      variant={type === "3" ? "default" : "secondary"}
+      class="text-lg transition-transform hover:scale-105 active:scale-95"
+      hx-trigger=" click throttle:1s"
+      hx-get=`/partials/mBankTable-${sort}-3`
+      hx-swap="innerHTML transition:true"
+      hx-indicator="#spinner"
+      hx-target="#response-div"
+      aria-label="change type to akcji"
+    >
+      Akcji
+    </Button>
+    <Button
+      variant={type === "1" ? "default" : "secondary"}
+      class="text-lg transition-transform hover:scale-105 active:scale-95"
+      hx-trigger=" click throttle:1s"
+      hx-get=`/partials/mBankTable-${sort}-1`
+      hx-swap="innerHTML transition:true"
+      hx-indicator="#spinner"
+      hx-target="#response-div"
+      aria-label="change type to mieszane"
+    >
+      Mieszane
+    </Button>
+    <Button
+      variant={type === "2" ? "default" : "secondary"}
+      class="text-lg transition-transform hover:scale-105 active:scale-95"
+      hx-trigger=" click throttle:1s"
+      hx-get=`/partials/mBankTable-${sort}-2`
+      hx-swap="innerHTML transition:true"
+      hx-indicator="#spinner"
+      hx-target="#response-div"
+      aria-label="change type to dłużne"
+    >
+      Dłużne
+    </Button>
+    <Button
+      variant={type === "0" ? "default" : "secondary"}
+      class="text-lg transition-transform hover:scale-105 active:scale-95"
+      hx-trigger=" click throttle:1s"
+      hx-get=`/partials/mBankTable-${sort}-0`
+      hx-swap="innerHTML transition:true"
+      hx-indicator="#spinner"
+      hx-target="#response-div"
+      aria-label="change type to alternatywne"
+    >
+      Wszystkie
+    </Button>
+  </menu>
+  <Table>
+    <TableCaption>
+      <a class="flex text-base justify-center items-center" href="#top"
+        ><Icon size={16} name="line-md:upload-loop" />Go to the top of the page<Icon
+          size={16}
+          name="line-md:upload-loop"
+        /></a
+      >
+    </TableCaption>
+    <TableHeader>
+      <TableRow>
+        <TableHead class="w-[60px]">ID</TableHead>
+        <TableHead class="w-[375px]">Name</TableHead>
+        <TableHead
+          class={`w-[90px] text-right hover:text-blue-500 cursor-pointer ${sort === "1m" ? "text-violet-600" : ""}`}
+          hx-trigger=" click throttle:1s"
+          hx-get=`/partials/mBankTable-1m-${type}`
+          hx-swap="innerHTML transition:true"
+          hx-indicator="#spinner"
+          hx-target="#response-div"
+        >
+          1m % {
+            sort === "1m" && (
+              <Icon
+                style={"display: inline"}
+                size={16}
+                name="line-md:arrow-down"
+              />
+            )
+          }
+        </TableHead>
+        <TableHead
+          class={`w-[90px] text-right hover:text-blue-500 cursor-pointer ${sort === "3m" ? "text-violet-600" : ""}`}
+          hx-trigger=" click throttle:1s"
+          hx-get=`/partials/mBankTable-3m-${type}`
+          hx-swap="innerHTML transition:true"
+          hx-indicator="#spinner"
+          hx-target="#response-div"
+        >
+          3m % {
+            sort === "3m" && (
+              <Icon
+                style={"display: inline"}
+                size={16}
+                name="line-md:arrow-down"
+              />
+            )
+          }
+        </TableHead>
+        <TableHead
+          class=`w-[90px] text-right hover:text-blue-500 cursor-pointer ${sort === "6m" ? "text-violet-600" : ""}`
+          hx-trigger=" click throttle:1s"
+          hx-get=`/partials/mBankTable-6m-${type}`
+          hx-swap="innerHTML transition:true"
+          hx-indicator="#spinner"
+          hx-target="#response-div"
+        >
+          6m % {
+            sort === "6m" && (
+              <Icon
+                style={"display: inline"}
+                size={16}
+                name="line-md:arrow-down"
+              />
+            )
+          }
+        </TableHead>
+        <TableHead
+          class=`w-[90px] text-right hover:text-blue-500 cursor-pointer ${sort === "1y" ? "text-violet-600" : ""}`
+          hx-trigger=" click throttle:1s"
+          hx-get=`/partials/mBankTable-1y-${type}`
+          hx-swap="innerHTML transition:true"
+          hx-indicator="#spinner"
+          hx-target="#response-div"
+        >
+          1y % {
+            sort === "1y" && (
+              <Icon
+                style={"display: inline"}
+                size={16}
+                name="line-md:arrow-down"
+              />
+            )
+          }
+        </TableHead>
+      </TableRow>
+    </TableHeader>
+    <TableBody>
+      {
+        dane.map((tfi: TFI, index: number) => {
+          return (
+            <TableRow>
+              <TableCell class="w-[60px]">{index + 1}</TableCell>
+              <TableCell class="w-[200px] max-w-[200px] group">
+                <div class="truncate group-hover:overflow-visible group-hover:whitespace-nowrap">{tfi.shortName}</div>
+                <p class="text-gray-500 text-xs truncate">{tfi?.date}</p>
+              </TableCell>
+              <TableCell
+                class={`w-[90px] text-right ${getColorClass(Number(tfi?.yield1m ?? 0))}`}
+              >
+                {Number(tfi?.yield1m ?? 0).toFixed(2)} %
+              </TableCell>
+              <TableCell
+                class={`w-[90px] text-right ${getColorClass(Number(tfi?.yield3m ?? 0))}`}
+              >
+                {Number(tfi?.yield3m ?? 0).toFixed(2)} %
+              </TableCell>
+              <TableCell
+                class={`w-[90px] text-right ${getColorClass(Number(tfi?.yield6m ?? 0))}`}
+              >
+                {Number(tfi?.yield6m ?? 0).toFixed(2)} %
+              </TableCell>
+              <TableCell
+                class={`w-[90px] text-right ${getColorClass(Number(tfi?.yield12m ?? 0))}`}
+              >
+                {Number(tfi?.yield12m ?? 0).toFixed(2)} %
+              </TableCell>
+            </TableRow>
+          );
+        })
+      }
+    </TableBody>
+  </Table>
+</div>
