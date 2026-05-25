@@ -1,24 +1,16 @@
 import { Link, createFileRoute } from "@tanstack/solid-router";
-import {
-  createColumnHelper,
-  createSolidTable,
-  flexRender,
-  getCoreRowModel,
-} from "@tanstack/solid-table";
+import { createSolidTable, flexRender, getCoreRowModel } from "@tanstack/solid-table";
 import { createVirtualizer } from "@tanstack/solid-virtual";
 import { createHotkey } from "@tanstack/solid-hotkeys";
-import { useLiveQuery } from "@tanstack/solid-db";
+import { ilike, or } from "@tanstack/solid-db";
 import { For, Show, createMemo, createSignal } from "solid-js";
 
 import { getFundStatsCollection } from "../integrations/tanstack/db/fund-stats";
 import { type FundStat } from "../db/fund-stats.schema";
 import {
-  defaultFundStatSort,
-  filterFundStats,
-  nextFundStatSort,
-  sortFundStats,
-  type FundStatSortKey,
-} from "../tables/fund-stats";
+  createCollectionTableColumns,
+  createCollectionTableQuery,
+} from "../integrations/tanstack/table/collection-table";
 
 export const Route = createFileRoute("/")({
   ssr: false,
@@ -29,105 +21,92 @@ export const Route = createFileRoute("/")({
   component: Home,
 });
 
-const columnHelper = createColumnHelper<FundStat>();
-const columnGrid =
-  "92px minmax(260px, 1.8fr) minmax(140px, 1fr) 120px 100px 120px 110px 110px 110px 96px";
-const sortableColumns = new Set<FundStatSortKey>([
-  "symbol",
-  "fundName",
-  "category",
-  "region",
-  "nav",
-  "netAssets",
-  "expenseRatio",
-  "ytdReturn",
-  "oneYearReturn",
-  "threeYearReturn",
-  "risk",
-]);
-
 const currency = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
   maximumFractionDigits: 2,
 });
-
 const compactCurrency = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
   notation: "compact",
   maximumFractionDigits: 1,
 });
-
 const percent = new Intl.NumberFormat("en-US", {
   style: "percent",
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
-
 const returnPercent = new Intl.NumberFormat("en-US", {
   style: "percent",
   minimumFractionDigits: 1,
   maximumFractionDigits: 1,
 });
 
-const columns = [
-  columnHelper.accessor("symbol", {
-    header: "Ticker",
-    cell: (info) => <span class="font-semibold text-foreground">{info.getValue()}</span>,
-  }),
-  columnHelper.accessor("fundName", {
+const fundStatTable = createCollectionTableColumns<FundStat>([
+  { key: "symbol", header: "Ticker", width: "92px", class: "font-semibold text-foreground" },
+  {
+    key: "fundName",
     header: "Fund",
-    cell: (info) => <span class="truncate text-foreground">{info.getValue()}</span>,
-  }),
-  columnHelper.accessor("category", {
-    header: "Category",
-    cell: (info) => <span class="truncate">{info.getValue()}</span>,
-  }),
-  columnHelper.accessor("region", {
-    header: "Region",
-    cell: (info) => <span class="truncate">{info.getValue()}</span>,
-  }),
-  columnHelper.accessor("nav", {
+    width: "minmax(260px, 1.8fr)",
+    class: "truncate text-foreground",
+  },
+  { key: "category", header: "Category", width: "minmax(140px, 1fr)", class: "truncate" },
+  { key: "region", header: "Region", width: "120px", class: "truncate" },
+  {
+    key: "nav",
     header: "NAV",
-    cell: (info) => <span class="tabular-nums">{currency.format(info.getValue())}</span>,
-  }),
-  columnHelper.accessor("netAssets", {
+    width: "100px",
+    cell: (value) => <span class="tabular-nums">{currency.format(value)}</span>,
+  },
+  {
+    key: "netAssets",
     header: "Assets",
-    cell: (info) => <span class="tabular-nums">{compactCurrency.format(info.getValue())}</span>,
-  }),
-  columnHelper.accessor("expenseRatio", {
+    width: "120px",
+    cell: (value) => <span class="tabular-nums">{compactCurrency.format(value)}</span>,
+  },
+  {
+    key: "expenseRatio",
     header: "Expense",
-    cell: (info) => <span class="tabular-nums">{percent.format(info.getValue() / 100)}</span>,
-  }),
-  columnHelper.accessor("ytdReturn", {
+    width: "110px",
+    cell: (value) => <span class="tabular-nums">{percent.format(value / 100)}</span>,
+  },
+  {
+    key: "ytdReturn",
     header: "YTD",
-    cell: (info) => <ReturnCell value={info.getValue()} />,
-  }),
-  columnHelper.accessor("oneYearReturn", {
+    width: "110px",
+    cell: (value) => <ReturnCell value={value} />,
+  },
+  {
+    key: "oneYearReturn",
     header: "1Y",
-    cell: (info) => <ReturnCell value={info.getValue()} />,
-  }),
-  columnHelper.accessor("risk", {
-    header: "Risk",
-    cell: (info) => <RiskBadge risk={info.getValue()} />,
-  }),
-];
+    width: "110px",
+    cell: (value) => <ReturnCell value={value} />,
+  },
+  { key: "risk", header: "Risk", width: "96px", cell: (value) => <RiskBadge risk={value} /> },
+]);
 
 function Home() {
   const [filterInput, setFilterInput] = createSignal<HTMLInputElement | null>(null);
   const [scrollElement, setScrollElement] = createSignal<HTMLDivElement | null>(null);
-  const [filter, setFilter] = createSignal("");
-  const [sort, setSort] = createSignal(defaultFundStatSort);
-  const fundStatsQuery = useLiveQuery((query) => query.from({ fund: getFundStatsCollection() }));
-
-  const rows = createMemo(() => sortFundStats(filterFundStats(fundStatsQuery(), filter()), sort()));
+  const tableQuery = createCollectionTableQuery<FundStat>({
+    collection: getFundStatsCollection(),
+    defaultSort: { key: "ytdReturn", direction: "desc" },
+    search: (fund, pattern) =>
+      or(
+        ilike(fund.symbol, pattern),
+        ilike(fund.fundName, pattern),
+        ilike(fund.category, pattern),
+        ilike(fund.region, pattern),
+        ilike(fund.risk, pattern),
+      ),
+  });
 
   const table = createSolidTable({
     get data() {
-      return rows();
+      return tableQuery.rows();
     },
-    columns,
+    columns: fundStatTable.columns,
     getCoreRowModel: getCoreRowModel(),
   });
 
@@ -150,11 +129,13 @@ function Home() {
   );
 
   createHotkey("Escape", () => {
-    setFilter("");
+    tableQuery.setFilter("");
     filterInput()?.blur();
   });
 
-  const totalAssets = createMemo(() => rows().reduce((sum, fund) => sum + fund.netAssets, 0));
+  const totalAssets = createMemo(() =>
+    tableQuery.rows().reduce((sum, fund) => sum + fund.netAssets, 0),
+  );
   const weightedYtdReturn = createMemo(() => {
     const assets = totalAssets();
 
@@ -162,7 +143,9 @@ function Home() {
       return 0;
     }
 
-    return rows().reduce((sum, fund) => sum + fund.ytdReturn * fund.netAssets, 0) / assets;
+    return (
+      tableQuery.rows().reduce((sum, fund) => sum + fund.ytdReturn * fund.netAssets, 0) / assets
+    );
   });
 
   return (
@@ -182,7 +165,7 @@ function Home() {
             </Link>
           </div>
           <div class="grid gap-3 sm:grid-cols-3">
-            <Metric label="Funds" value={rows().length.toString()} />
+            <Metric label="Funds" value={tableQuery.rows().length.toString()} />
             <Metric label="Assets" value={compactCurrency.format(totalAssets())} />
             <Metric label="Weighted YTD" value={returnPercent.format(weightedYtdReturn() / 100)} />
           </div>
@@ -192,14 +175,14 @@ function Home() {
           <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <input
               ref={setFilterInput}
-              value={filter()}
-              onInput={(event) => setFilter(event.currentTarget.value)}
+              value={tableQuery.filter()}
+              onInput={(event) => tableQuery.setFilter(event.currentTarget.value)}
               class="h-10 w-full max-w-md rounded-md border border-input bg-background px-3 text-sm shadow-sm outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20"
               placeholder="Filter funds"
               type="search"
             />
             <p class="text-sm text-muted-foreground">
-              Sorted by {sort().key} {sort().direction}
+              Sorted by {tableQuery.sort().key} {tableQuery.sort().direction}
             </p>
           </div>
 
@@ -207,12 +190,15 @@ function Home() {
             <div class="border-b border-border bg-muted/45 text-xs font-semibold uppercase text-muted-foreground">
               <For each={table.getHeaderGroups()}>
                 {(headerGroup) => (
-                  <div class="grid min-w-[1280px]" style={{ "grid-template-columns": columnGrid }}>
+                  <div
+                    class="grid min-w-[1280px]"
+                    style={{ "grid-template-columns": fundStatTable.columnGrid }}
+                  >
                     <For each={headerGroup.headers}>
                       {(header) => {
-                        const sortKey = header.column.id as FundStatSortKey;
-                        const isSortable = sortableColumns.has(sortKey);
-                        const active = sort().key === sortKey;
+                        const sortKey = header.column.id;
+                        const isSortable = tableQuery.isSortable(sortKey);
+                        const active = tableQuery.sort().key === sortKey;
 
                         return (
                           <div class="flex h-11 items-center border-r border-border/70 px-3 last:border-r-0">
@@ -226,15 +212,17 @@ function Home() {
                               <button
                                 class="flex w-full items-center justify-between gap-2 text-left"
                                 type="button"
-                                onClick={() =>
-                                  setSort((current) => nextFundStatSort(current, sortKey))
-                                }
+                                onClick={() => tableQuery.nextSort(sortKey)}
                               >
                                 <span>
                                   {flexRender(header.column.columnDef.header, header.getContext())}
                                 </span>
                                 <span class="text-[10px] text-muted-foreground">
-                                  {active ? (sort().direction === "asc" ? "ASC" : "DESC") : ""}
+                                  {active
+                                    ? tableQuery.sort().direction === "asc"
+                                      ? "ASC"
+                                      : "DESC"
+                                    : ""}
                                 </span>
                               </button>
                             </Show>
@@ -266,7 +254,7 @@ function Home() {
                           data-index={virtualRow.index}
                           class="absolute left-0 grid w-full border-b border-border/70 text-sm text-muted-foreground"
                           style={{
-                            "grid-template-columns": columnGrid,
+                            "grid-template-columns": fundStatTable.columnGrid,
                             transform: `translateY(${virtualRow.start}px)`,
                           }}
                         >

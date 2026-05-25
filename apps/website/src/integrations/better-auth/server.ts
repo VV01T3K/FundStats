@@ -1,3 +1,5 @@
+import "@tanstack/solid-start/server-only";
+
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { betterAuth } from "better-auth";
 import { anonymous } from "better-auth/plugins";
