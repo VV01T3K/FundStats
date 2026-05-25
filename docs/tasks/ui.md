@@ -1,0 +1,1 @@
+we need to align the ui with the desired design better and also move some thing sout of the integrations folders and etc and put them in top-level components and co-located in routes in -componets and etc

@@ -1,4 +1,4 @@
-import { fundStatSchema, type FundStat } from "./schema";
+import { fundStatSchema, type FundStat } from "./fund-stats.schema";
 
 const rawFallbackFundStats = [
   {

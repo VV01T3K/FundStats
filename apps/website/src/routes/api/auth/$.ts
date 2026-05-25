@@ -1,8 +1,8 @@
 import { createFileRoute } from "@tanstack/solid-router";
 import { createServerOnlyFn } from "@tanstack/solid-start";
-import { defineServerRoute } from "../../../lib/server-route.ts";
+import { defineServerRoute } from "../../../integrations/tanstack/router/server-route.ts";
 
-const getAuth = createServerOnlyFn(() => import("../../../lib/auth.server.ts"));
+const getAuth = createServerOnlyFn(() => import("../../../integrations/better-auth/server.ts"));
 
 export const Route = createFileRoute("/api/auth/$")(
   defineServerRoute({

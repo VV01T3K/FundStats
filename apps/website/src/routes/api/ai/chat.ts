@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/solid-router";
-import { defineServerRoute } from "../../../lib/server-route.ts";
+import { defineServerRoute } from "../../../integrations/tanstack/router/server-route.ts";
 import type { GroqChatModels } from "@tanstack/ai-groq";
 
 const defaultGroqModel = "llama-3.3-70b-versatile" satisfies GroqChatModels;

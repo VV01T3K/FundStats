@@ -8,7 +8,8 @@ import {
 import type { Table } from "@tanstack/solid-table";
 import { For, createSignal } from "solid-js";
 
-import { fallbackFundStats, type FundStat } from "../features/fund-stats";
+import { fallbackFundStats } from "../db/fund-stats.data";
+import { type FundStat } from "../db/fund-stats.schema";
 
 export const Route = createFileRoute("/skeleton")({
   ssr: false,

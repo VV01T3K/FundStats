@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 
-import type { FundStat } from "../features/fund-stats/schema";
+import type { FundStat } from "./fund-stats.schema";
 import { db } from "./client.server";
 import { fundStats, type NewFundStatRow } from "./schema";
 

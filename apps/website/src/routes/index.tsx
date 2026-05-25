@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/solid-router";
+import { Link, createFileRoute } from "@tanstack/solid-router";
 import {
   createColumnHelper,
   createSolidTable,
@@ -10,18 +10,22 @@ import { createHotkey } from "@tanstack/solid-hotkeys";
 import { useLiveQuery } from "@tanstack/solid-db";
 import { For, Show, createMemo, createSignal } from "solid-js";
 
+import { getFundStatsCollection } from "../integrations/tanstack/db/fund-stats";
+import { type FundStat } from "../db/fund-stats.schema";
 import {
   defaultFundStatSort,
   filterFundStats,
-  fundStatsCollection,
   nextFundStatSort,
   sortFundStats,
-  type FundStat,
   type FundStatSortKey,
-} from "../features/fund-stats";
+} from "../tables/fund-stats";
 
 export const Route = createFileRoute("/")({
   ssr: false,
+  loader: async () => {
+    await getFundStatsCollection().preload();
+    return null;
+  },
   component: Home,
 });
 
@@ -115,7 +119,7 @@ function Home() {
   const [scrollElement, setScrollElement] = createSignal<HTMLDivElement | null>(null);
   const [filter, setFilter] = createSignal("");
   const [sort, setSort] = createSignal(defaultFundStatSort);
-  const fundStatsQuery = useLiveQuery((query) => query.from({ fund: fundStatsCollection }));
+  const fundStatsQuery = useLiveQuery((query) => query.from({ fund: getFundStatsCollection() }));
 
   const rows = createMemo(() => sortFundStats(filterFundStats(fundStatsQuery(), filter()), sort()));
 
@@ -165,9 +169,17 @@ function Home() {
     <main class="min-h-screen bg-background px-5 py-6 text-foreground sm:px-8">
       <div class="mx-auto flex max-w-7xl flex-col gap-5">
         <header class="flex flex-col gap-4 border-b border-border pb-5 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p class="text-sm font-medium text-muted-foreground">FundStats</p>
-            <h1 class="mt-1 text-3xl font-semibold tracking-normal">Fund universe</h1>
+          <div class="flex items-start gap-4">
+            <div>
+              <p class="text-sm font-medium text-muted-foreground">FundStats</p>
+              <h1 class="mt-1 text-3xl font-semibold tracking-normal">Fund universe</h1>
+            </div>
+            <Link
+              to="/funds/new"
+              class="ml-auto inline-flex h-9 items-center justify-center rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground transition hover:bg-muted lg:ml-0"
+            >
+              + Add fund
+            </Link>
           </div>
           <div class="grid gap-3 sm:grid-cols-3">
             <Metric label="Funds" value={rows().length.toString()} />

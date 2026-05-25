@@ -1,4 +1,4 @@
-import type { FundStat } from "./schema";
+import type { FundStat } from "../db/fund-stats.schema";
 
 export type FundStatSortKey =
   | "symbol"
