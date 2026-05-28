@@ -32,5 +32,8 @@
   "devDependencies": {
     "@iconify-json/line-md": "^1.2.11",
     "@iconify-json/svg-spinners": "^1.2.4"
-  }
+  },
+  "trustedDependencies": [
+    "@vercel/speed-insights"
+  ]
 }
