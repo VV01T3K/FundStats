@@ -1,0 +1,141 @@
+---
+export const partial = true;
+export const prerender = false;
+
+Astro.response.headers.set("Cache-Control", "private, max-age=1800");
+
+import {
+    Table,
+    TableBody,
+    TableCaption,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "../../components/ui/table";
+import { Button } from "../../components/ui/button";
+
+import { Icon } from "astro-icon/components";
+
+import { getColorClass, getHighlightClass } from "../../lib/myutils";
+
+// CoinGecko's markets endpoint has no 90d (1q) change, so 200d is the closest long-term alternative.
+const periods = ["1y", "200d", "30d", "7d", "24h"] as const;
+type Period = (typeof periods)[number];
+
+const sort: Period = periods.includes(Astro.params.sort as Period) ? (Astro.params.sort as Period) : "1y";
+const nextSort = periods[(periods.indexOf(sort) + 1) % periods.length];
+const safeThreshold = Astro.params.threshold ? parseFloat(Astro.params.threshold) : 0;
+const thresholds = [10, 20, 30, 40, 50];
+
+interface Coin {
+    id: string;
+    name: string;
+    market_cap_rank: number | null;
+    [key: `price_change_percentage_${string}_in_currency`]: number | null | undefined;
+}
+
+// Public keyless API; an optional demo key raises the rate limit.
+const headers: Record<string, string> = { Accept: "application/json" };
+const apiKey = import.meta.env.COINGECKO_API_KEY;
+if (apiKey) headers["x-cg-demo-api-key"] = apiKey;
+
+const queryOptions = new URLSearchParams({
+    vs_currency: "pln",
+    order: "market_cap_desc",
+    per_page: "100",
+    page: "1",
+    price_change_percentage: periods.join(","),
+});
+const url = `https://api.coingecko.com/api/v3/coins/markets?${queryOptions}`;
+
+let coins: Coin[] = [];
+let error = "";
+try {
+    const response = await fetch(url, { headers });
+    if (response.ok) {
+        coins = await response.json();
+    } else {
+        error = response.status === 429 ? "CoinGecko rate limit hit, try again in a minute." : `CoinGecko error ${response.status}`;
+    }
+} catch (e) {
+    error = `CoinGecko request failed: ${e}`;
+}
+
+const change = (coin: Coin) => coin[`price_change_percentage_${sort}_in_currency`];
+// Coins without history for the period (e.g. listed less than a year ago) go to the bottom.
+coins.sort((a, b) => (change(b) ?? -Infinity) - (change(a) ?? -Infinity));
+
+const date = new Date();
+const day = date.getDate();
+const month = date.getMonth() + 1; //January is 0!
+const year = date.getFullYear();
+const hours = date.getHours();
+const minutes = date.getMinutes();
+
+const currentTime = `${String(day).padStart(2, "0")}.${String(month).padStart(2, "0")}.${year} ${hours}:${String(minutes).padStart(2, "0")}`;
+---
+
+<div>
+    <menu class="flex justify-evenly">
+        {
+            thresholds.map((t) => (
+                <Button
+                    variant={safeThreshold === t ? "default" : "secondary"}
+                    class="text-lg transition-transform hover:scale-105 active:scale-95"
+                    hx-trigger=" click throttle:1s"
+                    hx-get={`/partials/CoinGeckoTable-${sort}-${t}`}
+                    hx-swap="innerHTML transition:true"
+                    hx-indicator="#spinner"
+                    hx-target="#response-div"
+                    aria-label={`change threshold to ${t}%`}
+                >
+                    {t} %
+                </Button>
+            ))
+        }
+    </menu>
+    <div class="text-base mt-5 opacity-60">
+        Time: {currentTime} · Source: CoinGecko (top 100 by market cap)
+    </div>
+    {error && <div class="text-base mt-5 text-red-myred">{error}</div>}
+    <Table>
+        <TableCaption>
+            <a class="flex text-base justify-center items-center" href="#top"
+                ><Icon size={16} name="line-md:upload-loop" />Go to the top of the page<Icon
+                    size={16}
+                    name="line-md:upload-loop"
+                /></a
+            >
+        </TableCaption>
+        <TableHeader>
+            <TableRow>
+                <TableHead class="w-[230px]">ID</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead
+                    class="text-right pr-20 hover:text-blue-500 cursor-pointer"
+                    hx-trigger=" click throttle:1s"
+                    hx-get=`/partials/CoinGeckoTable-${nextSort}-${safeThreshold}`
+                    hx-swap="innerHTML transition:true"
+                    hx-indicator="#spinner"
+                    hx-target="#response-div"
+                >
+                    {`Change (${sort})`}<Icon style={"display: inline"} size={16} name="line-md:arrow-down" />
+                </TableHead>
+            </TableRow>
+        </TableHeader>
+        <TableBody>
+            {
+                coins.map((coin, index) => (
+                    <TableRow class={getHighlightClass(change(coin) ?? 0, safeThreshold)}>
+                        <TableCell>{index + 1}</TableCell>
+                        <TableCell>{coin.name}</TableCell>
+                        <TableCell class={`text-right pr-20 ${getColorClass(change(coin) ?? 0)}`}>
+                            {change(coin) == null ? "–" : `${change(coin)!.toFixed(2)} %`}
+                        </TableCell>
+                    </TableRow>
+                ))
+            }
+        </TableBody>
+    </Table>
+</div>
