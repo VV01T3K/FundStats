@@ -11,7 +11,7 @@ export async function cacheImage(url: string, name: string): Promise<string> {
 
         const response = await fetch(url);
         const arrayBuffer = await response.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
+        const buffer = new Uint8Array(arrayBuffer);
         await fs.writeFile(imagePath, buffer);
     }
 
