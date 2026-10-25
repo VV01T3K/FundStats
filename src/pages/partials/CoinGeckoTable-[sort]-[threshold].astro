@@ -3,6 +3,9 @@ export const partial = true;
 export const prerender = false;
 
 Astro.response.headers.set("Cache-Control", "private, max-age=1800");
+// Let Vercel's CDN share rendered tables between visitors so most clicks never reach CoinGecko.
+// Only cache good responses, so an error page doesn't stick.
+const cdnCache = "max-age=600, stale-while-revalidate=1800";
 
 import {
     Table,
@@ -19,54 +22,26 @@ import { Icon } from "astro-icon/components";
 
 import { getColorClass, getHighlightClass } from "../../lib/myutils";
 
-// CoinGecko's markets endpoint has no 90d (1q) change, so 200d is the closest long-term alternative.
-const periods = ["1y", "200d", "30d", "7d", "24h"] as const;
-type Period = (typeof periods)[number];
+import { coinGeckoPeriods as periods, getCoinGeckoMarkets } from "../../lib/coingecko";
+import type { CoinGeckoCoin as Coin, CoinGeckoPeriod as Period } from "../../lib/coingecko";
 
+// CoinGecko's markets endpoint has no 90d (1q) change, so 200d is the closest long-term alternative.
 const sort: Period = periods.includes(Astro.params.sort as Period) ? (Astro.params.sort as Period) : "1y";
 const nextSort = periods[(periods.indexOf(sort) + 1) % periods.length];
 const safeThreshold = Astro.params.threshold ? parseFloat(Astro.params.threshold) : 0;
 const thresholds = [10, 20, 30, 40, 50];
 
-interface Coin {
-    id: string;
-    name: string;
-    market_cap_rank: number | null;
-    [key: `price_change_percentage_${string}_in_currency`]: number | null | undefined;
-}
-
-// Public keyless API; an optional demo key raises the rate limit.
-const headers: Record<string, string> = { Accept: "application/json" };
-const apiKey = import.meta.env.COINGECKO_API_KEY;
-if (apiKey) headers["x-cg-demo-api-key"] = apiKey;
-
-const queryOptions = new URLSearchParams({
-    vs_currency: "pln",
-    order: "market_cap_desc",
-    per_page: "100",
-    page: "1",
-    price_change_percentage: periods.join(","),
-});
-const url = `https://api.coingecko.com/api/v3/coins/markets?${queryOptions}`;
-
-let coins: Coin[] = [];
-let error = "";
-try {
-    const response = await fetch(url, { headers });
-    if (response.ok) {
-        coins = await response.json();
-    } else {
-        error = response.status === 429 ? "CoinGecko rate limit hit, try again in a minute." : `CoinGecko error ${response.status}`;
-    }
-} catch (e) {
-    error = `CoinGecko request failed: ${e}`;
-}
+const markets = await getCoinGeckoMarkets();
+const error = markets.error;
+if (!error) Astro.response.headers.set("Vercel-CDN-Cache-Control", cdnCache);
 
 const change = (coin: Coin) => coin[`price_change_percentage_${sort}_in_currency`];
 // Coins without history for the period (e.g. listed less than a year ago) go to the bottom.
-coins.sort((a, b) => (change(b) ?? -Infinity) - (change(a) ?? -Infinity));
+// Sort a copy, the cached list is shared between requests.
+const coins = [...markets.coins].sort((a, b) => (change(b) ?? -Infinity) - (change(a) ?? -Infinity));
 
-const date = new Date();
+// Shows when the data was fetched from CoinGecko, not when the page was rendered.
+const date = markets.fetchedAt;
 const day = date.getDate();
 const month = date.getMonth() + 1; //January is 0!
 const year = date.getFullYear();
