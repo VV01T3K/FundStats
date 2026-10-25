@@ -2,7 +2,8 @@
 export const partial = true;
 export const prerender = false;
 
-Astro.response.headers.set("Cache-Control", "private, max-age=1800");
+// Errors must not be cached, so they don't stick in the browser.
+Astro.response.headers.set("Cache-Control", "no-store");
 
 import {
     Table,
@@ -48,6 +49,7 @@ try {
     if (response.ok) {
         const data: Coin[] = await response.json();
         coins = data.filter((coin) => coin.rank > 0 && coin.rank <= 100);
+        Astro.response.headers.set("Cache-Control", "private, max-age=1800");
     } else {
         error =
             response.status === 429
