@@ -21,7 +21,7 @@ import { Icon } from "astro-icon/components";
 import { getColorClass } from "../../lib/myutils";
 
 const { sort, type } = Astro.params as {
-  sort: "1m" | "3m" | "6m" | "1y";
+  sort: "1m" | "3m" | "6m" | "1y" | "mom";
   type: "0" | "1" | "2" | "3";
 };
 
@@ -51,6 +51,14 @@ const dane =
     ? data.filter((item: TFI) => item.category.value == fund_type[type])
     : data;
 
+// Weighted momentum: recent periods count more.
+const momentum = (tfi: TFI) =>
+  (4 * Number(tfi?.yield1m ?? 0) +
+    3 * Number(tfi?.yield3m ?? 0) +
+    2 * Number(tfi?.yield6m ?? 0) +
+    1 * Number(tfi?.yield12m ?? 0)) /
+  10;
+
 dane.sort((b: TFI, a: TFI) => {
   switch (sort) {
     case "1m":
@@ -61,6 +69,8 @@ dane.sort((b: TFI, a: TFI) => {
       return Number(a?.yield6m ?? 0) - Number(b?.yield6m ?? 0);
     case "1y":
       return Number(a?.yield12m ?? 0) - Number(b?.yield12m ?? 0);
+    case "mom":
+      return momentum(a) - momentum(b);
   }
 });
 
@@ -214,6 +224,25 @@ interface TFI {
             )
           }
         </TableHead>
+        <TableHead
+          class=`w-[90px] text-right hover:text-blue-500 cursor-pointer ${sort === "mom" ? "text-violet-600" : ""}`
+          title="(4×1m + 3×3m + 2×6m + 1×1y) / 10"
+          hx-trigger=" click throttle:1s"
+          hx-get=`/partials/mBankTable-mom-${type}`
+          hx-swap="innerHTML transition:true"
+          hx-indicator="#spinner"
+          hx-target="#response-div"
+        >
+          Mom. {
+            sort === "mom" && (
+              <Icon
+                style={"display: inline"}
+                size={16}
+                name="line-md:arrow-down"
+              />
+            )
+          }
+        </TableHead>
       </TableRow>
     </TableHeader>
     <TableBody>
@@ -245,6 +274,11 @@ interface TFI {
                 class={`w-[90px] text-right ${getColorClass(Number(tfi?.yield12m ?? 0))}`}
               >
                 {Number(tfi?.yield12m ?? 0).toFixed(2)} %
+              </TableCell>
+              <TableCell
+                class={`w-[90px] text-right ${getColorClass(momentum(tfi))}`}
+              >
+                {momentum(tfi).toFixed(2)}
               </TableCell>
             </TableRow>
           );
