@@ -3,6 +3,7 @@
  * replaced by an HttpClient that answers with the saved fixtures; nothing here touches the network.
  */
 import { assert, layer } from "@effect/vitest"
+import { SourceLocks } from "@fundstats/db/SourceLocks"
 import { Store } from "@fundstats/db/Store"
 import {
 	at,
@@ -20,9 +21,11 @@ import {
 	waitForBlockedInsert,
 	withInsertsBlocked,
 	holdLockElsewhere,
+	idleSessionTimeoutOf,
 } from "@fundstats/db/test/support"
 import * as ConfigProvider from "effect/ConfigProvider"
 import * as Deferred from "effect/Deferred"
+import * as Duration from "effect/Duration"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
 import * as Fiber from "effect/Fiber"
@@ -57,11 +60,15 @@ const FixtureHttpClient = Layer.succeed(
 		const respond = (body: unknown) =>
 			HttpClientResponse.fromWeb(
 				request,
-				body === undefined
-					? new Response("not found", { status: 404 })
-					: body === STALL
-						? new Response(new ReadableStream({ start: (c) => c.enqueue(new TextEncoder().encode("[")) }), { headers })
-						: new Response(JSON.stringify(body), { headers }),
+				body instanceof Response
+					? body
+					: body === undefined
+						? new Response("not found", { status: 404 })
+						: body === STALL
+							? new Response(new ReadableStream({ start: (c) => c.enqueue(new TextEncoder().encode("[")) }), {
+									headers,
+								})
+							: new Response(JSON.stringify(body), { headers }),
 			)
 		const body = isUpstreamHost(url.hostname) ? upstream[url.hostname]() : undefined
 		// A promise is an upstream that answers once the test resolves it.
@@ -87,6 +94,28 @@ const TestServices = collectorOn(testDatabaseUrl)
 
 /** The collector's services on `url` with a 1 second statement timeout, fresh so the shared ones are not reused. */
 const servicesWithShortTimeout = (url: string) => Layer.fresh(collectorOn(url, { DB_STATEMENT_TIMEOUT: "1 second" }))
+
+/** Each run's lock session idle_session_timeout in ms, read through the session itself. */
+const lockIdleTimeouts: Array<number> = []
+
+const RecordingSourceLocks = Layer.effect(
+	SourceLocks,
+	Effect.gen(function* () {
+		const locks = yield* SourceLocks
+		return SourceLocks.of({
+			withSourceLock: (source, f, options) =>
+				locks.withSourceLock(
+					source,
+					(lock) =>
+						idleSessionTimeoutOf(lock).pipe(
+							Effect.tap((ms) => Effect.sync(() => lockIdleTimeouts.push(ms))),
+							Effect.andThen(f(lock)),
+						),
+					options,
+				),
+		})
+	}),
+)
 
 layer(TestServices)("collector and storage", (it) => {
 	it.effect("stores instruments, snapshots, the raw payload and a run record", () =>
@@ -232,6 +261,56 @@ layer(TestServices)("concurrent and stalled collections", (it) => {
 				upstream["api.coingecko.com"] = original
 				yield* Fiber.interrupt(fiber)
 			}
+		}),
+	)
+
+	it.effect("a fetch still waiting at FETCH_TIMEOUT (Retry-After included) fails the run as a timeout", () =>
+		Effect.gen(function* () {
+			yield* reset
+			const collector = yield* Collector
+			const original = upstream["api.coingecko.com"]
+			const requested = yield* Deferred.make<void>()
+			upstream["api.coingecko.com"] = () => {
+				Deferred.doneUnsafe(requested, Exit.void)
+				return new Response("slow down", { status: 429, headers: { "retry-after": "3600" } })
+			}
+			const fiber = yield* collector.runOnce("coingecko", "test").pipe(Effect.flip, Effect.forkChild)
+			try {
+				yield* Deferred.await(requested)
+				yield* TestClock.adjust("5 minutes")
+				const error = yield* Fiber.join(fiber)
+				assert.strictEqual(error._tag, "SourceError")
+				assert.strictEqual((error as { reason?: string }).reason, "timeout")
+				assert.match(error.message, /FETCH_TIMEOUT \(5m\)/)
+				const store = yield* Store
+				assert.strictEqual((yield* store.runSummary("coingecko")).lastRun?.status, "failed")
+			} finally {
+				upstream["api.coingecko.com"] = original
+				yield* Fiber.interrupt(fiber)
+			}
+		}),
+	)
+
+	it.effect("Postgres keeps a run's idle lock session for longer than its whole fetch phase", () =>
+		Effect.gen(function* () {
+			yield* reset
+			lockIdleTimeouts.length = 0
+			yield* Effect.gen(function* () {
+				yield* (yield* Collector).runOnce("coingecko", "test")
+			}).pipe(
+				Effect.provide(
+					Layer.fresh(
+						Collector.layerNoDeps.pipe(
+							Layer.provide(RecordingSourceLocks),
+							Layer.provide(FixtureHttpClient),
+							Layer.provideMerge(storageOn(dbConfigOn(testDatabaseUrl))),
+							Layer.provideMerge(collectorConfig({ FETCH_TIMEOUT: "10 minutes" })),
+						),
+					),
+				),
+			)
+			assert.lengthOf(lockIdleTimeouts, 1)
+			assert.isAbove(at(lockIdleTimeouts, 0), Duration.toMillis(Duration.minutes(10)))
 		}),
 	)
 })

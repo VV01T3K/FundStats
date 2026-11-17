@@ -22,13 +22,19 @@ import * as Redacted from "effect/Redacted"
 import * as Schema from "effect/Schema"
 import { inject } from "vitest"
 
-import { Database } from "../src/Database.ts"
+import { Database, type Db } from "../src/Database.ts"
 import { DbConfig } from "../src/DbConfig.ts"
 import { migrationsFolder, runMigrations } from "../src/Migrations.ts"
 import { type NormalizedRow, RunStore } from "../src/RunStore.ts"
 import { SourceLocks } from "../src/SourceLocks.ts"
 import { Store } from "../src/Store.ts"
 import { DATABASE_URL } from "./context.ts"
+
+/** The idle_session_timeout of `db`'s session, in milliseconds (0: none). */
+export const idleSessionTimeoutOf = (db: Db) =>
+	db
+		.execute<{ setting: string }>(sql`select setting from pg_settings where name = 'idle_session_timeout'`)
+		.pipe(Effect.map(({ rows }) => Number(at(rows, 0).setting)))
 
 /** The URL of the test database the global setup started. */
 export const testDatabaseUrl = inject(DATABASE_URL)

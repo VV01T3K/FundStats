@@ -1,6 +1,7 @@
 import * as PgClient from "@effect/sql-pg/PgClient"
 import { sql } from "drizzle-orm"
 import * as Context from "effect/Context"
+import type * as Duration from "effect/Duration"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import * as Reactivity from "effect/reactivity/Reactivity"
@@ -23,14 +24,15 @@ export class SourceLocks extends Context.Service<
 	SourceLocks,
 	{
 		/**
-		 * Runs `f` holding `source`'s session advisory lock (SourceBusy if taken). The lock lives on a
-		 * session of its own, not a pool slot, and `f` gets a Drizzle database on that one session: its
-		 * writes go through the lock's session, so once that session is gone (and the lock with it) every
-		 * further write fails. Ending the session at the end releases the lock.
+		 * Runs `f` holding `source`'s advisory lock (SourceBusy if taken) on a session of its own, which
+		 * `f` writes through: once the session is gone, so is the lock, and every further write fails.
+		 * Postgres ends the session after `idleSessionTimeout` idle (idle_session_timeout), so it must
+		 * exceed the longest gap between `f`'s statements. Ending the session releases the lock.
 		 */
 		readonly withSourceLock: <A, E, R>(
 			source: string,
 			f: (lock: Db) => Effect.Effect<A, E, R>,
+			options?: { readonly idleSessionTimeout?: Duration.Duration },
 		) => Effect.Effect<A, E | SourceBusy | DatabaseError, R>
 	}
 >()("@fundstats/db/SourceLocks") {
@@ -41,8 +43,12 @@ export class SourceLocks extends Context.Service<
 			const reactivity = yield* Reactivity.Reactivity
 
 			const withSourceLock = Effect.fn("SourceLocks.withSourceLock")(
-				function* <A, E, R>(source: string, f: (lock: Db) => Effect.Effect<A, E, R>) {
-					const session = yield* PgClient.makeClient(clientOptions(config)).pipe(
+				function* <A, E, R>(
+					source: string,
+					f: (lock: Db) => Effect.Effect<A, E, R>,
+					options: { readonly idleSessionTimeout?: Duration.Duration } = {},
+				) {
+					const session = yield* PgClient.makeClient(clientOptions(config, options)).pipe(
 						Effect.provideService(Reactivity.Reactivity, reactivity),
 					)
 					const lock = yield* drizzleOn(session)

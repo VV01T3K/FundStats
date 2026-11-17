@@ -6,6 +6,7 @@ import { assert, layer } from "@effect/vitest"
 import { sql } from "drizzle-orm"
 import * as Clock from "effect/Clock"
 import * as Deferred from "effect/Deferred"
+import * as Duration from "effect/Duration"
 import * as Effect from "effect/Effect"
 import * as Fiber from "effect/Fiber"
 import * as Layer from "effect/Layer"
@@ -304,6 +305,49 @@ layer(TestStorage, { excludeTestServices: true })("bounded waits and lost replie
 				)
 			}),
 		),
+	)
+
+	it.effect("a COMMIT whose reply never arrives ends once Postgres closes the idle session", () =>
+		Effect.scoped(
+			Effect.gen(function* () {
+				yield* reset
+				const proxy = yield* replyLosingProxy
+				yield* Effect.gen(function* () {
+					const locks = yield* SourceLocks
+					proxy.loseRepliesAfter("COMMIT", "withhold")
+					const fiber = yield* locks
+						.withSourceLock(
+							"mbank",
+							(lock) =>
+								lock.transaction((tx) =>
+									tx.insert(collectionRuns).values({ source: "mbank", trigger: "test", status: "running" }),
+								),
+							{ idleSessionTimeout: Duration.seconds(1) },
+						)
+						.pipe(Effect.forkChild)
+					yield* Effect.promise(() => proxy.reached)
+					// COMMIT is uninterruptible: only the session closing (idle_session_timeout) ends the wait.
+					yield* Fiber.interrupt(fiber).pipe(Effect.timeout("10 seconds"))
+				}).pipe(Effect.ensuring(Effect.promise(proxy.close)), Effect.provide(storageWithShortTimeout(proxy.url)))
+				assert.strictEqual(yield* count("collection_runs"), 1, "Postgres committed before the reply was lost")
+			}),
+		),
+	)
+
+	it.effect("the pool replaces a connection Postgres closed while it sat idle", () =>
+		Effect.gen(function* () {
+			const [before, after] = yield* Effect.gen(function* () {
+				const database = yield* Database
+				const pid = database
+					.execute<{ pid: number }>(sql`select pg_backend_pid() as pid`)
+					.pipe(Effect.map(({ rows }) => at(rows, 0).pid))
+				const first = yield* pid
+				// Returns once the session is gone, as after idle_session_timeout.
+				yield* queryElsewhere("select pg_terminate_backend($1, 5000)", [first])
+				return [first, yield* pid] as const
+			}).pipe(Effect.provide(storageWithShortTimeout(testDatabaseUrl)))
+			assert.notStrictEqual(after, before)
+		}),
 	)
 
 	it.effect("pooled and lock sessions probe their peer, so a vanished server fails a pending COMMIT", () =>

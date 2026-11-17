@@ -129,6 +129,7 @@ See `.env.example`.
 | `COLLECTOR_ENABLED`                 | collector | `true`                | `false` = never call upstreams                                                                      |
 | `COLLECTOR_INTERVAL_<SOURCE>`       | collector | see below             | e.g. `COLLECTOR_INTERVAL_MBANK=6 hours`; at least 1 minute                                          |
 | `RAW_PAYLOAD_RETENTION_DAYS`        | collector | `30`                  | positive integer; stored upstream responses older than this are deleted daily                       |
+| `FETCH_TIMEOUT`                     | collector | `5 minutes`           | a run's whole fetch, retries and Retry-After waits included; 30 seconds to 1 hour                   |
 | `COINGECKO_API_KEY`                 | collector | unset                 | CoinGecko demo key; raises the rate limit                                                           |
 | `CMC_API_KEY`                       | collector | unset                 | official CoinMarketCap API; without it the unofficial web endpoint is used                          |
 | `RUN_MIGRATIONS`                    | collector | `true`                | apply migrations when `start` and `collect` begin                                                   |

@@ -23,6 +23,9 @@ export class UnknownSource extends Schema.TaggedError<UnknownSource>()("UnknownS
 
 export type RunTrigger = "schedule" | "cli" | "test"
 
+/** Slack between the end of the fetch phase and the next statement on the lock session. */
+const LOCK_IDLE_SLACK = Duration.minutes(1)
+
 /**
  * Runs sources: fetch → keep raw payload → decode → normalize → persist, recording every run.
  * A run holds its source's database lock for its whole lifetime, so two processes never collect
@@ -48,6 +51,9 @@ export class Collector extends Context.Service<
 			// One run per source at a time inside this process.
 			const locks = new Map(SOURCE_IDS.map((id) => [id, Semaphore.makeUnsafe(1)]))
 
+			// The lock session sits idle while the run fetches; Postgres must not end it (idle_session_timeout).
+			const lockOptions = { idleSessionTimeout: Duration.sum(config.fetchTimeout, LOCK_IDLE_SLACK) }
+
 			const interval = (id: SourceId) =>
 				Option.getOrElse(config.intervalOverride(id), () => Duration.fromInputUnsafe(SOURCES[id].defaultInterval))
 
@@ -63,48 +69,63 @@ export class Collector extends Context.Service<
 					// the lock, so it is also recorded when the lock connection is lost.
 					let openRun: number | undefined
 					const run = sourceLocks
-						.withSourceLock(id, (lock) =>
-							Effect.gen(function* () {
-								const writer = store.writer(lock)
-								// The id is bound before the row is inserted, so a failure can close
-								// the row however the insert ends (even with its reply lost).
-								const runId = yield* writer.reserveRunId
-								openRun = runId
-								yield* writer.startRun(runId, id, trigger)
-								const capturedAt = yield* DateTime.nowAsDate
-								const raw = yield* source.fetch
-								// Stored before decoding, so a changed upstream shape can be inspected and replayed.
-								yield* writer.saveRawPayload(runId, id, raw)
-								const payload = yield* source.decode(raw)
-								const rows = yield* Effect.try({
-									try: () => source.normalize(payload),
-									catch: (cause) =>
-										new SourceError({
-											source: id,
-											reason: "decode",
-											message: `normalize failed: ${String(cause)}`,
-											cause,
+						.withSourceLock(
+							id,
+							(lock) =>
+								Effect.gen(function* () {
+									const writer = store.writer(lock)
+									// The id is bound before the row is inserted, so a failure can close
+									// the row however the insert ends (even with its reply lost).
+									const runId = yield* writer.reserveRunId
+									openRun = runId
+									yield* writer.startRun(runId, id, trigger)
+									const capturedAt = yield* DateTime.nowAsDate
+									const raw = yield* source.fetch.pipe(
+										Effect.timeoutOrElse({
+											duration: config.fetchTimeout,
+											orElse: () =>
+												Effect.fail(
+													new SourceError({
+														source: id,
+														reason: "timeout",
+														message: `Fetch did not finish within FETCH_TIMEOUT (${Duration.format(config.fetchTimeout)})`,
+													}),
+												),
 										}),
-								})
-								if (rows.length === 0) {
-									return yield* new SourceError({
-										source: id,
-										reason: "upstream",
-										message: "Upstream returned no instruments",
+									)
+									// Stored before decoding, so a changed upstream shape can be inspected and replayed.
+									yield* writer.saveRawPayload(runId, id, raw)
+									const payload = yield* source.decode(raw)
+									const rows = yield* Effect.try({
+										try: () => source.normalize(payload),
+										catch: (cause) =>
+											new SourceError({
+												source: id,
+												reason: "decode",
+												message: `normalize failed: ${String(cause)}`,
+												cause,
+											}),
 									})
-								}
-								const result = yield* writer.persist({
-									source: id,
-									kind: source.info.kind,
-									runId,
-									capturedAt,
-									rows,
-								})
-								yield* Effect.logInfo(
-									`Collected ${id}: ${result.instrumentCount} instruments, ${result.rowsWritten} rows written`,
-								)
-								return result
-							}),
+									if (rows.length === 0) {
+										return yield* new SourceError({
+											source: id,
+											reason: "upstream",
+											message: "Upstream returned no instruments",
+										})
+									}
+									const result = yield* writer.persist({
+										source: id,
+										kind: source.info.kind,
+										runId,
+										capturedAt,
+										rows,
+									})
+									yield* Effect.logInfo(
+										`Collected ${id}: ${result.instrumentCount} instruments, ${result.rowsWritten} rows written`,
+									)
+									return result
+								}),
+							lockOptions,
 						)
 						.pipe(
 							// failRun only touches a run that is still `running`, so a run whose

@@ -41,6 +41,9 @@ describe("config validation", () => {
 	it.effect.each([
 		["RAW_PAYLOAD_RETENTION_DAYS", "0"],
 		["RAW_PAYLOAD_RETENTION_DAYS", "-1"],
+		["FETCH_TIMEOUT", "10 seconds"],
+		["FETCH_TIMEOUT", "2 hours"],
+		["FETCH_TIMEOUT", "Infinity"],
 	] as const)("rejects %s=%s", ([name, value]) =>
 		Effect.gen(function* () {
 			const error = yield* load({ [name]: value }).pipe(Effect.flip)
