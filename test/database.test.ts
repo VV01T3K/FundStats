@@ -197,6 +197,29 @@ const waitForBlockedInsert = (table: string) =>
 			.toBeGreaterThan(0),
 	)
 
+/** Runs `effect` with every snapshot insert held 0.5 s in Postgres, logging when each one finished. */
+const withSlowSnapshotWrites = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+	Effect.acquireUseRelease(
+		queryElsewhere(`
+			create table slow_snapshot_writes (finished_at timestamptz not null);
+			create function slow_snapshot_write() returns trigger language plpgsql as $$
+			begin
+				perform pg_sleep(0.5);
+				insert into slow_snapshot_writes values (clock_timestamp());
+				return null;
+			end $$;
+			create trigger slow_snapshot_write after insert on snapshots
+				for each statement execute function slow_snapshot_write();
+		`),
+		() => effect,
+		() =>
+			queryElsewhere(`
+				drop trigger slow_snapshot_write on snapshots;
+				drop function slow_snapshot_write();
+				drop table slow_snapshot_writes;
+			`),
+	)
+
 /** An upstream response the test releases by hand. */
 const gate = () => {
 	let open!: () => void
@@ -425,6 +448,30 @@ layer(TestServices)("concurrent and stalled collections", (it) => {
 			assert.strictEqual(closed, 1)
 			assert.strictEqual((yield* runStatus(abandoned)).status, "failed")
 			assert.strictEqual((yield* runStatus(live)).status, "running")
+		}),
+	)
+
+	it.effect("a run's finish time is when its writes completed, however long they took", () =>
+		Effect.gen(function* () {
+			yield* reset
+			const runId = yield* startRun("coingecko", "cli")
+			const [finish] = yield* withSlowSnapshotWrites(
+				Effect.gen(function* () {
+					yield* (yield* writer).persist({
+						source: "coingecko",
+						kind: "crypto",
+						runId,
+						capturedAt: capturedAt(),
+						rows: [row("a", null, 1)],
+					})
+					return yield* queryElsewhere<{ afterWrites: boolean }>(
+						`select finished_at >= (select max(finished_at) from slow_snapshot_writes) as "afterWrites"
+						 from collection_runs where id = $1`,
+						[runId],
+					)
+				}),
+			)
+			assert.deepStrictEqual(finish, { afterWrites: true })
 		}),
 	)
 
@@ -805,8 +852,8 @@ layer(TestServices, { excludeTestServices: true })("bounded waits and lost repli
 						.pipe(Effect.forkChild)
 					yield* Effect.promise(() => proxy.reached)
 					const started = yield* Clock.currentTimeMillis
-					// Bounded by the statement timeout (1 s) plus the reply grace (5 s).
-					yield* Fiber.interrupt(fiber)
+					// Statement timeout (1 s) plus the reply grace (5 s), with room to spare.
+					yield* Fiber.interrupt(fiber).pipe(Effect.timeout("10 seconds"))
 					const waited = (yield* Clock.currentTimeMillis) - started
 					assert.isAtLeast(waited, 5_000, "it waited for the reply first")
 				}).pipe(

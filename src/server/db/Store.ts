@@ -130,9 +130,6 @@ export class Store extends Context.Service<
 					.pipe(Effect.asVoid)
 
 			const persist = (exec: Executor, input: PersistInput) =>
-				Effect.flatMap(DateTime.nowAsDate, (finishedAt) => persistAt(exec, input, finishedAt))
-
-			const persistAt = (exec: Executor, input: PersistInput, finishedAt: Date) =>
 				exec.transaction("persist", async (tx) => {
 					// One row per external id; a duplicate in one upsert batch is a Postgres error.
 					const rows = [...new Map(input.rows.map((row) => [row.externalId, row])).values()]
@@ -207,7 +204,8 @@ export class Store extends Context.Service<
 						.update(collectionRuns)
 						.set({
 							status: "success",
-							finishedAt,
+							// When this write ran, after the snapshot writes, not when the app started persisting.
+							finishedAt: sql`clock_timestamp()`,
 							instrumentCount: rows.length,
 							rowsWritten,
 							error: null,
