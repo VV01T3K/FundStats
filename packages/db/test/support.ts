@@ -4,15 +4,21 @@
  */
 import * as NodeNet from "node:net"
 
+import * as PgClient from "@effect/sql-pg/PgClient"
 import { assert } from "@effect/vitest"
 import { sql } from "drizzle-orm"
+import { EffectDrizzleQueryError } from "drizzle-orm/effect-core"
+import * as Cause from "effect/Cause"
+import * as Clock from "effect/Clock"
 import * as ConfigProvider from "effect/ConfigProvider"
 import * as DateTime from "effect/DateTime"
 import * as Effect from "effect/Effect"
 import type * as Fiber from "effect/Fiber"
 import * as Layer from "effect/Layer"
-import pg from "pg"
-import { expect, inject } from "vitest"
+import * as Reactivity from "effect/reactivity/Reactivity"
+import * as Redacted from "effect/Redacted"
+import * as Schema from "effect/Schema"
+import { inject } from "vitest"
 
 import { Database } from "../src/Database.ts"
 import { DbConfig } from "../src/DbConfig.ts"
@@ -42,6 +48,8 @@ export const storageOn = <E, R>(config: Layer.Layer<DbConfig, E, R>) =>
 		Layer.provideMerge(Database.layer),
 		Layer.provideMerge(Migrated),
 		Layer.provideMerge(config),
+		// The driver's own timers (connect, idle, acquire) run on real time while tests move the TestClock.
+		Layer.provide(Layer.succeed(Clock.Clock, Clock.Clock.defaultValue())),
 	)
 
 /** Storage on the shared test database. */
@@ -54,41 +62,41 @@ export const at = <A>(items: ReadonlyArray<A>, index: number): A => {
 	return item
 }
 
+const isQueryError = Schema.is(EffectDrizzleQueryError)
+
+/** A database error with the Postgres error it wraps, to match its reason. */
+export const errorText = (error: unknown): string =>
+	isQueryError(error) ? `${error.message}\n${Cause.pretty(error.cause as Cause.Cause<unknown>)}` : String(error)
+
 /** A fixed capture time for writes set up by hand. */
 export const capturedAt = (iso = "2026-11-16T12:00:00Z") => DateTime.toDateUtc(DateTime.makeUnsafe(iso))
 
 export const count = (table: string) =>
 	Effect.gen(function* () {
-		const { use } = yield* Database
-		const result = yield* use("count", (db) =>
-			db.execute<{ n: number }>(sql.raw(`select count(*)::int as n from ${table}`)),
-		)
+		const db = yield* Database
+		const result = yield* db.execute<{ n: number }>(sql.raw(`select count(*)::int as n from ${table}`))
 		return at(result.rows, 0).n
 	})
 
 export const reset = Effect.gen(function* () {
-	const { use } = yield* Database
-	yield* use("reset", (db) =>
-		db.execute(
-			sql`truncate snapshots, raw_payloads, instruments, collection_runs, source_schedules restart identity cascade`,
-		),
+	const db = yield* Database
+	yield* db.execute(
+		sql`truncate snapshots, raw_payloads, instruments, collection_runs, source_schedules restart identity cascade`,
 	)
 })
 
+/** A Postgres session of its own, like another process would open, ended when the scope closes. */
+const otherSession = PgClient.makeClient({ url: Redacted.make(testDatabaseUrl) }).pipe(Effect.provide(Reactivity.layer))
+
 /**
  * Holds `source`'s collection lock from a separate Postgres session, the way
- * a `bun run collect` in another process would.
+ * a `bun run collect` in another process would, until the scope closes.
  */
 export const holdLockElsewhere = (source: string) =>
-	Effect.acquireRelease(
-		Effect.promise(async () => {
-			const client = new pg.Client({ connectionString: testDatabaseUrl })
-			await client.connect()
-			await client.query("select pg_advisory_lock(727002, hashtext($1))", [source])
-			return client
-		}),
-		(client) => Effect.promise(() => client.end()),
-	)
+	Effect.gen(function* () {
+		const session = yield* otherSession
+		yield* session`select pg_advisory_lock(727002, hashtext(${source}))`
+	}).pipe(Effect.orDie)
 
 /** Run writes on the pool, outside any source lock, for tests that set up runs by hand. */
 export const writer = Effect.gen(function* () {
@@ -105,24 +113,17 @@ export const startRun = (source: string, trigger: string) =>
 	})
 
 /**
- * Requests interruption of a fiber suspended on database I/O. Its cleanup (the abort) starts
+ * Requests interruption of a fiber suspended on database I/O. Its cleanup starts
  * before this returns; await the fiber to see the interruption finish.
  */
 export const requestInterrupt = <A, E>(fiber: Fiber.Fiber<A, E>) => Effect.sync(() => fiber.interruptUnsafe())
 
-/** One query on a fresh connection of its own, like another process would make. */
-const queryOnNewConnection = async <T extends pg.QueryResultRow>(text: string, values: ReadonlyArray<unknown>) => {
-	const client = new pg.Client({ connectionString: testDatabaseUrl })
-	await client.connect()
-	try {
-		return (await client.query<T>(text, [...values])).rows
-	} finally {
-		await client.end()
-	}
-}
-
-export const queryElsewhere = <T extends pg.QueryResultRow>(text: string, values: ReadonlyArray<unknown> = []) =>
-	Effect.promise(() => queryOnNewConnection<T>(text, values))
+/** One query on a fresh session of its own, like another process would make. */
+export const queryElsewhere = <T extends object>(text: string, values: ReadonlyArray<unknown> = []) =>
+	Effect.gen(function* () {
+		const session = yield* otherSession
+		return (yield* session.unsafe<T>(text, values)) as ReadonlyArray<T>
+	}).pipe(Effect.scoped, Effect.orDie)
 
 export const SOURCE_LOCK_HOLDERS =
 	"select pid from pg_locks where locktype = 'advisory' and classid = 727002 and granted"
@@ -134,53 +135,59 @@ export const terminateLockHolders = queryElsewhere<{ ok: boolean }>(
 
 /** Runs `effect` while another session blocks inserts into `table`, then lifts the block. */
 export const withInsertsBlocked = <A, E, R>(table: string, effect: Effect.Effect<A, E, R>) =>
-	Effect.acquireUseRelease(
-		Effect.promise(async () => {
-			const blocker = new pg.Client({ connectionString: testDatabaseUrl })
-			await blocker.connect()
-			await blocker.query("begin")
-			await blocker.query(`lock table ${table} in share mode`)
-			return blocker
-		}),
-		(blocker) => effect.pipe(Effect.tap(() => Effect.promise(() => blocker.query("commit")))),
-		(blocker) => Effect.promise(() => blocker.end()),
-	)
+	Effect.gen(function* () {
+		const blocker = yield* otherSession.pipe(Effect.orDie)
+		yield* blocker.unsafe("begin").pipe(Effect.orDie)
+		yield* blocker.unsafe(`lock table ${table} in share mode`).pipe(Effect.orDie)
+		const result = yield* effect
+		yield* blocker.unsafe("commit").pipe(Effect.orDie)
+		return result
+	}).pipe(Effect.scoped)
 
-/** Waits until Postgres reports an insert into `table` waiting on a lock; nothing signals that. */
+/**
+ * Returns once Postgres reports an insert into `table` waiting on a lock. Nothing signals that to the
+ * client, so Postgres itself waits for it, in one statement.
+ */
 export const waitForBlockedInsert = (table: string) =>
-	Effect.promise(() =>
-		expect
-			.poll(async () => {
-				const waiting = await queryOnNewConnection(
-					"select 1 from pg_stat_activity where wait_event_type = 'Lock' and query ilike $1",
-					[`insert into "${table}"%`],
-				)
-				return waiting.length
-			})
-			.toBeGreaterThan(0),
-	)
+	queryElsewhere(`
+		do $$ begin
+			while not exists (
+				select 1 from pg_stat_activity where wait_event_type = 'Lock' and query ilike 'insert into "${table}"%'
+			) loop
+				-- pg_stat_activity is a snapshot per transaction; take a fresh one each time.
+				perform pg_stat_clear_snapshot();
+				perform pg_sleep(0.01);
+			end loop;
+		end $$
+	`)
 
 /** Runs `effect` with every snapshot insert held 0.5 s in Postgres, logging when each one finished. */
 export const withSlowSnapshotWrites = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
 	Effect.acquireUseRelease(
-		queryElsewhere(`
-			create table slow_snapshot_writes (finished_at timestamptz not null);
-			create function slow_snapshot_write() returns trigger language plpgsql as $$
-			begin
-				perform pg_sleep(0.5);
-				insert into slow_snapshot_writes values (clock_timestamp());
-				return null;
-			end $$;
-			create trigger slow_snapshot_write after insert on snapshots
-				for each statement execute function slow_snapshot_write();
-		`),
+		Effect.forEach(
+			[
+				"create table slow_snapshot_writes (finished_at timestamptz not null)",
+				`create function slow_snapshot_write() returns trigger language plpgsql as $$
+				begin
+					perform pg_sleep(0.5);
+					insert into slow_snapshot_writes values (clock_timestamp());
+					return null;
+				end $$`,
+				`create trigger slow_snapshot_write after insert on snapshots
+					for each statement execute function slow_snapshot_write()`,
+			],
+			(statement) => queryElsewhere(statement),
+		),
 		() => effect,
 		() =>
-			queryElsewhere(`
-				drop trigger slow_snapshot_write on snapshots;
-				drop function slow_snapshot_write();
-				drop table slow_snapshot_writes;
-			`),
+			Effect.forEach(
+				[
+					"drop trigger slow_snapshot_write on snapshots",
+					"drop function slow_snapshot_write()",
+					"drop table slow_snapshot_writes",
+				],
+				(statement) => queryElsewhere(statement),
+			),
 	)
 
 /** An upstream response the test releases by hand. */
@@ -206,11 +213,9 @@ export const row = (externalId: string, asOf: string | null, value: number): Nor
 
 export const runStatus = (id: number) =>
 	Effect.gen(function* () {
-		const { use } = yield* Database
-		const result = yield* use("runStatus", (db) =>
-			db.execute<{ status: string; error: string | null }>(
-				sql`select status, error from collection_runs where id = ${id}`,
-			),
+		const db = yield* Database
+		const result = yield* db.execute<{ status: string; error: string | null }>(
+			sql`select status, error from collection_runs where id = ${id}`,
 		)
 		return at(result.rows, 0)
 	})

@@ -7,20 +7,23 @@
 		"#/*": "./src/*"
 	},
 	"scripts": {
-		"dev": "bun src/bin.ts start",
-		"start": "bun src/bin.ts start",
-		"collect": "bun src/bin.ts collect",
-		"migrate": "bun src/bin.ts migrate",
+		"dev": "bun --watch src/main.ts start",
+		"build": "bun build src/main.ts --target=bun --outfile dist/main.js",
+		"start": "bun src/main.ts start",
+		"collect": "bun src/main.ts collect",
+		"migrate": "bun src/main.ts migrate",
 		"typecheck": "effect-tsgo tsc --noEmit",
-		"test": "vitest run"
+		"test": "bun --bun vitest run"
 	},
 	"dependencies": {
-		"@effect/platform-node": "4.1.4",
+		"@effect/platform-bun": "catalog:",
 		"@fundstats/db": "workspace:*",
 		"@fundstats/shared": "workspace:*",
-		"effect": "4.1.4"
+		"effect": "catalog:"
 	},
 	"devDependencies": {
-		"@effect/vitest": "4.1.4"
+		"@effect/vitest": "catalog:",
+		"@types/bun": "catalog:",
+		"vitest": "catalog:"
 	}
 }

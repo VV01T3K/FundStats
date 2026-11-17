@@ -3,8 +3,10 @@ import type { KnipConfig } from "knip"
 const config: KnipConfig = {
 	workspaces: {
 		".": {
-			entry: ["scripts/*.ts", "oxlint-plugin-fundstats/index.ts"],
+			entry: ["scripts/*.ts"],
 			project: ["*.ts", "scripts/**/*.ts", "oxlint-plugin-fundstats/**/*.ts"],
+			// bunfig.toml loads the install security scanner.
+			ignoreDependencies: ["@socketsecurity/bun-security-scanner"],
 		},
 		"apps/web": {
 			entry: ["src/server/boot.ts"],
@@ -12,11 +14,7 @@ const config: KnipConfig = {
 			// shadcn components are copied whole; keep their exports even before they have callers.
 			ignoreIssues: { "src/components/ui/*.tsx": ["exports"] },
 		},
-		"apps/collector": {
-			entry: ["src/bin.ts"],
-			project: ["**/*.ts"],
-		},
-		"packages/*": {
+		"{apps/collector,packages/*}": {
 			project: ["**/*.ts"],
 		},
 	},

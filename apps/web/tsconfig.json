@@ -6,6 +6,6 @@
 		"paths": {
 			"#/*": ["./src/*"]
 		},
-		"types": ["node", "vite/client"]
+		"types": ["bun", "vite/client"]
 	}
 }

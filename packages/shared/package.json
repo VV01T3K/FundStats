@@ -8,12 +8,14 @@
 	},
 	"scripts": {
 		"typecheck": "effect-tsgo tsc --noEmit",
-		"test": "vitest run"
+		"test": "bun --bun vitest run"
 	},
 	"dependencies": {
-		"effect": "4.1.4"
+		"effect": "catalog:"
 	},
 	"devDependencies": {
-		"@effect/vitest": "4.1.4"
+		"@effect/vitest": "catalog:",
+		"@types/bun": "catalog:",
+		"vitest": "catalog:"
 	}
 }

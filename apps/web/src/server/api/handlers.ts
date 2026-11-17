@@ -60,7 +60,7 @@ const SystemHandlers = HttpApiBuilder.group(
 					database: "ok" as const,
 					collectorEnabled: schedules.some((s) => s.enabled),
 				})),
-				Effect.catchTags({ DatabaseError: () => Effect.fail(new HttpApiError.ServiceUnavailable()) }),
+				Effect.catchTags({ EffectDrizzleQueryError: () => Effect.fail(new HttpApiError.ServiceUnavailable()) }),
 			),
 		)
 	}),

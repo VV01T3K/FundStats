@@ -9,3 +9,5 @@ node_modules
 
 # Reference source for agents (bun run sync:repos)
 .repos/
+# collector bundle (bun run build)
+dist

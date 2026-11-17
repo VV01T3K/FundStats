@@ -9,19 +9,20 @@
 	},
 	"scripts": {
 		"typecheck": "effect-tsgo tsc --noEmit",
-		"test": "vitest run",
+		"test": "bun --bun vitest run",
 		"db:generate": "drizzle-kit generate"
 	},
 	"dependencies": {
+		"@effect/sql-pg": "catalog:",
 		"@fundstats/shared": "workspace:*",
-		"drizzle-orm": "0.45.4",
-		"effect": "4.1.4",
-		"pg": "8.23.1"
+		"drizzle-orm": "catalog:",
+		"effect": "catalog:"
 	},
 	"devDependencies": {
-		"@effect/vitest": "4.1.4",
-		"@testcontainers/postgresql": "12.2.1",
-		"@types/pg": "^8.23.1",
-		"drizzle-kit": "0.31.11"
+		"@effect/vitest": "catalog:",
+		"@testcontainers/postgresql": "catalog:",
+		"@types/bun": "catalog:",
+		"drizzle-kit": "catalog:",
+		"vitest": "catalog:"
 	}
 }

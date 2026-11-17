@@ -237,49 +237,47 @@ layer(TestServices)("concurrent and stalled collections", (it) => {
 })
 
 layer(TestServices)("losing the lock or the fiber mid-run", (it) => {
-	it.effect("losing the lock connection stops the run, records it failed, and writes nothing more", () =>
-		Effect.gen(function* () {
-			yield* reset
-			const collector = yield* Collector
-			const original = upstream["api.coingecko.com"]
-			const upstreamGate = gate()
-			const requested = yield* Deferred.make<void>()
-			const answers: Array<Promise<unknown>> = []
-			upstream["api.coingecko.com"] = () => {
-				Deferred.doneUnsafe(requested, Exit.void)
-				const answer = upstreamGate.after(() => fixture("coingecko-markets.json"))
-				answers.push(answer)
-				return answer
-			}
-			try {
-				const fiber = yield* collector.runOnce("coingecko", "test").pipe(Effect.flip, Effect.forkChild)
-				// A run asks its upstream only once it holds its lock and has created its run row.
-				yield* Deferred.await(requested)
-				assert.lengthOf(yield* queryElsewhere(SOURCE_LOCK_HOLDERS), 1)
-				// The run waits on its upstream; its lock connection is killed meanwhile.
-				yield* terminateLockHolders
-				const error = yield* Fiber.join(fiber)
-				assert.match(error.message, /Lost the collection lock of coingecko/)
-				const runs = yield* queryElsewhere<{ id: number; status: string; error: string }>(
-					"select id, status, error from collection_runs",
-				)
-				assert.lengthOf(runs, 1)
-				const run = at(runs, 0)
-				assert.strictEqual(run.status, "failed")
-				assert.match(run.error, /Lost the collection lock/)
-				// Had the run kept going after its upstream answered, it would write now.
-				upstreamGate.open()
-				yield* Effect.promise(() => Promise.all(answers))
-				assert.strictEqual(yield* count("raw_payloads"), 0)
-				assert.strictEqual(yield* count("snapshots"), 0)
-				// The next run takes the freed lock and serves its data.
-				upstream["api.coingecko.com"] = original
-				yield* collector.runOnce("coingecko", "test")
-				assert.strictEqual((yield* (yield* Store).latest("coingecko")).length, 5)
-			} finally {
-				upstream["api.coingecko.com"] = original
-			}
-		}),
+	it.effect(
+		"losing the lock connection fails the run at its next write: nothing more is written, it is recorded failed",
+		() =>
+			Effect.gen(function* () {
+				yield* reset
+				const collector = yield* Collector
+				const original = upstream["api.coingecko.com"]
+				const upstreamGate = gate()
+				const requested = yield* Deferred.make<void>()
+				upstream["api.coingecko.com"] = () => {
+					Deferred.doneUnsafe(requested, Exit.void)
+					return upstreamGate.after(() => fixture("coingecko-markets.json"))
+				}
+				try {
+					const fiber = yield* collector.runOnce("coingecko", "test").pipe(Effect.flip, Effect.forkChild)
+					// A run asks its upstream only once it holds its lock and has created its run row.
+					yield* Deferred.await(requested)
+					assert.lengthOf(yield* queryElsewhere(SOURCE_LOCK_HOLDERS), 1)
+					const error = yield* Effect.scoped(
+						Effect.gen(function* () {
+							// The run waits on its upstream; its lock connection is killed meanwhile, and
+							// another session takes the freed lock, as a second collector would.
+							yield* terminateLockHolders
+							yield* holdLockElsewhere("coingecko")
+							upstreamGate.open()
+							return yield* Fiber.join(fiber)
+						}),
+					)
+					assert.strictEqual(error._tag, "EffectDrizzleQueryError")
+					const runs = yield* queryElsewhere<{ status: string }>("select status from collection_runs")
+					assert.deepStrictEqual(runs, [{ status: "failed" }])
+					assert.strictEqual(yield* count("raw_payloads"), 0)
+					assert.strictEqual(yield* count("snapshots"), 0)
+					// The next run takes the freed lock and serves its data.
+					upstream["api.coingecko.com"] = original
+					yield* collector.runOnce("coingecko", "test")
+					assert.strictEqual((yield* (yield* Store).latest("coingecko")).length, 5)
+				} finally {
+					upstream["api.coingecko.com"] = original
+				}
+			}),
 	)
 
 	it.effect("interrupting a run during persist leaves the last good data served and the run status true", () =>
@@ -312,7 +310,7 @@ layer(TestServices)("losing the lock or the fiber mid-run", (it) => {
 		}),
 	)
 
-	it.effect("interrupting a run while its row is being created still closes that row", () =>
+	it.effect("interrupting a run while its row is being created leaves no running row", () =>
 		Effect.gen(function* () {
 			yield* reset
 			const collector = yield* Collector
@@ -328,7 +326,9 @@ layer(TestServices)("losing the lock or the fiber mid-run", (it) => {
 			const runs = yield* queryElsewhere<{ status: string; error: string | null }>(
 				"select status, error from collection_runs",
 			)
-			assert.deepStrictEqual(runs, [{ status: "failed", error: "Interrupted" }])
+			// The insert is either cancelled in Postgres (no row) or lands just before the cancel and is closed.
+			assert.isAtMost(runs.length, 1)
+			for (const run of runs) assert.deepStrictEqual(run, { status: "failed", error: "Interrupted" })
 		}),
 	)
 })
@@ -346,7 +346,7 @@ layer(TestServices, { excludeTestServices: true })("lost replies", (it) => {
 					proxy.loseRepliesAfter('insert into "collection_runs"', "drop")
 					return yield* collector.runOnce("coingecko", "test").pipe(Effect.flip)
 				}).pipe(Effect.provide(servicesWithShortTimeout(proxy.url)))
-				assert.strictEqual(error._tag, "DatabaseError")
+				assert.strictEqual(error._tag, "EffectDrizzleQueryError")
 				assert.isTrue(proxy.triggered())
 				const runs = yield* queryElsewhere<{ status: string }>("select status from collection_runs")
 				assert.deepStrictEqual(runs, [{ status: "failed" }])

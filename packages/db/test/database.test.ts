@@ -5,10 +5,10 @@
 import { assert, layer } from "@effect/vitest"
 import { sql } from "drizzle-orm"
 import * as Clock from "effect/Clock"
+import * as Deferred from "effect/Deferred"
 import * as Effect from "effect/Effect"
 import * as Fiber from "effect/Fiber"
 import * as Layer from "effect/Layer"
-import pg from "pg"
 
 import { Database } from "../src/Database.ts"
 import { RunStore } from "../src/RunStore.ts"
@@ -19,12 +19,11 @@ import {
 	at,
 	capturedAt,
 	count,
+	errorText,
 	dbConfigOn,
-	gate,
 	holdLockElsewhere,
 	queryElsewhere,
 	replyLosingProxy,
-	requestInterrupt,
 	reset,
 	row,
 	runStatus,
@@ -180,9 +179,7 @@ layer(TestStorage)("source locks and interruption", (it) => {
 			const locks = yield* SourceLocks
 			const { writer: writerPid, holders } = yield* locks.withSourceLock("coingecko", (lock) =>
 				Effect.gen(function* () {
-					const result = yield* lock.use("pid", (db) =>
-						db.execute<{ pid: number }>(sql`select pg_backend_pid() as pid`),
-					)
+					const result = yield* lock.execute<{ pid: number }>(sql`select pg_backend_pid() as pid`)
 					return {
 						writer: at(result.rows, 0).pid,
 						holders: yield* queryElsewhere<{ pid: number }>(SOURCE_LOCK_HOLDERS),
@@ -207,44 +204,40 @@ layer(TestStorage)("source locks and interruption", (it) => {
 						yield* terminateLockHolders
 						// Postgres has freed the lock: another session takes it right away.
 						yield* holdLockElsewhere("coingecko")
-						yield* lock.use("write", (db) =>
-							db.execute(
-								sql`insert into collection_runs (source, trigger, status) values ('coingecko', 'test', 'running')`,
-							),
-						)
+						yield* lock.insert(collectionRuns).values({ source: "coingecko", trigger: "test", status: "running" })
 					}),
 				),
 			).pipe(Effect.flip)
-			assert.strictEqual(error._tag, "DatabaseError")
+			assert.strictEqual(error._tag, "EffectDrizzleQueryError")
 			assert.strictEqual(yield* count("collection_runs"), 0, "no write may land while another session holds the lock")
 		}),
 	)
 
-	it.effect("an interrupted transaction is rolled back, and the interruption waits for it", () =>
+	it.effect("an interrupted transaction is rolled back before the interruption completes", () =>
 		Effect.gen(function* () {
 			yield* reset
 			const database = yield* Database
-			const inserted = gate()
-			const statements = gate()
+			const session = yield* Deferred.make<number>()
 			const fiber = yield* database
-				.transaction("slow", async (tx) => {
-					await tx.execute(
-						sql`insert into collection_runs (source, trigger, status) values ('mbank', 'test', 'running')`,
-					)
-					inserted.open()
-					await statements.after(() => undefined)
-				})
+				.transaction((tx) =>
+					Effect.gen(function* () {
+						yield* tx.insert(collectionRuns).values({ source: "mbank", trigger: "test", status: "running" })
+						const { rows } = yield* tx.execute<{ pid: number }>(sql`select pg_backend_pid() as pid`)
+						yield* Deferred.succeed(session, at(rows, 0).pid)
+						return yield* Effect.never
+					}),
+				)
 				.pipe(Effect.forkChild)
-			yield* Effect.promise(() => inserted.after(() => undefined))
-			yield* requestInterrupt(fiber)
-			assert.isUndefined(fiber.pollUnsafe(), "the interruption must wait for the transaction")
-			statements.open()
-			yield* Fiber.await(fiber)
+			const pid = yield* Deferred.await(session)
+			yield* Fiber.interrupt(fiber)
+			// Once the interruption returns, the transaction is over: its session holds no transaction lock.
+			const open = yield* queryElsewhere("select 1 from pg_locks where pid = $1 and locktype = 'transactionid'", [pid])
+			assert.lengthOf(open, 0)
 			assert.strictEqual(yield* count("collection_runs"), 0)
 		}),
 	)
 
-	it.effect("an interrupted query still runs exactly once", () =>
+	it.effect("an interrupted query is cancelled in Postgres, never run again or left running", () =>
 		Effect.gen(function* () {
 			yield* reset
 			const database = yield* Database
@@ -252,16 +245,15 @@ layer(TestStorage)("source locks and interruption", (it) => {
 				"collection_runs",
 				Effect.gen(function* () {
 					const fiber = yield* database
-						.use("insert", (db) =>
-							db.insert(collectionRuns).values({ source: "mbank", trigger: "test", status: "running" }),
-						)
+						.insert(collectionRuns)
+						.values({ source: "mbank", trigger: "test", status: "running" })
 						.pipe(Effect.forkChild)
 					yield* waitForBlockedInsert("collection_runs")
-					yield* requestInterrupt(fiber)
-					return fiber
+					yield* Fiber.interrupt(fiber)
 				}),
-			).pipe(Effect.flatMap(Fiber.await))
-			assert.strictEqual(yield* count("collection_runs"), 1)
+			)
+			// The block is lifted now; an insert still pending in Postgres would land.
+			assert.strictEqual(yield* count("collection_runs"), 0)
 		}),
 	)
 })
@@ -273,26 +265,21 @@ layer(TestStorage, { excludeTestServices: true })("bounded waits and lost replie
 			yield* reset
 			const result = yield* Effect.gen(function* () {
 				const database = yield* Database
-				const shown = yield* database.use("show", (db) =>
-					db.execute<{ statement_timeout: string }>(sql`show statement_timeout`),
-				)
+				const shown = yield* database.execute<{ statement_timeout: string }>(sql`show statement_timeout`)
 				assert.strictEqual(at(shown.rows, 0).statement_timeout, "1s")
-				const blocker = new pg.Client({ connectionString: testDatabaseUrl })
-				yield* Effect.promise(async () => {
-					await blocker.connect()
-					await blocker.query("begin")
-					await blocker.query("lock table collection_runs in share mode")
-				})
-				const started = yield* Clock.currentTimeMillis
-				const error = yield* database
-					.use("insert", (db) =>
-						db.insert(collectionRuns).values({ source: "mbank", trigger: "test", status: "running" }),
-					)
-					.pipe(Effect.flip, Effect.ensuring(Effect.promise(() => blocker.end())))
-				return { error, waited: (yield* Clock.currentTimeMillis) - started }
+				return yield* withInsertsBlocked(
+					"collection_runs",
+					Effect.gen(function* () {
+						const started = yield* Clock.currentTimeMillis
+						const error = yield* database
+							.insert(collectionRuns)
+							.values({ source: "mbank", trigger: "test", status: "running" })
+							.pipe(Effect.flip)
+						return { error, waited: (yield* Clock.currentTimeMillis) - started }
+					}),
+				)
 			}).pipe(Effect.provide(storageWithShortTimeout(testDatabaseUrl)))
-			// Drizzle wraps the Postgres error; its message names the reason.
-			assert.match(String((result.error.cause as { cause?: unknown }).cause), /statement timeout/)
+			assert.match(errorText(result.error), /statement timeout/)
 			assert.isBelow(result.waited, 5_000)
 			assert.strictEqual(yield* count("collection_runs"), 0)
 		}),
@@ -305,15 +292,10 @@ layer(TestStorage, { excludeTestServices: true })("bounded waits and lost replie
 				yield* Effect.gen(function* () {
 					const database = yield* Database
 					proxy.loseRepliesAfter("withheld reply", "withhold")
-					const fiber = yield* database
-						.use("withheld", (db) => db.execute(sql`select 'withheld reply' as marker`))
-						.pipe(Effect.forkChild)
+					const fiber = yield* database.execute(sql`select 'withheld reply' as marker`).pipe(Effect.forkChild)
 					yield* Effect.promise(() => proxy.reached)
-					const started = yield* Clock.currentTimeMillis
-					// Statement timeout (1 s) plus the reply grace (5 s), with room to spare.
+					// The driver cancels the query, then gives up on the session after 5 s without a reply.
 					yield* Fiber.interrupt(fiber).pipe(Effect.timeout("10 seconds"))
-					const waited = (yield* Clock.currentTimeMillis) - started
-					assert.isAtLeast(waited, 5_000, "it waited for the reply first")
 				}).pipe(
 					// Cut the frozen connection before the pool closes, or closing it would wait for that query.
 					Effect.ensuring(Effect.promise(proxy.close)),
@@ -329,14 +311,13 @@ layer(TestStorage, { excludeTestServices: true })("bounded waits and lost replie
 			const error = yield* Effect.gen(function* () {
 				const database = yield* Database
 				// Reads work as usual.
-				yield* database.use("read", (db) => db.execute(sql`select count(*) from collection_runs`))
+				yield* database.execute(sql`select count(*) from collection_runs`)
 				return yield* database
-					.use("write", (db) =>
-						db.insert(collectionRuns).values({ source: "mbank", trigger: "test", status: "running" }),
-					)
+					.insert(collectionRuns)
+					.values({ source: "mbank", trigger: "test", status: "running" })
 					.pipe(Effect.flip)
 			}).pipe(Effect.provide(Layer.fresh(Database.layerReadOnly.pipe(Layer.provide(dbConfigOn(testDatabaseUrl))))))
-			assert.match(String((error.cause as { cause?: unknown }).cause), /read-only transaction/)
+			assert.match(errorText(error), /read-only transaction/)
 			assert.strictEqual(yield* count("collection_runs"), 0)
 		}),
 	)

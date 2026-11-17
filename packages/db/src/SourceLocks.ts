@@ -1,15 +1,13 @@
-import { drizzle } from "drizzle-orm/node-postgres"
+import * as PgClient from "@effect/sql-pg/PgClient"
+import { sql } from "drizzle-orm"
 import * as Context from "effect/Context"
-import * as Deferred from "effect/Deferred"
 import * as Effect from "effect/Effect"
-import * as Exit from "effect/Exit"
 import * as Layer from "effect/Layer"
+import * as Reactivity from "effect/reactivity/Reactivity"
 import * as Schema from "effect/Schema"
-import pg from "pg"
 
-import { connectionConfig, DatabaseError, type Executor, makeExecutor, toDatabaseError } from "./Database.ts"
+import { clientOptions, type DatabaseError, type Db, drizzleOn } from "./Database.ts"
 import { DbConfig } from "./DbConfig.ts"
-import * as schema from "./schema.ts"
 
 /** Another process (or fiber) is already collecting this source. */
 export class SourceBusy extends Schema.TaggedError<SourceBusy>()("SourceBusy", {
@@ -25,13 +23,14 @@ export class SourceLocks extends Context.Service<
 	SourceLocks,
 	{
 		/**
-		 * Runs `f` holding `source`'s session advisory lock on a dedicated connection (SourceBusy if
-		 * taken). `f` writes through an Executor on that connection, so no write outlives the lock.
-		 * Losing the connection interrupts `f` and fails with DatabaseError("sourceLock").
+		 * Runs `f` holding `source`'s session advisory lock (SourceBusy if taken). The lock lives on a
+		 * session of its own, not a pool slot, and `f` gets a Drizzle database on that one session: its
+		 * writes go through the lock's session, so once that session is gone (and the lock with it) every
+		 * further write fails. Ending the session at the end releases the lock.
 		 */
 		readonly withSourceLock: <A, E, R>(
 			source: string,
-			f: (lock: Executor) => Effect.Effect<A, E, R>,
+			f: (lock: Db) => Effect.Effect<A, E, R>,
 		) => Effect.Effect<A, E | SourceBusy | DatabaseError, R>
 	}
 >()("@fundstats/db/SourceLocks") {
@@ -39,77 +38,30 @@ export class SourceLocks extends Context.Service<
 		SourceLocks,
 		Effect.gen(function* () {
 			const config = yield* DbConfig
-			const services = yield* Effect.context<never>()
-			const connection = connectionConfig(config)
+			const reactivity = yield* Reactivity.Reactivity
 
-			// The lock lives on its own connection, not a pool slot, so DB_POOL_MAX=1
-			// cannot deadlock and the run's writes are fenced by the lock's session.
-			const withSourceLock = <A, E, R>(
-				source: string,
-				f: (lock: Executor) => Effect.Effect<A, E, R>,
-			): Effect.Effect<A, E | SourceBusy | DatabaseError, R> =>
-				Effect.acquireUseRelease(
-					Effect.tryPromise({
-						try: async () => {
-							const client = new pg.Client(connection)
-							const lost = Deferred.makeUnsafe<never, DatabaseError>()
-							let releasing = false
-							const onLost = (reason: string, cause?: unknown) => {
-								if (releasing) return
-								Deferred.doneUnsafe(
-									lost,
-									Exit.fail(
-										new DatabaseError({
-											operation: "sourceLock",
-											message: `Lost the collection lock of ${source}: ${reason}`,
-											cause,
-										}),
-									),
-								)
-							}
-							// A dropped connection drops the lock too; it must stop the run, not crash the process.
-							client.on("error", (error) => {
-								Effect.runForkWith(services)(
-									Effect.logWarning(`Collection lock connection of ${source} failed`, error.message),
-								)
-								onLost(error.message, error)
-							})
-							client.on("end", () => onLost("its database connection ended"))
-							const release = () => {
-								releasing = true
-								return client.end().catch(() => {})
-							}
-							try {
-								await client.connect()
-								const result = await client.query<{ locked: boolean }>(
-									"select pg_try_advisory_lock($1, hashtext($2)) as locked",
-									[SOURCE_LOCK_CLASS, source],
-								)
-								return { client, lost, release, locked: result.rows[0]?.locked === true }
-							} catch (error) {
-								await release()
-								throw error
-							}
-						},
-						catch: toDatabaseError("lockSource"),
-					}),
-					({ client, lost, locked }): Effect.Effect<A, E | SourceBusy | DatabaseError, R> =>
-						locked
-							? Effect.raceFirst(
-									f(makeExecutor(drizzle(client, { schema }), config.dbStatementTimeout)),
-									Deferred.await(lost),
-								)
-							: Effect.fail(
-									new SourceBusy({
-										source,
-										message: `another collection of ${source} is running (its lock is held)`,
-									}),
-								),
-					// Ending the session releases the advisory lock.
-					({ release }) => Effect.promise(release),
-				)
+			const withSourceLock = Effect.fn("SourceLocks.withSourceLock")(
+				function* <A, E, R>(source: string, f: (lock: Db) => Effect.Effect<A, E, R>) {
+					const session = yield* PgClient.makeClient(clientOptions(config)).pipe(
+						Effect.provideService(Reactivity.Reactivity, reactivity),
+					)
+					const lock = yield* drizzleOn(session)
+					const { rows } = yield* lock.execute<{ locked: boolean }>(
+						sql`select pg_try_advisory_lock(${SOURCE_LOCK_CLASS}, hashtext(${source})) as locked`,
+					)
+					if (rows[0]?.locked !== true) {
+						return yield* new SourceBusy({
+							source,
+							message: `another collection of ${source} is running (its lock is held)`,
+						})
+					}
+					return yield* f(lock)
+				},
+				// Closing the scope ends the session, which releases the lock.
+				Effect.scoped,
+			)
 
 			return SourceLocks.of({ withSourceLock })
 		}),
-	)
+	).pipe(Layer.provide(Reactivity.layer))
 }

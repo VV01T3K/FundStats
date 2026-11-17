@@ -6,7 +6,7 @@ import * as DateTime from "effect/DateTime"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 
-import { Database, type DatabaseError } from "./Database.ts"
+import { Database, type QueryError } from "./Database.ts"
 import { collectionRuns, instruments, snapshots, sourceSchedules } from "./schema.ts"
 
 export interface RunSummary {
@@ -31,7 +31,7 @@ export interface SourceSchedule {
 	readonly enabled: boolean
 }
 
-type E<A> = Effect.Effect<A, DatabaseError>
+type E<A> = Effect.Effect<A, QueryError>
 
 /** Reads of collected data: everything the API serves. It never writes; RunStore does. */
 export class Store extends Context.Service<
@@ -59,42 +59,40 @@ export class Store extends Context.Service<
 				error: row.error,
 			})
 
-			const runSummary = (source: string) =>
-				database.use("runSummary", async (db) => {
-					const [lastRun] = await db
-						.select()
-						.from(collectionRuns)
-						.where(eq(collectionRuns.source, source))
-						.orderBy(desc(collectionRuns.startedAt))
-						.limit(1)
-					const [lastSuccess] = await db
-						.select()
-						.from(collectionRuns)
-						.where(and(eq(collectionRuns.source, source), eq(collectionRuns.status, "success")))
-						.orderBy(desc(collectionRuns.startedAt))
-						.limit(1)
-					return {
-						lastRun: lastRun ? toRun(lastRun) : null,
-						lastSuccess: lastSuccess ? toRun(lastSuccess) : null,
-					}
-				})
+			const runSummary = Effect.fn("Store.runSummary")(function* (source: string) {
+				const [lastRun] = yield* database
+					.select()
+					.from(collectionRuns)
+					.where(eq(collectionRuns.source, source))
+					.orderBy(desc(collectionRuns.startedAt))
+					.limit(1)
+				const [lastSuccess] = yield* database
+					.select()
+					.from(collectionRuns)
+					.where(and(eq(collectionRuns.source, source), eq(collectionRuns.status, "success")))
+					.orderBy(desc(collectionRuns.startedAt))
+					.limit(1)
+				return {
+					lastRun: lastRun ? toRun(lastRun) : null,
+					lastSuccess: lastSuccess ? toRun(lastSuccess) : null,
+				}
+			})
 
-			const latest = (source: string) =>
-				database.use("latest", async (db) => {
-					// Instruments reported by the last successful run, each with its newest snapshot.
-					const result = await db.execute<{
-						id: number
-						external_id: string
-						name: string
-						symbol: string | null
-						category: string | null
-						currency: string | null
-						metadata: Record<string, unknown>
-						captured_at: string | Date
-						as_of: string | null
-						value: string | null
-						metrics: Metrics
-					}>(sql`
+			const latest = Effect.fn("Store.latest")(function* (source: string) {
+				// Instruments reported by the last successful run, each with its newest snapshot.
+				const result = yield* database.execute<{
+					id: number
+					external_id: string
+					name: string
+					symbol: string | null
+					category: string | null
+					currency: string | null
+					metadata: Record<string, unknown>
+					captured_at: string | Date
+					as_of: string | null
+					value: string | null
+					metrics: Metrics
+				}>(sql`
 						select i.id, i.external_id, i.name, i.symbol, i.category, i.currency, i.metadata,
 						       s.captured_at, s.as_of::text as as_of, s.value, s.metrics
 						from ${instruments} i
@@ -130,55 +128,52 @@ export class Store extends Context.Service<
 						  )
 						order by (s.metrics->>'rank')::numeric asc nulls last, i.name asc
 					`)
-					return result.rows.map((r): SnapshotRow => ({
-						instrumentId: r.id,
-						externalId: r.external_id,
-						name: r.name,
-						symbol: r.symbol,
-						category: r.category,
-						currency: r.currency,
-						metadata: r.metadata,
-						capturedAt: DateTime.formatIso(DateTime.makeUnsafe(r.captured_at)),
-						asOf: r.as_of,
-						value: r.value === null ? null : Number(r.value),
-						metrics: r.metrics,
-					}))
-				})
+				return result.rows.map((r): SnapshotRow => ({
+					instrumentId: r.id,
+					externalId: r.external_id,
+					name: r.name,
+					symbol: r.symbol,
+					category: r.category,
+					currency: r.currency,
+					metadata: r.metadata,
+					capturedAt: DateTime.formatIso(DateTime.makeUnsafe(r.captured_at)),
+					asOf: r.as_of,
+					value: r.value === null ? null : Number(r.value),
+					metrics: r.metrics,
+				}))
+			})
 
-			const history = (source: string, externalId: string, limit: number) =>
-				database.use("history", async (db) => {
-					const [instrument] = await db
-						.select({ id: instruments.id, name: instruments.name })
-						.from(instruments)
-						.where(and(eq(instruments.source, source), eq(instruments.externalId, externalId)))
-						.limit(1)
-					if (!instrument) return null
-					const points = await db
-						.select({
-							capturedAt: snapshots.capturedAt,
-							asOf: snapshots.asOf,
-							value: snapshots.value,
-							metrics: snapshots.metrics,
-						})
-						.from(snapshots)
-						.where(eq(snapshots.instrumentId, instrument.id))
-						.orderBy(desc(snapshots.capturedAt))
-						.limit(limit)
-					return {
-						name: instrument.name,
-						points: points.map((p) => ({ ...p, capturedAt: p.capturedAt.toISOString() })),
-					}
-				})
-
-			const schedules = database.use("schedules", (db) =>
-				db
+			const history = Effect.fn("Store.history")(function* (source: string, externalId: string, limit: number) {
+				const [instrument] = yield* database
+					.select({ id: instruments.id, name: instruments.name })
+					.from(instruments)
+					.where(and(eq(instruments.source, source), eq(instruments.externalId, externalId)))
+					.limit(1)
+				if (!instrument) return null
+				const points = yield* database
 					.select({
-						source: sourceSchedules.source,
-						intervalSeconds: sourceSchedules.intervalSeconds,
-						enabled: sourceSchedules.enabled,
+						capturedAt: snapshots.capturedAt,
+						asOf: snapshots.asOf,
+						value: snapshots.value,
+						metrics: snapshots.metrics,
 					})
-					.from(sourceSchedules),
-			)
+					.from(snapshots)
+					.where(eq(snapshots.instrumentId, instrument.id))
+					.orderBy(desc(snapshots.capturedAt))
+					.limit(limit)
+				return {
+					name: instrument.name,
+					points: points.map((p) => ({ ...p, capturedAt: p.capturedAt.toISOString() })),
+				}
+			})
+
+			const schedules = database
+				.select({
+					source: sourceSchedules.source,
+					intervalSeconds: sourceSchedules.intervalSeconds,
+					enabled: sourceSchedules.enabled,
+				})
+				.from(sourceSchedules)
 
 			return Store.of({ runSummary, latest, history, schedules })
 		}),

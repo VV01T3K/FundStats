@@ -1,6 +1,6 @@
 import * as NodeModule from "node:module"
 
-import * as NodeServices from "@effect/platform-node/NodeServices"
+import * as BunServices from "@effect/platform-bun/BunServices"
 import { assert, it } from "@effect/vitest"
 import * as Effect from "effect/Effect"
 import * as FileSystem from "effect/FileSystem"
@@ -10,13 +10,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import * as Schema from "effect/Schema"
 import * as Stream from "effect/Stream"
 
-// oxlint is only a transitive dependency (via vite-plus), so its bin placement
-// varies by package manager: pnpm hoists it into the virtual store, while
-// other layouts expose vite-plus's LSP-only wrapper instead. Resolve the real
-// package through vite-plus rather than hardcoding either layout, and do it at
-const oxlintPackageJsonPath = NodeModule.createRequire(
-	NodeModule.createRequire(import.meta.url).resolve("vite-plus/package.json"),
-).resolve("oxlint/package.json")
+const oxlintPackageJsonPath = NodeModule.createRequire(import.meta.url).resolve("oxlint/package.json")
 
 class OxlintFixtureFailure extends Schema.TaggedError<OxlintFixtureFailure>()("OxlintFixtureFailure", {
 	exitCode: Schema.Number,
@@ -43,14 +37,14 @@ interface RuleHarness {
 	) => Effect.Effect<
 		string,
 		OxlintFixtureFailure | PlatformError.PlatformError | Schema.SchemaError,
-		NodeServices.NodeServices
+		BunServices.BunServices
 	>
 	readonly runAndExpectFailure: (
 		source: string,
 	) => Effect.Effect<
 		string,
 		OxlintFixtureExpectedFailure | PlatformError.PlatformError | Schema.SchemaError,
-		NodeServices.NodeServices
+		BunServices.BunServices
 	>
 	readonly valid: (name: string, source: string) => void
 	readonly invalid: (name: string, source: string, assertion?: (output: string) => void) => void
@@ -85,7 +79,7 @@ const spawnAndCollectOutput = Effect.fnUntraced(function* (command: ChildProcess
 export const createOxlintRuleHarness = (ruleName: string, options: RuleHarnessOptions = {}): RuleHarness => {
 	const [pluginName, shortRuleName] = ruleName.split("/")
 	const diagnosticRuleName = pluginName && shortRuleName ? `${pluginName}\\(${shortRuleName}\\)` : ruleName
-	const test = it.layer(NodeServices.layer)
+	const test = it.layer(BunServices.layer)
 
 	const run: RuleHarness["run"] = Effect.fnUntraced(function* (source: string) {
 		const fs = yield* FileSystem.FileSystem

@@ -1,0 +1,7 @@
+[install]
+linker = "isolated"
+# Skip versions published in the last 3 days.
+minimumReleaseAge = 259200
+
+[install.security]
+scanner = "@socketsecurity/bun-security-scanner"
