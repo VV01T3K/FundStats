@@ -2,9 +2,6 @@ import { HttpApi, HttpApiEndpoint, HttpApiError, HttpApiGroup, OpenApi } from "e
 /**
  * The HTTP API contract. Imported by the server (handlers) and by the web
  * client (typed HttpApiClient), so it must not import server-only code.
- *
- * Versioning: data endpoints live under /api/v1. A breaking change gets a new
- * group under /api/v2 next to the old one.
  */
 import * as Schema from "effect/Schema"
 
@@ -75,6 +72,9 @@ const HistoryPoint = Schema.Struct({
 	metrics: MetricValues,
 })
 
+/** How many history points one request may ask for. */
+const HistoryLimit = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 5000 }))
+
 const InstrumentHistory = Schema.Struct({
 	source: SourceIdSchema,
 	externalId: Schema.String,
@@ -120,7 +120,7 @@ class SourcesApi extends HttpApiGroup.make("sources")
 		}),
 		HttpApiEndpoint.get("history", "/sources/:source/instruments/:externalId/history", {
 			params: { source: Schema.String, externalId: Schema.String },
-			query: { limit: Schema.optional(Schema.Int) },
+			query: { limit: Schema.optional(HistoryLimit) },
 			success: InstrumentHistory,
 			error: [SourceNotFound, InstrumentNotFound],
 		}),
