@@ -3,8 +3,8 @@ import type { SourceId } from "@fundstats/shared/sources"
 /**
  * Typed API client derived from the shared HttpApi definition, plus the React
  * Query options built on it. In the browser it calls /api over fetch; during
- * SSR the same client is answered in-process by the API web handler, so the
- * server never makes an HTTP request to itself.
+ * SSR Nitro's serverFetch answers it in-process, so the server never makes an
+ * HTTP request to itself.
  */
 import { queryOptions } from "@tanstack/react-query"
 import { createIsomorphicFn } from "@tanstack/react-start"
@@ -18,9 +18,8 @@ const transport = createIsomorphicFn()
 	.server(() => ({
 		baseUrl: "http://fundstats.internal",
 		fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
-			const { getServer } = await import("#/server/runtime.ts")
-			const server = await getServer()
-			return server.handleApi(new Request(input, init))
+			const { serverFetch } = await import("nitro")
+			return serverFetch(new Request(input, init))
 		}) as typeof globalThis.fetch,
 	}))
 	.client(() => ({ baseUrl: window.location.origin, fetch: globalThis.fetch.bind(globalThis) }))

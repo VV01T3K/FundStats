@@ -3,17 +3,16 @@ import { DbConfig } from "@fundstats/db/DbConfig"
 import { Store } from "@fundstats/db/Store"
 import { FundStatsApi } from "@fundstats/shared/api"
 /**
- * The single composition root for the web server. The API web handler and any server function share
- * one set of services (one config, one read-only connection pool) through a shared layer memo map.
- * The collector is a separate process (apps/collector); this app never writes.
+ * The web server's composition: the read-only services and the HTTP API built on them. The collector
+ * is a separate process (apps/collector); this app never writes.
  *
  * Nothing in here may be imported from browser code.
  */
+import * as Cause from "effect/Cause"
 import * as Effect from "effect/Effect"
 import { HttpRouter, HttpServer } from "effect/http"
 import { HttpApiBuilder, HttpApiScalar } from "effect/http-api"
 import * as Layer from "effect/Layer"
-import * as ManagedRuntime from "effect/ManagedRuntime"
 
 import { ApiHandlers } from "./api/handlers.ts"
 
@@ -26,52 +25,22 @@ export const ApiRoutesLayer = Layer.mergeAll(
 	HttpApiScalar.layer(FundStatsApi, { path: "/api/docs" }),
 )
 
-const makeServer = () => {
-	const memoMap = Layer.makeMemoMapUnsafe()
-	const runtime = ManagedRuntime.make(ServicesLayer, { memoMap })
-	const api = HttpRouter.toWebHandler(
-		ApiRoutesLayer.pipe(Layer.provide(ServicesLayer), Layer.provide(HttpServer.layerServices)),
-		{ memoMap, disableLogger: true },
-	)
-	return {
-		runtime,
-		handleApi: (request: Request) => api.handler(request),
-		dispose: async () => {
-			await api.dispose()
-			await runtime.dispose()
-		},
-	}
-}
-
-export type Server = ReturnType<typeof makeServer>
-
-// One instance per process. Vite's dev server re-evaluates modules on change,
-// and several entry points import this file, so the instance lives on
-// globalThis to guarantee one pool. Server code changes in
-// dev therefore need a dev-server restart.
-const globalKey = Symbol.for("fundstats.server")
-type Global = typeof globalThis & { [globalKey]?: { server: Server; booted: Promise<void> } }
-
 /**
- * Returns the process-wide server, building it on first call: reads and
- * validates config and connects to Postgres. Rejects (and should crash the
- * process) if any of that fails.
+ * The API as a web handler that owns its services: it starts building them (config, the read-only
+ * pool, the schema check) at once, `ready` settles when that build does, and `dispose` closes them.
  */
-export const getServer = (): Promise<Server> => {
-	const g = globalThis as Global
-	if (!g[globalKey]) {
-		const server = makeServer()
-		const booted = server.runtime.runPromise(Effect.logInfo("FundStats server ready"))
-		g[globalKey] = { server, booted }
-		const shutdown = (signal: string) => {
-			void server.runtime
-				.runPromise(Effect.logInfo(`${signal} received, shutting down`))
-				.finally(() => server.dispose())
-				.finally(() => process.exit(0))
-		}
-		process.once("SIGTERM", () => shutdown("SIGTERM"))
-		process.once("SIGINT", () => shutdown("SIGINT"))
-	}
-	const { server, booted } = g[globalKey]
-	return booted.then(() => server)
+export const makeApi = () => {
+	const ready = Promise.withResolvers<void>()
+	const { handler, dispose } = HttpRouter.toWebHandler(
+		ApiRoutesLayer.pipe(
+			Layer.provide(ServicesLayer),
+			Layer.provide(HttpServer.layerServices),
+			Layer.tap(() => Effect.logInfo("FundStats server ready").pipe(Effect.andThen(Effect.sync(ready.resolve)))),
+			Layer.tapCause((cause) => Effect.sync(() => ready.reject(Cause.squash(cause)))),
+		),
+		{ disableLogger: true },
+	)
+	return { handler, dispose, ready: ready.promise }
 }
+
+export type Api = ReturnType<typeof makeApi>

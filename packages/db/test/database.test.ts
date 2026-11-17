@@ -336,6 +336,19 @@ layer(TestStorage, { excludeTestServices: true })("bounded waits and lost replie
 		),
 	)
 
+	it.effect("the pool does not start on a database without this schema", () =>
+		Effect.gen(function* () {
+			yield* queryElsewhere("drop database if exists unmigrated")
+			yield* queryElsewhere("create database unmigrated")
+			const url = new URL(testDatabaseUrl)
+			url.pathname = "/unmigrated"
+			const error = yield* Layer.build(
+				Layer.fresh(Database.layerReadOnly.pipe(Layer.provide(dbConfigOn(url.href)))),
+			).pipe(Effect.scoped, Effect.flip)
+			assert.match(errorText(error), /relation "collection_runs" does not exist/)
+		}),
+	)
+
 	it.effect("the read-only pool cannot write", () =>
 		Effect.gen(function* () {
 			yield* reset
