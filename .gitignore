@@ -1,16 +1,11 @@
 node_modules
-.DS_Store
-dist
-dist-ssr
-*.local
 .env
-.nitro
-.tanstack
-.wrangler
+# Vite's local env files (.env.local, .env.production.local)
+*.local
+# nitro build output
 .output
-.vinxi
-__unconfig*
-todos.json
+# TanStack Router generator scratch files
+.tanstack
 
 # Reference source for agents (bun run sync:repos)
 .repos/
