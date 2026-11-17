@@ -106,6 +106,7 @@ All settings are environment variables, read through Effect `Config`. An invalid
 | `COINGECKO_API_KEY`              | unset          | CoinGecko demo key; raises the rate limit                |
 | `CMC_API_KEY`                    | unset          | official CoinMarketCap API; without it the unofficial web endpoint is used |
 | `DB_POOL_MAX`                    | `10`           | positive integer                                         |
+| `DB_STATEMENT_TIMEOUT`           | `30 seconds`   | Postgres cancels a longer statement, lock waits included; at least 1 second (migrations are exempt) |
 | `RUN_MIGRATIONS`                 | `true`         | apply migrations on start                                |
 | `PORT` / `HOST`                  | `3000`/all     | inside the container                                     |
 | `FUNDSTATS_BIND` / `FUNDSTATS_PORT` | `127.0.0.1`/`3000` | compose.yaml only: host address and port the app is published on |

@@ -39,7 +39,12 @@ type E<A> = Effect.Effect<A, DatabaseError>
 
 /** The writes of one collection run. */
 export interface RunWriter {
-	readonly startRun: (source: string, trigger: string) => E<number>
+	/**
+	 * Reserves the id of a new run. The caller binds it before `startRun`
+	 * inserts the row, so the run can be closed even if the insert's reply is lost.
+	 */
+	readonly reserveRunId: E<number>
+	readonly startRun: (runId: number, source: string, trigger: string) => E<void>
 	readonly saveRawPayload: (runId: number, source: string, payload: unknown) => E<void>
 	/** Writes instruments and snapshots and marks the run successful, in one transaction. */
 	readonly persist: (input: PersistInput) => E<PersistResult>
@@ -82,20 +87,23 @@ export class Store extends Context.Service<
 			const database = yield* Database
 
 			const writer = (exec: Executor): RunWriter => ({
-				startRun: (source, trigger) => startRun(exec, source, trigger),
+				reserveRunId: reserveRunId(exec),
+				startRun: (runId, source, trigger) => startRun(exec, runId, source, trigger),
 				saveRawPayload: (runId, source, payload) => saveRawPayload(exec, runId, source, payload),
 				persist: (input) => persist(exec, input),
 			})
 
-			const startRun = (exec: Executor, source: string, trigger: string) =>
+			const reserveRunId = (exec: Executor) =>
 				exec
-					.use("startRun", (db) =>
-						db
-							.insert(collectionRuns)
-							.values({ source, trigger, status: "running" })
-							.returning({ id: collectionRuns.id }),
+					.use("reserveRunId", (db) =>
+						db.execute<{ id: number }>(sql`select nextval(pg_get_serial_sequence('collection_runs', 'id'))::int as id`),
 					)
-					.pipe(Effect.map(([row]) => row.id))
+					.pipe(Effect.map((result) => result.rows[0].id))
+
+			const startRun = (exec: Executor, runId: number, source: string, trigger: string) =>
+				exec
+					.use("startRun", (db) => db.insert(collectionRuns).values({ id: runId, source, trigger, status: "running" }))
+					.pipe(Effect.asVoid)
 
 			const failRun = (runId: number, error: string) =>
 				database

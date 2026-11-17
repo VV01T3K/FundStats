@@ -14,6 +14,17 @@ const Interval = Schema.DurationFromString.check(
 	),
 )
 
+/** Shortest accepted statement timeout; anything lower would cancel ordinary queries. */
+export const MIN_STATEMENT_TIMEOUT = Duration.seconds(1)
+
+const StatementTimeout = Schema.DurationFromString.check(
+	Schema.makeFilter((d: Duration.Duration) =>
+		Duration.isFinite(d) && Duration.isGreaterThanOrEqualTo(d, MIN_STATEMENT_TIMEOUT)
+			? true
+			: `must be a finite duration of at least ${Duration.format(MIN_STATEMENT_TIMEOUT)}`,
+	),
+)
+
 /**
  * All environment configuration, read once through Effect Config when the
  * runtime is built. A missing or malformed value fails the boot with a
@@ -24,6 +35,8 @@ export class AppConfig extends Context.Service<
 	{
 		readonly databaseUrl: Redacted.Redacted<string>
 		readonly dbPoolMax: number
+		/** Postgres cancels any statement (lock waits included) that runs longer. */
+		readonly dbStatementTimeout: Duration.Duration
 		readonly runMigrations: boolean
 		readonly migrationsDir: string
 		readonly collectorEnabled: boolean
@@ -40,6 +53,9 @@ export class AppConfig extends Context.Service<
 			const base = yield* Config.all({
 				databaseUrl: Config.Redacted("DATABASE_URL"),
 				dbPoolMax: Config.schema(PositiveInt, "DB_POOL_MAX").pipe(Config.withDefault(10)),
+				dbStatementTimeout: Config.schema(StatementTimeout, "DB_STATEMENT_TIMEOUT").pipe(
+					Config.withDefault(Duration.seconds(30)),
+				),
 				runMigrations: Config.Boolean("RUN_MIGRATIONS").pipe(Config.withDefault(true)),
 				migrationsDir: Config.String("MIGRATIONS_DIR").pipe(Config.withDefault("./drizzle")),
 				collectorEnabled: Config.Boolean("COLLECTOR_ENABLED").pipe(Config.withDefault(true)),

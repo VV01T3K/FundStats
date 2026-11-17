@@ -63,16 +63,11 @@ export class Collector extends Context.Service<
 						.withSourceLock(id, (lock) =>
 							Effect.gen(function* () {
 								const writer = store.writer(lock)
-								// Creating the row and binding its id is one uninterruptible step;
-								// an interruption in between would leave a row nobody closes.
-								const runId = yield* writer.startRun(id, trigger).pipe(
-									Effect.tap((created) =>
-										Effect.sync(() => {
-											openRun = created
-										}),
-									),
-									Effect.uninterruptible,
-								)
+								// The id is bound before the row is inserted, so a failure can close
+								// the row however the insert ends (even with its reply lost).
+								const runId = yield* writer.reserveRunId
+								openRun = runId
+								yield* writer.startRun(runId, id, trigger)
 								const capturedAt = new Date()
 								const raw = yield* source.fetch
 								// Stored before decoding, so a changed upstream shape can be inspected and replayed.

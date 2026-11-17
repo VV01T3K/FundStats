@@ -3,6 +3,8 @@
  * test/setup/postgres.ts). Upstreams are replaced by an HttpClient that
  * answers with the saved fixtures; nothing here touches the network.
  */
+
+import net from "node:net"
 import { assert, layer } from "@effect/vitest"
 import { sql } from "drizzle-orm"
 import { ConfigProvider, Effect, Fiber, Layer } from "effect"
@@ -108,6 +110,15 @@ const holdLockElsewhere = (source: string) =>
 const writer = Effect.gen(function* () {
 	return (yield* Store).writer(yield* Database)
 })
+
+/** Creates a run row the way the collector does: reserve the id, then insert. */
+const startRun = (source: string, trigger: string) =>
+	Effect.gen(function* () {
+		const w = yield* writer
+		const runId = yield* w.reserveRunId
+		yield* w.startRun(runId, source, trigger)
+		return runId
+	})
 
 /** Real time; the tests run on TestClock, which Effect.sleep would wait for. */
 const sleepReal = (ms: number) => Effect.promise(() => new Promise<void>((resolve) => setTimeout(resolve, ms)))
@@ -307,8 +318,8 @@ layer(TestServices)("concurrent and stalled collections", (it) => {
 		Effect.gen(function* () {
 			yield* reset
 			const store = yield* Store
-			const older = yield* (yield* writer).startRun("coingecko", "test")
-			const newer = yield* (yield* writer).startRun("coingecko", "test")
+			const older = yield* startRun("coingecko", "test")
+			const newer = yield* startRun("coingecko", "test")
 			const rows = [row("a", null, 1), row("b", null, 2)]
 			yield* (yield* writer).persist({
 				source: "coingecko",
@@ -332,7 +343,7 @@ layer(TestServices)("concurrent and stalled collections", (it) => {
 		Effect.gen(function* () {
 			yield* reset
 			const store = yield* Store
-			const first = yield* (yield* writer).startRun("mbank", "test")
+			const first = yield* startRun("mbank", "test")
 			yield* (yield* writer).persist({
 				source: "mbank",
 				kind: "fund",
@@ -340,7 +351,7 @@ layer(TestServices)("concurrent and stalled collections", (it) => {
 				capturedAt: new Date("2026-11-16T12:00:00Z"),
 				rows: [row("f", "2026-11-16", 10)],
 			})
-			const second = yield* (yield* writer).startRun("mbank", "test")
+			const second = yield* startRun("mbank", "test")
 			yield* (yield* writer).persist({
 				source: "mbank",
 				kind: "fund",
@@ -386,8 +397,8 @@ layer(TestServices)("concurrent and stalled collections", (it) => {
 		Effect.gen(function* () {
 			yield* reset
 			const store = yield* Store
-			const abandoned = yield* (yield* writer).startRun("mbank", "cli")
-			const live = yield* (yield* writer).startRun("coinpaprika", "cli")
+			const abandoned = yield* startRun("mbank", "cli")
+			const live = yield* startRun("coinpaprika", "cli")
 			const closed = yield* Effect.scoped(
 				Effect.gen(function* () {
 					yield* holdLockElsewhere("coinpaprika")
@@ -404,7 +415,7 @@ layer(TestServices)("concurrent and stalled collections", (it) => {
 		Effect.gen(function* () {
 			yield* reset
 			const store = yield* Store
-			const runId = yield* (yield* writer).startRun("coingecko", "cli")
+			const runId = yield* startRun("coingecko", "cli")
 			yield* store.failRun(runId, "Interrupted (app stopped during the run)")
 			yield* (yield* writer).persist({
 				source: "coingecko",
@@ -429,8 +440,10 @@ layer(TestServices)("losing the lock or the fiber mid-run", (it) => {
 			try {
 				const fiber = yield* collector.runOnce("coingecko", "test").pipe(Effect.flip, Effect.forkChild)
 				yield* waitFor(
-					"the run to hold its lock",
-					queryElsewhere(SOURCE_LOCK_HOLDERS).pipe(Effect.map((rows) => rows.length === 1)),
+					"the run to hold its lock and wait on its upstream",
+					Effect.all([queryElsewhere(SOURCE_LOCK_HOLDERS), queryElsewhere("select 1 from collection_runs")]).pipe(
+						Effect.map(([holders, runs]) => holders.length === 1 && runs.length === 1),
+					),
 				)
 				// The run waits on its upstream; its lock connection is killed meanwhile.
 				yield* terminateLockHolders
@@ -614,7 +627,7 @@ layer(TestServices)("losing the lock or the fiber mid-run", (it) => {
 		Effect.gen(function* () {
 			yield* reset
 			const store = yield* Store
-			const runId = yield* (yield* writer).startRun("coingecko", "test")
+			const runId = yield* startRun("coingecko", "test")
 			yield* (yield* writer).persist({
 				source: "coingecko",
 				kind: "crypto",
@@ -626,6 +639,178 @@ layer(TestServices)("losing the lock or the fiber mid-run", (it) => {
 			assert.deepStrictEqual(yield* runStatus(runId), { status: "success", error: null })
 			assert.strictEqual((yield* store.latest("coingecko")).length, 1)
 		}),
+	)
+})
+
+/**
+ * A TCP proxy in front of the test Postgres that can lose replies: once a
+ * client sends a query containing `pattern`, Postgres still gets it, but its
+ * replies on that connection never reach the client ("withhold"), and with
+ * "drop" the connection is then cut.
+ */
+const replyLosingProxy = Effect.acquireRelease(
+	Effect.promise(
+		() =>
+			new Promise<{
+				url: string
+				loseRepliesAfter: (pattern: string, then: "withhold" | "drop") => void
+				triggered: () => boolean
+				close: () => Promise<void>
+			}>((resolve) => {
+				const target = new URL(inject("databaseUrl"))
+				let rule: { pattern: string; then: "withhold" | "drop" } | undefined
+				let fired = false
+				const sockets = new Set<net.Socket>()
+				const server = net.createServer((client) => {
+					const upstream = net.connect(Number(target.port), target.hostname)
+					sockets.add(client).add(upstream)
+					let withheld = false
+					client.on("data", (chunk) => {
+						if (rule && chunk.toString("latin1").includes(rule.pattern)) {
+							const { then } = rule
+							rule = undefined
+							withheld = true
+							fired = true
+							if (then === "drop") setTimeout(() => client.destroy(), 300)
+						}
+						upstream.write(chunk)
+					})
+					upstream.on("data", (chunk) => {
+						if (!withheld) client.write(chunk)
+					})
+					client.on("close", () => upstream.destroy())
+					upstream.on("close", () => client.destroy())
+					client.on("error", () => upstream.destroy())
+					upstream.on("error", () => client.destroy())
+				})
+				server.listen(0, "127.0.0.1", () => {
+					const url = new URL(target)
+					url.hostname = "127.0.0.1"
+					url.port = String((server.address() as net.AddressInfo).port)
+					resolve({
+						url: url.toString(),
+						close: () =>
+							new Promise<void>((done) => {
+								for (const socket of sockets) socket.destroy()
+								server.close(() => done())
+							}),
+						loseRepliesAfter: (pattern, then) => {
+							rule = { pattern, then }
+						},
+						triggered: () => fired,
+					})
+				})
+			}),
+	),
+	(proxy) => Effect.promise(proxy.close),
+)
+
+/**
+ * The collector's services on `url`, with a 1 second statement timeout and one
+ * pooled connection. Fresh, so the shared test layer's instances are not reused.
+ */
+const servicesOn = (url: string) =>
+	Layer.fresh(
+		Collector.layerNoDeps.pipe(
+			Layer.provide(FixtureHttpClient),
+			Layer.provideMerge(Store.layer),
+			Layer.provideMerge(Database.layer),
+			Layer.provideMerge(
+				AppConfig.layer.pipe(
+					Layer.provide(
+						ConfigProvider.layer(
+							ConfigProvider.fromEnvRecord({
+								DATABASE_URL: url,
+								COLLECTOR_ENABLED: "false",
+								DB_POOL_MAX: "1",
+								DB_STATEMENT_TIMEOUT: "1 second",
+							}),
+						),
+					),
+				),
+			),
+		),
+	)
+
+// Real clock: these tests wait on real timeouts.
+layer(TestServices, { excludeTestServices: true })("bounded waits and lost replies", (it) => {
+	it.effect("a statement blocked past DB_STATEMENT_TIMEOUT fails instead of waiting forever", () =>
+		Effect.gen(function* () {
+			yield* reset
+			const result = yield* Effect.gen(function* () {
+				const database = yield* Database
+				// The single pooled connection also ran the migrations, which lift the timeout.
+				const shown = yield* database.use("show", (db) =>
+					db.execute<{ statement_timeout: string }>(sql`show statement_timeout`),
+				)
+				assert.strictEqual(shown.rows[0].statement_timeout, "1s")
+				const blocker = new pg.Client({ connectionString: inject("databaseUrl") })
+				yield* Effect.promise(async () => {
+					await blocker.connect()
+					await blocker.query("begin")
+					await blocker.query("lock table collection_runs in share mode")
+				})
+				const started = Date.now()
+				const error = yield* database
+					.use("insert", (db) =>
+						db.insert(collectionRuns).values({ source: "mbank", trigger: "test", status: "running" }),
+					)
+					.pipe(Effect.flip, Effect.ensuring(Effect.promise(() => blocker.end())))
+				return { error, waited: Date.now() - started }
+			}).pipe(Effect.provide(servicesOn(inject("databaseUrl"))))
+			// Drizzle wraps the Postgres error; its message names the reason.
+			assert.match(String((result.error.cause as { cause?: unknown }).cause), /statement timeout/)
+			assert.isBelow(result.waited, 5_000)
+			assert.strictEqual(yield* count("collection_runs"), 0)
+		}),
+	)
+
+	it.effect("interrupting a query whose reply never arrives finishes in bounded time", () =>
+		Effect.scoped(
+			Effect.gen(function* () {
+				const proxy = yield* replyLosingProxy
+				yield* Effect.gen(function* () {
+					const database = yield* Database
+					proxy.loseRepliesAfter("withheld reply", "withhold")
+					const fiber = yield* database
+						.use("withheld", (db) => db.execute(sql`select 'withheld reply' as marker`))
+						.pipe(Effect.forkChild)
+					yield* waitFor("the query to reach Postgres", Effect.sync(proxy.triggered))
+					const started = Date.now()
+					const interrupter = yield* Fiber.interrupt(fiber).pipe(Effect.forkChild)
+					// Statement timeout (1 s) plus the reply grace (5 s), with room to spare.
+					yield* waitFor(
+						"the interruption to finish",
+						Effect.sync(() => interrupter.pollUnsafe() !== undefined),
+						10_000,
+					)
+					assert.isAtLeast(Date.now() - started, 5_000, "it waited for the reply first")
+				}).pipe(
+					// Cut the frozen connection before the pool closes, or closing it would wait for that query.
+					Effect.ensuring(Effect.promise(proxy.close)),
+					Effect.provide(servicesOn(proxy.url)),
+				)
+			}),
+		),
+	)
+
+	it.effect("a run whose insert reply is lost is still closed as failed", () =>
+		Effect.scoped(
+			Effect.gen(function* () {
+				yield* reset
+				const proxy = yield* replyLosingProxy
+				const error = yield* Effect.gen(function* () {
+					const collector = yield* Collector
+					// Postgres commits the run row; the reply is lost and the connection cut.
+					proxy.loseRepliesAfter('insert into "collection_runs"', "drop")
+					return yield* collector.runOnce("coingecko", "test").pipe(Effect.flip)
+				}).pipe(Effect.provide(servicesOn(proxy.url)))
+				assert.strictEqual(error._tag, "DatabaseError")
+				assert.isTrue(proxy.triggered())
+				const runs = yield* queryElsewhere<{ status: string }>("select status from collection_runs")
+				assert.deepStrictEqual(runs, [{ status: "failed" }])
+			}),
+		),
 	)
 })
 

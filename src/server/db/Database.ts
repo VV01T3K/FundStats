@@ -1,6 +1,6 @@
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres"
 import { migrate } from "drizzle-orm/node-postgres/migrator"
-import { Context, Deferred, Effect, Exit, Layer, Redacted, Schema } from "effect"
+import { Context, Deferred, Duration, Effect, Exit, Layer, Redacted, Schema } from "effect"
 import pg from "pg"
 import { AppConfig } from "../config.ts"
 import * as schema from "./schema.ts"
@@ -42,13 +42,21 @@ export interface Executor {
 /**
  * Runs a promise that cannot be cancelled. An interruption aborts `signal`
  * and then waits for the promise to settle, so the database work it started
- * has finished (committed or rolled back) before the fiber ends.
+ * has normally finished (committed or rolled back) before the fiber ends.
+ * The wait is bounded by `maxWait`: Postgres cancels a statement after the
+ * statement timeout, so only a reply that never arrives (a dead network)
+ * outlasts it. Giving up then is safe: run status only changes from
+ * `running`, and the transaction's row lock orders it against that change.
  *
  * Drizzle queries are lazy thenables that execute on every `then`, so `run`'s
  * result is adopted into one native promise, started exactly once, and only
  * that promise is observed.
  */
-const settled = <A>(operation: string, run: (signal: AbortSignal) => PromiseLike<A>): Effect.Effect<A, DatabaseError> =>
+const settled = <A>(
+	operation: string,
+	maxWait: Duration.Duration,
+	run: (signal: AbortSignal) => PromiseLike<A>,
+): Effect.Effect<A, DatabaseError> =>
 	Effect.callback<A, DatabaseError>((resume) => {
 		const controller = new AbortController()
 		const promise = new Promise<A>((resolve) => resolve(run(controller.signal)))
@@ -62,23 +70,29 @@ const settled = <A>(operation: string, run: (signal: AbortSignal) => PromiseLike
 				() => undefined,
 				() => undefined,
 			)
-		})
+		}).pipe(Effect.timeoutOption(maxWait), Effect.asVoid)
 	})
 
 class RolledBack extends Error {}
 
-const makeExecutor = (db: Db): Executor => ({
-	use: (operation, f) => settled(operation, () => f(db)).pipe(Effect.withSpan(`db.${operation}`)),
-	transaction: (operation, f) =>
-		settled(operation, (signal) =>
-			db.transaction(async (tx) => {
-				const result = await f(tx)
-				// Interrupted while the statements ran: roll back instead of committing.
-				if (signal.aborted) throw new RolledBack(`${operation} was interrupted and rolled back`)
-				return result
-			}),
-		).pipe(Effect.withSpan(`db.${operation}`)),
-})
+/** How long an interruption waits past the statement timeout for a reply. */
+const REPLY_GRACE = Duration.seconds(5)
+
+const makeExecutor = (db: Db, statementTimeout: Duration.Duration): Executor => {
+	const maxWait = Duration.sum(statementTimeout, REPLY_GRACE)
+	return {
+		use: (operation, f) => settled(operation, maxWait, () => f(db)).pipe(Effect.withSpan(`db.${operation}`)),
+		transaction: (operation, f) =>
+			settled(operation, maxWait, (signal) =>
+				db.transaction(async (tx) => {
+					const result = await f(tx)
+					// Interrupted while the statements ran: roll back instead of committing.
+					if (signal.aborted) throw new RolledBack(`${operation} was interrupted and rolled back`)
+					return result
+				}),
+			).pipe(Effect.withSpan(`db.${operation}`)),
+	}
+}
 
 /**
  * The Drizzle client over a pg connection pool. The pool is opened when the
@@ -111,14 +125,14 @@ export class Database extends Context.Service<
 		Database,
 		Effect.gen(function* () {
 			const config = yield* AppConfig
+			// Every connection, pooled or holding a source lock, gets the statement
+			// timeout, so a statement blocked on a lock fails instead of waiting forever.
+			const connection = {
+				connectionString: Redacted.value(config.databaseUrl),
+				statement_timeout: Duration.toMillis(config.dbStatementTimeout),
+			}
 			const pool = yield* Effect.acquireRelease(
-				Effect.sync(
-					() =>
-						new pg.Pool({
-							connectionString: Redacted.value(config.databaseUrl),
-							max: config.dbPoolMax,
-						}),
-				),
+				Effect.sync(() => new pg.Pool({ ...connection, max: config.dbPoolMax })),
 				(pool) => Effect.promise(() => pool.end()),
 			)
 			// An idle client error (e.g. Postgres restarted) must not crash the process.
@@ -145,7 +159,7 @@ export class Database extends Context.Service<
 				Effect.acquireUseRelease(
 					Effect.tryPromise({
 						try: async () => {
-							const client = new pg.Client({ connectionString: Redacted.value(config.databaseUrl) })
+							const client = new pg.Client(connection)
 							const lost = Deferred.makeUnsafe<never, DatabaseError>()
 							let releasing = false
 							const onLost = (reason: string, cause?: unknown) => {
@@ -187,7 +201,10 @@ export class Database extends Context.Service<
 					}),
 					({ client, lost, locked }): Effect.Effect<A, E | SourceBusy | DatabaseError, R> =>
 						locked
-							? Effect.raceFirst(f(makeExecutor(drizzle(client, { schema }))), Deferred.await(lost))
+							? Effect.raceFirst(
+									f(makeExecutor(drizzle(client, { schema }), config.dbStatementTimeout)),
+									Deferred.await(lost),
+								)
 							: Effect.fail(
 									new SourceBusy({
 										source,
@@ -200,7 +217,7 @@ export class Database extends Context.Service<
 
 			return Database.of({
 				withSourceLock,
-				...makeExecutor(db),
+				...makeExecutor(db, config.dbStatementTimeout),
 			})
 		}),
 	)
@@ -218,10 +235,14 @@ export const runMigrations = (pool: pg.Pool, dir: string) =>
 		try: async () => {
 			const client = await pool.connect()
 			try {
+				// Waiting for another process's migrations, or a long migration, is fine.
+				await client.query("set statement_timeout = 0")
 				await client.query("select pg_advisory_lock($1)", [MIGRATION_LOCK_ID])
 				await migrate(drizzle(client), { migrationsFolder: dir })
 			} finally {
 				await client.query("select pg_advisory_unlock($1)", [MIGRATION_LOCK_ID]).catch(() => {})
+				// Back to the connection's own statement timeout before it returns to the pool.
+				await client.query("reset statement_timeout").catch(() => {})
 				client.release()
 			}
 		},

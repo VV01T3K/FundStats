@@ -33,6 +33,16 @@ describe("config validation", () => {
 		}),
 	)
 
+	it.effect("reads DB_STATEMENT_TIMEOUT, 30 seconds by default", () =>
+		Effect.gen(function* () {
+			assert.strictEqual(Duration.toMillis((yield* load({})).dbStatementTimeout), 30_000)
+			assert.strictEqual(
+				Duration.toMillis((yield* load({ DB_STATEMENT_TIMEOUT: "5 seconds" })).dbStatementTimeout),
+				5_000,
+			)
+		}),
+	)
+
 	it.effect("treats an empty interval as unset, as compose.yaml passes it", () =>
 		Effect.gen(function* () {
 			const config = yield* load({ COLLECTOR_INTERVAL_MBANK: "" })
@@ -45,6 +55,10 @@ describe("config validation", () => {
 		["DB_POOL_MAX", "-3"],
 		["RAW_PAYLOAD_RETENTION_DAYS", "0"],
 		["RAW_PAYLOAD_RETENTION_DAYS", "-1"],
+		["DB_STATEMENT_TIMEOUT", "0 seconds"],
+		["DB_STATEMENT_TIMEOUT", "500 millis"],
+		["DB_STATEMENT_TIMEOUT", "-5 seconds"],
+		["DB_STATEMENT_TIMEOUT", "Infinity"],
 	] as const) {
 		it.effect(`rejects ${name}=${value}`, () =>
 			Effect.gen(function* () {
