@@ -117,9 +117,7 @@ export class Store extends Context.Service<
 							limit 1
 						) s on true
 						where i.source = ${source}
-						  -- Run ids grow in start order and persist never moves last_seen_run_id
-						  -- backwards, so the highest successful id is the run instruments point at,
-						  -- whatever order overlapping runs finished in.
+						  -- A source's runs never overlap (its source lock), so its newest successful run is the last persist.
 						  and i.last_seen_run_id = (
 							select id from ${collectionRuns}
 							where source = ${source} and status = 'success'

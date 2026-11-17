@@ -4,7 +4,6 @@ import type { NormalizedRow } from "@fundstats/db/RunStore"
 import { RunStore } from "@fundstats/db/RunStore"
 import { Store } from "@fundstats/db/Store"
 import { capturedAt, reset, startRun, TestStorage, writer } from "@fundstats/db/test/support"
-import type { InstrumentKind } from "@fundstats/shared/sources"
 import * as DateTime from "effect/DateTime"
 import * as Effect from "effect/Effect"
 import { HttpRouter, HttpServer } from "effect/http"
@@ -28,10 +27,10 @@ const instrument = (externalId: string, asOf: string | null, metrics: Record<str
 })
 
 /** Records one successful run of `source` with `rows`, the way the collector does. */
-const collected = (source: string, kind: InstrumentKind, rows: ReadonlyArray<NormalizedRow>) =>
+const collected = (source: string, rows: ReadonlyArray<NormalizedRow>) =>
 	Effect.gen(function* () {
 		const runId = yield* startRun(source, "test")
-		yield* (yield* writer).persist({ source, kind, runId, capturedAt: capturedAt(), rows })
+		yield* (yield* writer).persist({ source, runId, capturedAt: capturedAt(), rows })
 	})
 
 layer(ApiTest)("HTTP API", (it) => {
@@ -49,12 +48,12 @@ layer(ApiTest)("HTTP API", (it) => {
 	it.effect("serves the latest snapshot, source list, history and health from the database", () =>
 		Effect.gen(function* () {
 			yield* reset
-			yield* collected("mbank", "fund", [
+			yield* collected("mbank", [
 				instrument("a", "2026-11-16", { change_1m: 1.5 }),
 				instrument("b", "2026-11-16", { change_1m: -2 }),
 				instrument("c", "2026-11-16", { change_1m: 0.5 }),
 			])
-			yield* collected("coinmarketcap", "crypto", [
+			yield* collected("coinmarketcap", [
 				instrument("x", null, { rank: 3 }),
 				instrument("y", null, { rank: 1 }),
 				instrument("z", null, { rank: 4 }),
@@ -94,6 +93,10 @@ layer(ApiTest)("HTTP API", (it) => {
 			const history = yield* call(`/api/v1/sources/mbank/instruments/${externalId}/history?limit=10`)
 			assert.strictEqual(history.status, 200)
 			assert.strictEqual(history.json.points.length, 1)
+			for (const limit of ["0", "5001", "ten"]) {
+				const rejected = yield* call(`/api/v1/sources/mbank/instruments/${externalId}/history?limit=${limit}`)
+				assert.strictEqual(rejected.status, 400, `limit=${limit}`)
+			}
 
 			assert.strictEqual((yield* call("/api/v1/sources/nope/latest")).status, 404)
 			assert.strictEqual((yield* call("/api/v1/sources/mbank/instruments/nope/history")).status, 404)

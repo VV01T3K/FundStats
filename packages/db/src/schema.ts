@@ -46,7 +46,6 @@ export const rawPayloads = pgTable(
 		runId: integer("run_id")
 			.notNull()
 			.references(() => collectionRuns.id, { onDelete: "cascade" }),
-		source: text("source").notNull(),
 		fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
 		payload: jsonb("payload").notNull(),
 	},
@@ -62,7 +61,6 @@ export const instruments = pgTable(
 		externalId: text("external_id").notNull(),
 		name: text("name").notNull(),
 		symbol: text("symbol"),
-		kind: text("kind", { enum: ["fund", "crypto"] }).notNull(),
 		category: text("category"),
 		currency: text("currency"),
 		metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
@@ -70,8 +68,6 @@ export const instruments = pgTable(
 		lastSeenRunId: integer("last_seen_run_id").references(() => collectionRuns.id, {
 			onDelete: "set null",
 		}),
-		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-		updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 	},
 	(t) => [
 		uniqueIndex("instruments_source_external_idx").on(t.source, t.externalId),
@@ -114,5 +110,4 @@ export const sourceSchedules = pgTable("source_schedules", {
 	source: text("source").primaryKey(),
 	intervalSeconds: integer("interval_seconds").notNull(),
 	enabled: boolean("enabled").notNull(),
-	updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 })
