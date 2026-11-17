@@ -30,10 +30,10 @@ src/
     collector/       runs sources once, or on a schedule as background fibers
     api/             HttpApi handlers
     runtime.ts       composition root: one ManagedRuntime + the /api web handler
+    boot.ts          Nitro plugin: boots the runtime at process start, exits 1 on failure
     cli/             `bun run collect`, `bun run db:migrate`
   web/             React side: typed API client, table configs, components
   routes/          TanStack Router file routes; routes/api/$.ts mounts the Effect API
-  server.ts        server entry: boots the runtime before serving requests
 drizzle/           generated SQL migrations
 test/              tests and saved upstream fixtures
 ```
@@ -80,7 +80,7 @@ database instead of a container, set `TEST_DATABASE_URL` (the tests truncate its
 waits until the database is healthy.
 
 ```sh
-cp .env.example .env     # set POSTGRES_PASSWORD; optionally FUNDSTATS_PORT, API keys, intervals
+cp .env.example .env     # set POSTGRES_PASSWORD; optionally FUNDSTATS_BIND/PORT, API keys, intervals
 docker compose up -d --build
 docker compose logs -f app
 ```
@@ -89,7 +89,8 @@ The app applies migrations when it starts. To update, pull and run `docker compo
 is not published on the host. To back it up, run
 `docker compose exec db pg_dump -U fundstats fundstats > backup.sql`.
 
-Put a reverse proxy (Caddy, nginx, Traefik) in front of it for TLS.
+The app is published on `127.0.0.1:${FUNDSTATS_PORT:-3000}` only. Put a reverse proxy (Caddy, nginx, Traefik) on
+the same host in front of it for TLS, or set `FUNDSTATS_BIND=0.0.0.0` to expose the port on every interface.
 
 ### Configuration
 
@@ -100,16 +101,22 @@ All settings are environment variables, read through Effect `Config`. An invalid
 | -------------------------------- | -------------- | -------------------------------------------------------- |
 | `DATABASE_URL`                   | required       | compose.yaml builds it from `POSTGRES_PASSWORD`          |
 | `COLLECTOR_ENABLED`              | `true`         | `false` = never call upstreams                           |
-| `COLLECTOR_INTERVAL_<SOURCE>`    | see below      | e.g. `COLLECTOR_INTERVAL_MBANK=6 hours`                  |
-| `RAW_PAYLOAD_RETENTION_DAYS`     | `30`           | stored upstream responses older than this are deleted daily |
+| `COLLECTOR_INTERVAL_<SOURCE>`    | see below      | e.g. `COLLECTOR_INTERVAL_MBANK=6 hours`; at least 1 minute |
+| `RAW_PAYLOAD_RETENTION_DAYS`     | `30`           | positive integer; stored upstream responses older than this are deleted daily |
 | `COINGECKO_API_KEY`              | unset          | CoinGecko demo key; raises the rate limit                |
 | `CMC_API_KEY`                    | unset          | official CoinMarketCap API; without it the unofficial web endpoint is used |
-| `DB_POOL_MAX`                    | `10`           |                                                          |
+| `DB_POOL_MAX`                    | `10`           | positive integer                                         |
 | `RUN_MIGRATIONS`                 | `true`         | apply migrations on start                                |
-| `PORT` / `HOST`                  | `3000`/all     |                                                          |
+| `PORT` / `HOST`                  | `3000`/all     | inside the container                                     |
+| `FUNDSTATS_BIND` / `FUNDSTATS_PORT` | `127.0.0.1`/`3000` | compose.yaml only: host address and port the app is published on |
 
 Default intervals: mBank every 6 hours (its feed changes once per business day), crypto sources every 30 minutes.
 After a failed run, the next attempt comes within 10 minutes.
+
+One source is collected by one process at a time: a run holds a Postgres advisory lock for its source until its
+data is stored. A `bun run collect` while the app is collecting that source (or the other way round) skips it and
+says so (`SKIPPED`, exit status 1). At boot the app closes runs left `running` only when their source's lock is
+free, so a run still going in another process is left alone.
 
 ## Data model
 
@@ -144,9 +151,11 @@ in-process, without an HTTP round trip.
 ## Add a source
 
 1. Add its display metadata to `SOURCES` in `src/shared/sources.ts`.
-2. Create `src/server/sources/<id>.ts` with `defineSource({ info, defaultInterval, fetch, normalize })`:
-   - `fetch`: build the request and call `fetchJson(id, request, Schema)`. You get timeouts, retries with backoff
-     and typed errors from that helper.
+2. Create `src/server/sources/<id>.ts` with `defineSource({ info, defaultInterval, fetch, payload, normalize })`:
+   - `fetch`: build the request and call `fetchJson(id, request)`. You get a timeout per attempt (body
+     included), retries with backoff and typed errors from that helper. It returns the JSON undecoded.
+   - `payload`: the Schema for that JSON. The collector stores the JSON first and decodes it after, so a changed
+     upstream shape fails the run but keeps the response.
    - `normalize`: a pure function from the decoded payload to `NormalizedRow[]`. Use the metric names in
      `src/shared/metrics.ts`; add a new one there if needed.
 3. Register it in `src/server/sources/registry.ts`.
