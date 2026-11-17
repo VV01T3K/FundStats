@@ -4,6 +4,7 @@
  */
 import * as NodeNet from "node:net"
 
+import * as BunFileSystem from "@effect/platform-bun/BunFileSystem"
 import * as PgClient from "@effect/sql-pg/PgClient"
 import { assert } from "@effect/vitest"
 import { sql } from "drizzle-orm"
@@ -14,6 +15,7 @@ import * as ConfigProvider from "effect/ConfigProvider"
 import * as DateTime from "effect/DateTime"
 import * as Effect from "effect/Effect"
 import type * as Fiber from "effect/Fiber"
+import * as FileSystem from "effect/FileSystem"
 import * as Layer from "effect/Layer"
 import * as Reactivity from "effect/reactivity/Reactivity"
 import * as Redacted from "effect/Redacted"
@@ -226,6 +228,21 @@ export const runStatus = (id: number) =>
  * replies on that connection never reach the client ("withhold"), and with
  * "drop" the connection is then cut.
  */
+/**
+ * Whether the kernel has a keepalive timer armed on each of this process's established TCP connections to
+ * `port` (Linux /proc/net/tcp: state 01, timer 02). An idle connection without keepalive shows timer 00.
+ */
+export const keepAliveOfConnectionsTo = Effect.fn("test.keepAliveOfConnectionsTo")(function* (port: number) {
+	const fs = yield* FileSystem.FileSystem
+	const remote = `:${port.toString(16).toUpperCase().padStart(4, "0")}`
+	const tables = yield* Effect.forEach(["/proc/self/net/tcp", "/proc/self/net/tcp6"], (file) => fs.readFileString(file))
+	return tables
+		.flatMap((table) => table.split("\n").slice(1))
+		.map((line) => line.trim().split(/\s+/))
+		.filter(([, , rem, state]) => rem?.endsWith(remote) && state === "01")
+		.map(([, , , , , timer]) => timer?.startsWith("02:") ?? false)
+}, Effect.provide(BunFileSystem.layer))
+
 /** The Postgres ReadyForQuery message for an idle session: `Z`, length 5, status `I`. */
 const READY_FOR_QUERY = "Z\0\0\0\x05I"
 

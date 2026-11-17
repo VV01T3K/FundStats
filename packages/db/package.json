@@ -19,6 +19,7 @@
 		"effect": "catalog:"
 	},
 	"devDependencies": {
+		"@effect/platform-bun": "catalog:",
 		"@effect/vitest": "catalog:",
 		"@testcontainers/postgresql": "catalog:",
 		"@types/bun": "catalog:",

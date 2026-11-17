@@ -22,6 +22,7 @@ import {
 	errorText,
 	dbConfigOn,
 	holdLockElsewhere,
+	keepAliveOfConnectionsTo,
 	queryElsewhere,
 	replyLosingProxy,
 	reset,
@@ -137,7 +138,7 @@ layer(TestStorage)("runs and the latest view", (it) => {
 		}),
 	)
 
-	it.effect("a run that succeeds clears an earlier error", () =>
+	it.effect("a committed persist marks its run successful and clears an earlier failure", () =>
 		Effect.gen(function* () {
 			yield* reset
 			const runs = yield* RunStore
@@ -301,6 +302,22 @@ layer(TestStorage, { excludeTestServices: true })("bounded waits and lost replie
 					Effect.ensuring(Effect.promise(proxy.close)),
 					Effect.provide(storageWithShortTimeout(proxy.url)),
 				)
+			}),
+		),
+	)
+
+	it.effect("pooled and lock sessions probe their peer, so a vanished server fails a pending COMMIT", () =>
+		Effect.scoped(
+			Effect.gen(function* () {
+				const proxy = yield* replyLosingProxy
+				// Every connection to the proxy's port is one this storage opened.
+				const port = Number(new URL(proxy.url).port)
+				const probed = yield* Effect.gen(function* () {
+					yield* (yield* Database).execute(sql`select 1`)
+					return yield* (yield* SourceLocks).withSourceLock("coingecko", () => keepAliveOfConnectionsTo(port))
+				}).pipe(Effect.provide(storageWithShortTimeout(proxy.url)))
+				// The pool's connection and the lock's own session.
+				assert.deepStrictEqual(probed, [true, true])
 			}),
 		),
 	)

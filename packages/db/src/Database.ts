@@ -30,6 +30,9 @@ export const clientOptions = (
 	url: config.databaseUrl,
 	// One statement at a time per session, so interrupting one can cancel it.
 	multiplex: false,
+	// TCP keepalive fails a session whose peer vanished while we await a reply, e.g. a lost COMMIT ack,
+	// which nothing else can end: COMMIT is uninterruptible. A live peer that answers probes is not covered.
+	keepAlive: Duration.seconds(10),
 	startupParameters: {
 		statement_timeout: String(Duration.toMillis(settings.statementTimeout ?? config.dbStatementTimeout)),
 		...(settings.readOnly ? { default_transaction_read_only: "on" } : {}),
