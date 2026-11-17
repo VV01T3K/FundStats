@@ -19,16 +19,6 @@ const EFFECT_RUNTIME_METHODS = new Set([
 	"runSyncWith",
 ])
 
-const readMaxOccurrences = (options: ReadonlyArray<unknown>): number => {
-	const [first] = options
-	return typeof first === "object" &&
-		first !== null &&
-		"maxOccurrences" in first &&
-		typeof first.maxOccurrences === "number"
-		? first.maxOccurrences
-		: 0
-}
-
 const manualRunnerName = (callee: unknown): Option.Option<string> => {
 	const expression = unwrapExpression(callee)
 	if (Option.isNone(expression) || expression.value.type !== "MemberExpression") {
@@ -56,34 +46,15 @@ export default defineRule({
 		docs: {
 			description: "Disallow manually creating or running Effect runtimes in tests; use @effect/vitest.",
 		},
-		schema: [
-			{
-				type: "object",
-				properties: {
-					maxOccurrences: {
-						type: "integer",
-						minimum: 0,
-						description: "Legacy debt ceiling for this file: occurrences beyond this count are reported.",
-					},
-				},
-				additionalProperties: false,
-			},
-		],
-		defaultOptions: [{ maxOccurrences: 0 }],
+		schema: [],
 	},
 	create(context) {
 		if (!TEST_FILE_PATTERN.test(context.filename)) return {}
-
-		const allowedCount = readMaxOccurrences(context.options)
-		let occurrenceCount = 0
 
 		return {
 			CallExpression(node) {
 				const runner = manualRunnerName(node.callee)
 				if (Option.isNone(runner)) return
-
-				occurrenceCount++
-				if (occurrenceCount <= allowedCount) return
 
 				context.report({
 					node: node.callee,
