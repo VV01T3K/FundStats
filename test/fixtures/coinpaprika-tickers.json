@@ -1,0 +1,162 @@
+[
+  {
+    "id": "btc-bitcoin",
+    "name": "Bitcoin",
+    "symbol": "BTC",
+    "rank": 1,
+    "total_supply": 20113066,
+    "max_supply": 21000000,
+    "beta_value": 1.06232,
+    "first_data_at": "2010-07-17T00:00:00Z",
+    "last_updated": "2026-11-16T20:11:14Z",
+    "quotes": {
+      "PLN": {
+        "price": 260289.87499017015,
+        "volume_24h": 84512393921.0572,
+        "volume_24h_change_24h": -32.74,
+        "market_cap": 5235226393646.778,
+        "market_cap_change_24h": 0.12,
+        "percent_change_15m": 0.06,
+        "percent_change_30m": 0.48,
+        "percent_change_1h": 0.34,
+        "percent_change_6h": 1.1,
+        "percent_change_12h": 0.63,
+        "percent_change_24h": 0.12,
+        "percent_change_7d": -11.01,
+        "percent_change_30d": -17.11,
+        "percent_change_1y": -21.99,
+        "ath_price": 504899.13410070457,
+        "ath_date": "2025-10-06T19:00:40Z",
+        "percent_from_price_ath": -48.46
+      }
+    }
+  },
+  {
+    "id": "eth-ethereum",
+    "name": "Ethereum",
+    "symbol": "ETH",
+    "rank": 2,
+    "total_supply": 120232214,
+    "max_supply": 0,
+    "beta_value": 1.38947,
+    "first_data_at": "2015-08-07T00:00:00Z",
+    "last_updated": "2026-11-16T20:11:14Z",
+    "quotes": {
+      "PLN": {
+        "price": 7298.804684664761,
+        "volume_24h": 31879108522.600124,
+        "volume_24h_change_24h": -33.36,
+        "market_cap": 892092578005.5918,
+        "market_cap_change_24h": 0.18,
+        "percent_change_15m": 0.1,
+        "percent_change_30m": 0.59,
+        "percent_change_1h": 0.53,
+        "percent_change_6h": 0.27,
+        "percent_change_12h": 0.83,
+        "percent_change_24h": 0.18,
+        "percent_change_7d": -12.24,
+        "percent_change_30d": -19.65,
+        "percent_change_1y": -32.76,
+        "ath_price": 19793.010853138047,
+        "ath_date": "2025-08-24T19:24:38Z",
+        "percent_from_price_ath": -63.13
+      }
+    }
+  },
+  {
+    "id": "usdt-tether",
+    "name": "Tether",
+    "symbol": "USDT",
+    "rank": 3,
+    "total_supply": 180901465157,
+    "max_supply": 0,
+    "beta_value": 0.00146897,
+    "first_data_at": "2015-02-25T00:00:00Z",
+    "last_updated": "2026-11-16T20:11:14Z",
+    "quotes": {
+      "PLN": {
+        "price": 4.000239656233081,
+        "volume_24h": 545559902797.87836,
+        "volume_24h_change_24h": 135.49,
+        "market_cap": 701780110296.2936,
+        "market_cap_change_24h": 0.12,
+        "percent_change_15m": 0.02,
+        "percent_change_30m": 0.03,
+        "percent_change_1h": 0,
+        "percent_change_6h": -0.01,
+        "percent_change_12h": 0,
+        "percent_change_24h": 0.1,
+        "percent_change_7d": 2.43,
+        "percent_change_30d": 3.05,
+        "percent_change_1y": 9.97,
+        "ath_price": 4.863948576736113,
+        "ath_date": "2015-02-25T17:04:00Z",
+        "percent_from_price_ath": -17.76
+      }
+    }
+  },
+  {
+    "id": "bnb-binance-coin",
+    "name": "BNB",
+    "symbol": "BNB",
+    "rank": 4,
+    "total_supply": 131510487,
+    "max_supply": 200000000,
+    "beta_value": 0.962411,
+    "first_data_at": "2017-07-25T00:00:00Z",
+    "last_updated": "2026-11-16T20:11:14Z",
+    "quotes": {
+      "PLN": {
+        "price": 2370.4234218983497,
+        "volume_24h": 1821616392.331716,
+        "volume_24h_change_24h": -33.02,
+        "market_cap": 311735538609.60516,
+        "market_cap_change_24h": -0.43,
+        "percent_change_15m": 0.11,
+        "percent_change_30m": 0.42,
+        "percent_change_1h": 0.43,
+        "percent_change_6h": 0.54,
+        "percent_change_12h": 0.37,
+        "percent_change_24h": -0.43,
+        "percent_change_7d": -12.05,
+        "percent_change_30d": -13.72,
+        "percent_change_1y": -27.46,
+        "ath_price": 5486.17834429217,
+        "ath_date": "2025-10-13T09:00:44Z",
+        "percent_from_price_ath": -56.8
+      }
+    }
+  },
+  {
+    "id": "usd0-usual-usd",
+    "name": "Usual USD",
+    "symbol": "USD0",
+    "rank": 101,
+    "total_supply": 558894137,
+    "max_supply": 0,
+    "beta_value": 0.000735294,
+    "first_data_at": "2024-08-05T00:00:00Z",
+    "last_updated": "2026-11-16T20:11:14Z",
+    "quotes": {
+      "PLN": {
+        "price": 4.000637992523545,
+        "volume_24h": 5021043.390162235,
+        "volume_24h_change_24h": 9521.74,
+        "market_cap": 2235933114.8946934,
+        "market_cap_change_24h": 0.13,
+        "percent_change_15m": 0,
+        "percent_change_30m": 0.02,
+        "percent_change_1h": 0,
+        "percent_change_6h": -0.02,
+        "percent_change_12h": 0,
+        "percent_change_24h": 0.13,
+        "percent_change_7d": 2.5,
+        "percent_change_30d": 3.08,
+        "percent_change_1y": 10.19,
+        "ath_price": 4.106472892213574,
+        "ath_date": "2025-10-10T21:39:46Z",
+        "percent_from_price_ath": -2.57
+      }
+    }
+  }
+]
