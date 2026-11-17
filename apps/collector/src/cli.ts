@@ -19,11 +19,7 @@ const start = Command.make("start", {}, () =>
 	Effect.logInfo("FundStats collector starting").pipe(
 		Effect.andThen(Layer.launch(CollectorScheduler.pipe(Layer.provide(ServicesLayer)))),
 	),
-).pipe(
-	Command.withDescription(
-		"Apply migrations, record the schedule and collect every source on its interval until stopped",
-	),
-)
+).pipe(Command.withDescription("Record the schedule and collect every source on its interval until stopped"))
 
 const collect = Command.make(
 	"collect",
@@ -52,7 +48,7 @@ const collect = Command.make(
 		}
 		if (failed > 0) return yield* new CollectFailed({ message: `${failed} source(s) failed or were skipped` })
 	}, Effect.provide(ServicesLayer)),
-).pipe(Command.withDescription("Run sources once, outside the schedule (applies pending migrations first)"))
+).pipe(Command.withDescription("Run sources once, outside the schedule"))
 
 const migrate = Command.make("migrate", {}, () =>
 	Effect.gen(function* () {

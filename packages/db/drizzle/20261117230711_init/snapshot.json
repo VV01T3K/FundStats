@@ -2,7 +2,7 @@
   "type": "base",
   "version": "9",
   "dialect": "postgres",
-  "id": "88c9a5b0-c8b9-45cf-84c9-506326fd7f62",
+  "id": "1f389fc1-a8d7-4195-ac5a-ca50bc1ab035",
   "prevIds": [
     "00000000-0000-0000-0000-000000000000"
   ],
@@ -78,6 +78,25 @@
         "n|rel|public.snapshots",
         "n|type|public.snapshots",
         "n|rel|public.snapshots_pkey"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "source_schedules"
+      ],
+      "writes": [
+        "s|tbl|public.source_schedules",
+        "n|tbl|public.source_schedules",
+        "e|tbl|public.source_schedules",
+        "n|rel|public.source_schedules",
+        "n|type|public.source_schedules",
+        "n|rel|public.source_schedules_pkey"
       ],
       "reads": [
         "n|sch|public"
@@ -236,10 +255,10 @@
         "instruments"
       ],
       "writes": [
-        "s|fk|public.instruments.instruments_last_seen_run_id_collection_runs_id_fk",
-        "n|fk|public.instruments.instruments_last_seen_run_id_collection_runs_id_fk",
-        "e|fk|public.instruments.instruments_last_seen_run_id_collection_runs_id_fk",
-        "n|con|public.instruments.instruments_last_seen_run_id_collection_runs_id_fk"
+        "s|fk|public.instruments.instruments_last_seen_run_id_collection_runs_id_fkey",
+        "n|fk|public.instruments.instruments_last_seen_run_id_collection_runs_id_fkey",
+        "e|fk|public.instruments.instruments_last_seen_run_id_collection_runs_id_fkey",
+        "n|con|public.instruments.instruments_last_seen_run_id_collection_runs_id_fkey"
       ],
       "reads": [
         "n|tbl|public.instruments",
@@ -259,10 +278,10 @@
         "raw_payloads"
       ],
       "writes": [
-        "s|fk|public.raw_payloads.raw_payloads_run_id_collection_runs_id_fk",
-        "n|fk|public.raw_payloads.raw_payloads_run_id_collection_runs_id_fk",
-        "e|fk|public.raw_payloads.raw_payloads_run_id_collection_runs_id_fk",
-        "n|con|public.raw_payloads.raw_payloads_run_id_collection_runs_id_fk"
+        "s|fk|public.raw_payloads.raw_payloads_run_id_collection_runs_id_fkey",
+        "n|fk|public.raw_payloads.raw_payloads_run_id_collection_runs_id_fkey",
+        "e|fk|public.raw_payloads.raw_payloads_run_id_collection_runs_id_fkey",
+        "n|con|public.raw_payloads.raw_payloads_run_id_collection_runs_id_fkey"
       ],
       "reads": [
         "n|tbl|public.raw_payloads",
@@ -282,10 +301,10 @@
         "snapshots"
       ],
       "writes": [
-        "s|fk|public.snapshots.snapshots_instrument_id_instruments_id_fk",
-        "n|fk|public.snapshots.snapshots_instrument_id_instruments_id_fk",
-        "e|fk|public.snapshots.snapshots_instrument_id_instruments_id_fk",
-        "n|con|public.snapshots.snapshots_instrument_id_instruments_id_fk"
+        "s|fk|public.snapshots.snapshots_instrument_id_instruments_id_fkey",
+        "n|fk|public.snapshots.snapshots_instrument_id_instruments_id_fkey",
+        "e|fk|public.snapshots.snapshots_instrument_id_instruments_id_fkey",
+        "n|con|public.snapshots.snapshots_instrument_id_instruments_id_fkey"
       ],
       "reads": [
         "n|tbl|public.snapshots",
@@ -305,10 +324,10 @@
         "snapshots"
       ],
       "writes": [
-        "s|fk|public.snapshots.snapshots_run_id_collection_runs_id_fk",
-        "n|fk|public.snapshots.snapshots_run_id_collection_runs_id_fk",
-        "e|fk|public.snapshots.snapshots_run_id_collection_runs_id_fk",
-        "n|con|public.snapshots.snapshots_run_id_collection_runs_id_fk"
+        "s|fk|public.snapshots.snapshots_run_id_collection_runs_id_fkey",
+        "n|fk|public.snapshots.snapshots_run_id_collection_runs_id_fkey",
+        "e|fk|public.snapshots.snapshots_run_id_collection_runs_id_fkey",
+        "n|con|public.snapshots.snapshots_run_id_collection_runs_id_fkey"
       ],
       "reads": [
         "n|tbl|public.snapshots",
@@ -343,6 +362,12 @@
     {
       "schema": "public",
       "name": "snapshots",
+      "isRlsEnabled": false,
+      "entityType": "tables"
+    },
+    {
+      "schema": "public",
+      "name": "source_schedules",
       "isRlsEnabled": false,
       "entityType": "tables"
     },
@@ -531,19 +556,6 @@
     {
       "schema": "public",
       "table": "instruments",
-      "name": "kind",
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "entityType": "columns"
-    },
-    {
-      "schema": "public",
-      "table": "instruments",
       "name": "category",
       "type": "text",
       "typeSchema": null,
@@ -595,32 +607,6 @@
     },
     {
       "schema": "public",
-      "table": "instruments",
-      "name": "created_at",
-      "type": "timestamp with time zone",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "now()",
-      "generated": null,
-      "identity": null,
-      "entityType": "columns"
-    },
-    {
-      "schema": "public",
-      "table": "instruments",
-      "name": "updated_at",
-      "type": "timestamp with time zone",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "now()",
-      "generated": null,
-      "identity": null,
-      "entityType": "columns"
-    },
-    {
-      "schema": "public",
       "table": "raw_payloads",
       "name": "id",
       "type": "serial",
@@ -637,19 +623,6 @@
       "table": "raw_payloads",
       "name": "run_id",
       "type": "integer",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "entityType": "columns"
-    },
-    {
-      "schema": "public",
-      "table": "raw_payloads",
-      "name": "source",
-      "type": "text",
       "typeSchema": null,
       "notNull": true,
       "dimensions": 0,
@@ -771,6 +744,45 @@
       "notNull": true,
       "dimensions": 0,
       "default": "'{}'",
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "source_schedules",
+      "name": "source",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "source_schedules",
+      "name": "interval_seconds",
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "source_schedules",
+      "name": "enabled",
+      "type": "boolean",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
       "generated": null,
       "identity": null,
       "entityType": "columns"
@@ -951,7 +963,7 @@
         }
       ],
       "isUnique": true,
-      "where": "\"snapshots\".\"as_of\" is not null",
+      "where": "\"as_of\" is not null",
       "with": "",
       "method": "btree",
       "concurrently": false,
@@ -960,7 +972,7 @@
     {
       "schema": "public",
       "table": "instruments",
-      "name": "instruments_last_seen_run_id_collection_runs_id_fk",
+      "name": "instruments_last_seen_run_id_collection_runs_id_fkey",
       "nameExplicit": false,
       "columns": [
         "last_seen_run_id"
@@ -977,7 +989,7 @@
     {
       "schema": "public",
       "table": "raw_payloads",
-      "name": "raw_payloads_run_id_collection_runs_id_fk",
+      "name": "raw_payloads_run_id_collection_runs_id_fkey",
       "nameExplicit": false,
       "columns": [
         "run_id"
@@ -994,7 +1006,7 @@
     {
       "schema": "public",
       "table": "snapshots",
-      "name": "snapshots_instrument_id_instruments_id_fk",
+      "name": "snapshots_instrument_id_instruments_id_fkey",
       "nameExplicit": false,
       "columns": [
         "instrument_id"
@@ -1011,7 +1023,7 @@
     {
       "schema": "public",
       "table": "snapshots",
-      "name": "snapshots_run_id_collection_runs_id_fk",
+      "name": "snapshots_run_id_collection_runs_id_fkey",
       "nameExplicit": false,
       "columns": [
         "run_id"
@@ -1061,6 +1073,16 @@
       "name": "snapshots_pkey",
       "columns": [
         "id"
+      ],
+      "nameExplicit": false,
+      "entityType": "pks"
+    },
+    {
+      "schema": "public",
+      "table": "source_schedules",
+      "name": "source_schedules_pkey",
+      "columns": [
+        "source"
       ],
       "nameExplicit": false,
       "entityType": "pks"

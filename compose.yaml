@@ -2,9 +2,27 @@
 # Configure with a .env file next to this one; see .env.example. Start: docker compose up -d --build
 name: fundstats
 
-x-database-url: &database-url postgres://fundstats:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/fundstats
+# Database settings both apps read. An empty value means the app's default (see README).
+x-database-env: &database-env
+  DATABASE_URL: postgres://fundstats:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/fundstats
+  DB_POOL_MAX: ${DB_POOL_MAX:-}
+  DB_STATEMENT_TIMEOUT: ${DB_STATEMENT_TIMEOUT:-}
 
 services:
+  # Applies pending migrations once, then exits; the apps start only after it succeeded.
+  migrate:
+    build:
+      context: .
+      target: collector
+    image: fundstats-collector:latest
+    command: ["collector.js", "migrate"]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      <<: *database-env
+
   web:
     build:
       context: .
@@ -12,13 +30,10 @@ services:
     image: fundstats-web:latest
     restart: unless-stopped
     depends_on:
-      db:
-        condition: service_healthy
-      # The collector applies the migrations the web app reads through.
-      collector:
-        condition: service_started
+      migrate:
+        condition: service_completed_successfully
     environment:
-      DATABASE_URL: *database-url
+      <<: *database-env
     # Published on loopback only, for a reverse proxy on the same host. Set
     # FUNDSTATS_BIND=0.0.0.0 to expose it on every interface.
     ports:
@@ -31,16 +46,17 @@ services:
     image: fundstats-collector:latest
     restart: unless-stopped
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
-      DATABASE_URL: *database-url
-      COLLECTOR_ENABLED: ${COLLECTOR_ENABLED:-true}
+      <<: *database-env
+      COLLECTOR_ENABLED: ${COLLECTOR_ENABLED:-}
       COLLECTOR_INTERVAL_MBANK: ${COLLECTOR_INTERVAL_MBANK:-}
       COLLECTOR_INTERVAL_COINGECKO: ${COLLECTOR_INTERVAL_COINGECKO:-}
       COLLECTOR_INTERVAL_COINPAPRIKA: ${COLLECTOR_INTERVAL_COINPAPRIKA:-}
       COLLECTOR_INTERVAL_COINMARKETCAP: ${COLLECTOR_INTERVAL_COINMARKETCAP:-}
-      RAW_PAYLOAD_RETENTION_DAYS: ${RAW_PAYLOAD_RETENTION_DAYS:-30}
+      RAW_PAYLOAD_RETENTION_DAYS: ${RAW_PAYLOAD_RETENTION_DAYS:-}
+      FETCH_TIMEOUT: ${FETCH_TIMEOUT:-}
       COINGECKO_API_KEY: ${COINGECKO_API_KEY:-}
       CMC_API_KEY: ${CMC_API_KEY:-}
 

@@ -8,7 +8,6 @@ import { HttpApiBuilder, HttpApiError } from "effect/http-api"
 import * as Layer from "effect/Layer"
 
 const DEFAULT_HISTORY_LIMIT = 500
-const MAX_HISTORY_LIMIT = 5000
 
 /** A source is stale when its last run failed or its last success is more than two intervals old. */
 export const isStale = (summary: RunSummary, interval: Duration.Duration, now: number) => {
@@ -98,8 +97,9 @@ const SourcesHandlers = HttpApiBuilder.group(
 			.handle("history", ({ params, query }) =>
 				Effect.gen(function* () {
 					const id = yield* requireSource(params.source)
-					const limit = Math.min(Math.max(query.limit ?? DEFAULT_HISTORY_LIMIT, 1), MAX_HISTORY_LIMIT)
-					const result = yield* store.history(id, params.externalId, limit).pipe(Effect.orDie)
+					const result = yield* store
+						.history(id, params.externalId, query.limit ?? DEFAULT_HISTORY_LIMIT)
+						.pipe(Effect.orDie)
 					if (result === null) {
 						return yield* new InstrumentNotFound({ source: id, externalId: params.externalId })
 					}

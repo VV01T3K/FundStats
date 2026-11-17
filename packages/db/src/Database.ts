@@ -9,6 +9,7 @@ import * as Reactivity from "effect/reactivity/Reactivity"
 import type * as SqlError from "effect/sql/SqlError"
 
 import { DbConfig } from "./DbConfig.ts"
+import { collectionRuns, instruments, rawPayloads, snapshots, sourceSchedules } from "./schema.ts"
 
 /** Drizzle's Effect query builder over one Effect SQL client: the pool, or one dedicated session. */
 export type Db = PgDrizzle.EffectPgDatabase
@@ -65,9 +66,19 @@ const make = Effect.fn("Database.make")(function* (options: { readonly readOnly:
 		maxConnections: config.dbPoolMax,
 		idleTimeout: POOL_IDLE_TIMEOUT,
 	})
-	// Fail at boot, not on the first request, when Postgres is unreachable.
+	// Fail at boot, not on the first request, when Postgres is unreachable or not migrated to this schema.
 	yield* client`select 1`
-	return yield* drizzleOn(client)
+	const db = yield* drizzleOn(client)
+	yield* Effect.forEach(
+		[collectionRuns, rawPayloads, instruments, snapshots, sourceSchedules],
+		(table) => db.select().from(table).limit(0),
+		{ discard: true },
+	).pipe(
+		Effect.tapError(() =>
+			Effect.logError("The database does not match this version's schema; run the migrate command"),
+		),
+	)
+	return db
 })
 
 /** The connection pool, opened when the layer is built and closed with it. */

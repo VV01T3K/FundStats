@@ -1,5 +1,4 @@
 import type { Metrics } from "@fundstats/shared/metrics"
-import type { InstrumentKind } from "@fundstats/shared/sources"
 import { and, eq, lt, sql } from "drizzle-orm"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
@@ -26,7 +25,6 @@ export interface NormalizedRow {
 
 interface PersistInput {
 	readonly source: string
-	readonly kind: InstrumentKind
 	readonly runId: number
 	readonly capturedAt: Date
 	readonly rows: ReadonlyArray<NormalizedRow>
@@ -47,7 +45,7 @@ export interface RunWriter {
 	 */
 	readonly reserveRunId: E<number>
 	readonly startRun: (runId: number, source: string, trigger: string) => E<void>
-	readonly saveRawPayload: (runId: number, source: string, payload: unknown) => E<void>
+	readonly saveRawPayload: (runId: number, payload: unknown) => E<void>
 	/**
 	 * Writes instruments and snapshots and marks the run successful, in one transaction. The only status
 	 * change not from `running`: committed rows are shown, so their run must read as successful.
@@ -91,7 +89,7 @@ export class RunStore extends Context.Service<
 			const writer = (lock: Db): RunWriter => ({
 				reserveRunId: reserveRunId(lock),
 				startRun: (runId, source, trigger) => startRun(lock, runId, source, trigger),
-				saveRawPayload: (runId, source, payload) => saveRawPayload(lock, runId, source, payload),
+				saveRawPayload: (runId, payload) => saveRawPayload(lock, runId, payload),
 				persist: (input) => persist(lock, input),
 			})
 
@@ -110,14 +108,13 @@ export class RunStore extends Context.Service<
 					.where(and(eq(collectionRuns.id, runId), eq(collectionRuns.status, "running")))
 					.pipe(Effect.asVoid)
 
-			const saveRawPayload = (db: Db, runId: number, source: string, payload: unknown) =>
-				db.insert(rawPayloads).values({ runId, source, payload }).pipe(Effect.asVoid)
+			const saveRawPayload = (db: Db, runId: number, payload: unknown) =>
+				db.insert(rawPayloads).values({ runId, payload }).pipe(Effect.asVoid)
 
 			const persist = (db: Db, input: PersistInput) =>
 				db.transaction((tx) =>
 					Effect.gen(function* () {
-						// One row per external id; a duplicate in one upsert batch is a Postgres error.
-						const rows = [...new Map(input.rows.map((row) => [row.externalId, row])).values()]
+						const { rows } = input
 						let rowsWritten = 0
 						if (rows.length > 0) {
 							const ids = yield* tx
@@ -128,7 +125,6 @@ export class RunStore extends Context.Service<
 										externalId: row.externalId,
 										name: row.name,
 										symbol: row.symbol,
-										kind: input.kind,
 										category: row.category,
 										currency: row.currency,
 										metadata: row.metadata,
@@ -143,10 +139,7 @@ export class RunStore extends Context.Service<
 										category: sql`excluded.category`,
 										currency: sql`excluded.currency`,
 										metadata: sql`excluded.metadata`,
-										// Run ids grow in start order, so an older run that finishes late
-										// never moves an instrument back to its own (older) state.
-										lastSeenRunId: sql`greatest(${instruments.lastSeenRunId}, excluded.last_seen_run_id)`,
-										updatedAt: sql`now()`,
+										lastSeenRunId: sql`excluded.last_seen_run_id`,
 									},
 								})
 								.returning({ id: instruments.id, externalId: instruments.externalId })
@@ -248,7 +241,6 @@ export class RunStore extends Context.Service<
 								set: {
 									intervalSeconds: sql`excluded.interval_seconds`,
 									enabled: sql`excluded.enabled`,
-									updatedAt: sql`now()`,
 								},
 							})
 							.pipe(Effect.asVoid)

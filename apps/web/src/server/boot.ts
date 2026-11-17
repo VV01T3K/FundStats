@@ -1,16 +1,17 @@
 /**
- * Nitro plugin that boots the backend when the process starts (requests wait for it). A failed boot
- * exits with status 1 so the deploy fails visibly instead of answering 500s. getServer() keeps one
- * instance per process, so dev reloads never open a second pool.
+ * Nitro plugin: the process waits for the API's services at start and closes them with the server. A
+ * failed start (bad config, Postgres unreachable or not migrated) exits with status 1 so the deploy
+ * fails visibly instead of answering 500s.
  */
 import * as Effect from "effect/Effect"
 import { definePlugin } from "nitro"
 
-import { getServer } from "./runtime.ts"
+import { api } from "./api.ts"
 
-export default definePlugin(async () => {
+export default definePlugin(async (nitroApp) => {
+	nitroApp.hooks.hook("close", () => api.dispose())
 	try {
-		await getServer()
+		await api.ready
 	} catch (error) {
 		await Effect.runPromise(Effect.logError("FundStats failed to start:", error))
 		process.exit(1)

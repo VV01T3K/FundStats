@@ -4,18 +4,12 @@ const config: KnipConfig = {
 	workspaces: {
 		".": {
 			entry: ["scripts/*.ts"],
-			project: ["*.ts", "scripts/**/*.ts", "oxlint-plugin-fundstats/**/*.ts"],
 			// bunfig.toml loads the install security scanner.
 			ignoreDependencies: ["@socketsecurity/bun-security-scanner"],
 		},
 		"apps/web": {
-			entry: ["src/server/boot.ts"],
-			project: ["**/*.{ts,tsx,css}"],
-			// shadcn components are copied whole; keep their exports even before they have callers.
-			ignoreIssues: { "src/components/ui/*.tsx": ["exports"] },
-		},
-		"{apps/collector,packages/*}": {
-			project: ["**/*.ts"],
+			// Nitro loads these by path from vite.config.ts.
+			entry: ["src/server/boot.ts", "src/server/api.ts"],
 		},
 	},
 	// effect-tsgo bundles the Effect language service that tsconfig.effect.json configures.

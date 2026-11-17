@@ -196,6 +196,28 @@ layer(TestServices)("collector and storage", (it) => {
 		}),
 	)
 
+	it.effect("an upstream that lists an instrument twice fails the run and keeps its response", () =>
+		Effect.gen(function* () {
+			yield* reset
+			const collector = yield* Collector
+			const original = upstream["api.coingecko.com"]
+			upstream["api.coingecko.com"] = () => {
+				const coins = fixture("coingecko-markets.json") as Array<unknown>
+				return [...coins, at(coins, 0)]
+			}
+			try {
+				const error = yield* collector.runOnce("coingecko", "test").pipe(Effect.flip)
+				assert.strictEqual(error._tag, "SourceError")
+				assert.match(error.message, /listed instrument bitcoin more than once/)
+			} finally {
+				upstream["api.coingecko.com"] = original
+			}
+			assert.strictEqual((yield* (yield* Store).runSummary("coingecko")).lastRun?.status, "failed")
+			assert.strictEqual(yield* count("raw_payloads"), 1)
+			assert.strictEqual(yield* count("instruments"), 0)
+		}),
+	)
+
 	it.effect("on start it records each source's schedule for the web app, even when disabled", () =>
 		Effect.gen(function* () {
 			yield* reset

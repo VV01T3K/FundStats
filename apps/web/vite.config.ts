@@ -14,7 +14,9 @@ export default defineConfig({
 		devtools(),
 		nitro({
 			preset: "bun",
-			// Boots the backend at process start and exits non-zero if that fails.
+			// The API is a Nitro route, so its pool lives in Nitro's module graph only; the boot plugin
+			// waits for it at process start (exiting non-zero if that fails) and closes it with the server.
+			handlers: [{ route: "/api/**", handler: "./src/server/api.ts" }],
 			plugins: ["./src/server/boot.ts"],
 		}),
 		tailwindcss(),

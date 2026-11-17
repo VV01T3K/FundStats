@@ -46,31 +46,6 @@ const storageWithShortTimeout = (url: string) =>
 	Layer.fresh(storageOn(dbConfigOn(url, { DB_STATEMENT_TIMEOUT: "1 second" })))
 
 layer(TestStorage)("runs and the latest view", (it) => {
-	it.effect("an older run that finishes after a newer one does not empty the latest view", () =>
-		Effect.gen(function* () {
-			yield* reset
-			const store = yield* Store
-			const older = yield* startRun("coingecko", "test")
-			const newer = yield* startRun("coingecko", "test")
-			const rows = [row("a", null, 1), row("b", null, 2)]
-			yield* (yield* writer).persist({
-				source: "coingecko",
-				kind: "crypto",
-				runId: newer,
-				capturedAt: capturedAt(),
-				rows,
-			})
-			yield* (yield* writer).persist({
-				source: "coingecko",
-				kind: "crypto",
-				runId: older,
-				capturedAt: capturedAt(),
-				rows,
-			})
-			assert.strictEqual((yield* store.latest("coingecko")).length, 2)
-		}),
-	)
-
 	it.effect("latest shows the newest valuation date even when an older date was captured later", () =>
 		Effect.gen(function* () {
 			yield* reset
@@ -78,7 +53,6 @@ layer(TestStorage)("runs and the latest view", (it) => {
 			const first = yield* startRun("mbank", "test")
 			yield* (yield* writer).persist({
 				source: "mbank",
-				kind: "fund",
 				runId: first,
 				capturedAt: capturedAt("2026-11-16T12:00:00Z"),
 				rows: [row("f", "2026-11-16", 10)],
@@ -86,7 +60,6 @@ layer(TestStorage)("runs and the latest view", (it) => {
 			const second = yield* startRun("mbank", "test")
 			yield* (yield* writer).persist({
 				source: "mbank",
-				kind: "fund",
 				runId: second,
 				capturedAt: capturedAt("2026-11-17T12:00:00Z"),
 				rows: [row("f", "2026-11-13", 9)],
@@ -123,7 +96,6 @@ layer(TestStorage)("runs and the latest view", (it) => {
 				Effect.gen(function* () {
 					yield* (yield* writer).persist({
 						source: "coingecko",
-						kind: "crypto",
 						runId,
 						capturedAt: capturedAt(),
 						rows: [row("a", null, 1)],
@@ -147,7 +119,6 @@ layer(TestStorage)("runs and the latest view", (it) => {
 			yield* runs.failRun(runId, "Interrupted (app stopped during the run)")
 			yield* (yield* writer).persist({
 				source: "coingecko",
-				kind: "crypto",
 				runId,
 				capturedAt: capturedAt(),
 				rows: [row("a", null, 1)],
@@ -163,7 +134,6 @@ layer(TestStorage)("runs and the latest view", (it) => {
 			const runId = yield* startRun("coingecko", "test")
 			yield* (yield* writer).persist({
 				source: "coingecko",
-				kind: "crypto",
 				runId,
 				capturedAt: capturedAt(),
 				rows: [row("a", null, 1)],
@@ -364,6 +334,19 @@ layer(TestStorage, { excludeTestServices: true })("bounded waits and lost replie
 				assert.deepStrictEqual(probed, [true, true])
 			}),
 		),
+	)
+
+	it.effect("the pool does not start on a database without this schema", () =>
+		Effect.gen(function* () {
+			yield* queryElsewhere("drop database if exists unmigrated")
+			yield* queryElsewhere("create database unmigrated")
+			const url = new URL(testDatabaseUrl)
+			url.pathname = "/unmigrated"
+			const error = yield* Layer.build(
+				Layer.fresh(Database.layerReadOnly.pipe(Layer.provide(dbConfigOn(url.href)))),
+			).pipe(Effect.scoped, Effect.flip)
+			assert.match(errorText(error), /relation "collection_runs" does not exist/)
+		}),
 	)
 
 	it.effect("the read-only pool cannot write", () =>

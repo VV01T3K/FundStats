@@ -27,7 +27,7 @@ apps/
   web/                 TanStack Start app: pages and the read-only HTTP API
     src/routes/          file routes; routes/api/$.ts mounts the Effect API
     src/web/             typed API client, table configs, components
-    src/server/          API handlers, runtime (read-only pool), Nitro boot plugin
+    src/server/          API handlers, the Nitro /api route and boot plugin (read-only pool)
   collector/           the collector process
     src/main.ts          entry point (Bun runtime)
     src/cli.ts           commands: start, collect <source|all>, migrate
@@ -55,17 +55,22 @@ Requires Bun 1.4.4 and Docker.
 bun install
 cp .env.example .env                         # DATABASE_URL points to the dev database below
 docker compose -f compose.dev.yaml up -d     # Postgres on 127.0.0.1:55432 (FUNDSTATS_DB_PORT changes the port)
-bun run collect all                          # fetch every source once (also applies migrations)
+bun run db:migrate                           # apply the migrations
+bun run collect all                          # fetch every source once
 bun run dev                                  # web on http://localhost:3000 (PORT changes it) + the collector
 ```
 
 `bun run dev` runs the web dev server and the collector (`bun --watch`, restarted on change) side by side. The
-collector applies pending migrations when it starts and decides when each source is due from its last run in the
-database, so a restart does not call the upstreams again early. To work without calling the upstreams, set
-`COLLECTOR_ENABLED=false`.
+collector decides when each source is due from its last run in the database, so a restart does not call the
+upstreams again early. To work without calling the upstreams, set `COLLECTOR_ENABLED=false`.
 
-The web server's runtime is a process-wide singleton, so an HMR reload never opens a second connection pool. In
-return, edits under `apps/web/src/server/` reach the running API only after you restart `bun run dev`.
+Migrations have one owner: the `migrate` command (`bun run db:migrate`, the `migrate` service in Compose). The web
+app and the collector only check at start that the database has the schema they were built for, and exit with
+status 1 if it does not. Run `bun run db:migrate` again after pulling a schema change.
+
+The API is a Nitro route (`apps/web/src/server/api.ts`); pages call it in-process during SSR. In dev, an edit under
+`apps/web/src/server/` reloads that module, which closes the API it replaces, so there is one connection pool at a
+time.
 
 ### Scripts
 
@@ -74,7 +79,7 @@ return, edits under `apps/web/src/server/` reach the running API only after you 
 | `bun run dev`          | Web dev server with HMR and the collector in watch mode                                 |
 | `bun run build`        | Web production build to `apps/web/.output/`, collector bundle to `apps/collector/dist/` |
 | `bun run start`        | Run the web production build (`bun .output/server/index.mjs`)                           |
-| `bun run collector`    | Run the collector: migrations, then every source on its schedule                        |
+| `bun run collector`    | Run the collector: every source on its schedule                                         |
 | `bun run collect <id>` | Run one source once: `mbank`, `coingecko`, `coinpaprika`, `coinmarketcap`, or `all`     |
 | `bun run db:migrate`   | Apply migrations                                                                        |
 | `bun run db:generate`  | Generate a migration after changing `packages/db/src/schema.ts`                         |
@@ -99,9 +104,10 @@ with database tests starts its own throwaway Postgres container. To use an exist
 
 ## Deploy (Docker Compose)
 
-`compose.yaml` runs three services: `web`, `collector` and Postgres. Both app images come from one multi-target
-`Dockerfile` (a Debian-slim Bun builder, distroless Bun runtimes). The database sits in a named volume and has a
-healthcheck; both apps wait until it is healthy.
+`compose.yaml` runs Postgres, a one-shot `migrate` service, `web` and `collector`. Both app images come from one
+multi-target `Dockerfile` (a Debian-slim Bun builder, distroless Bun runtimes); `migrate` runs the collector image's
+`migrate` command. The database sits in a named volume and has a healthcheck; `migrate` waits until it is healthy,
+and both apps start only after `migrate` exits successfully.
 
 ```sh
 cp .env.example .env     # set POSTGRES_PASSWORD; optionally FUNDSTATS_BIND/PORT, API keys, intervals
@@ -109,7 +115,7 @@ docker compose up -d --build
 docker compose logs -f collector
 ```
 
-The collector applies migrations when it starts. To update, pull and run `docker compose up -d --build` again.
+To update, pull and run `docker compose up -d --build` again; `migrate` applies any new migration first.
 Postgres is not published on the host. To back it up, run
 `docker compose exec db pg_dump -U fundstats fundstats > backup.sql`.
 
@@ -119,7 +125,8 @@ on the same host in front of it for TLS, or set `FUNDSTATS_BIND=0.0.0.0` to expo
 ### Configuration
 
 All settings are environment variables, read through Effect `Config`. An invalid value stops the process at start.
-See `.env.example`.
+See `.env.example`. `compose.yaml` forwards every setting below from `.env` except those marked "image" (set in the
+Dockerfile); an empty or unset value means the default.
 
 | Variable                            | Used by   | Default               | Notes                                                                                               |
 | ----------------------------------- | --------- | --------------------- | --------------------------------------------------------------------------------------------------- |
@@ -132,15 +139,14 @@ See `.env.example`.
 | `FETCH_TIMEOUT`                     | collector | `5 minutes`           | a run's whole fetch, retries and Retry-After waits included; 30 seconds to 1 hour                   |
 | `COINGECKO_API_KEY`                 | collector | unset                 | CoinGecko demo key; raises the rate limit                                                           |
 | `CMC_API_KEY`                       | collector | unset                 | official CoinMarketCap API; without it the unofficial web endpoint is used                          |
-| `RUN_MIGRATIONS`                    | collector | `true`                | apply migrations when `start` and `collect` begin                                                   |
-| `MIGRATIONS_DIR`                    | collector | `packages/db/drizzle` | set in the collector image                                                                          |
-| `PORT` / `HOST`                     | web       | `3000`/all            | inside the container                                                                                |
+| `MIGRATIONS_DIR`                    | migrate   | `packages/db/drizzle` | image; where the `migrate` command reads migrations from                                            |
+| `PORT` / `HOST`                     | web       | `3000`/all            | image; the port and address inside the container                                                    |
 | `FUNDSTATS_BIND` / `FUNDSTATS_PORT` | compose   | `127.0.0.1`/`3000`    | host address and port the web app is published on                                                   |
 
 Default intervals: mBank every 6 hours (its feed changes once per business day), crypto sources every 30 minutes.
 After a failed run, the next attempt comes within 10 minutes.
 
-One source is collected by one process at a time: a run holds a Postgres advisory lock for its source until its
+One source is collected by one run at a time, in one process or across several: a run holds a Postgres advisory lock for its source until its
 data is stored. The lock lives on a session of its own, and every write of the run goes through that session, so if
 the session is lost (and the lock with it), the run's next write fails, nothing more of it is written, and it is
 recorded as failed. An interrupted run rolls back its unfinished transaction, and a run that committed keeps its
@@ -151,7 +157,8 @@ is free, so a run still going in another process is left alone.
 ## Data model
 
 - `instruments`: one row per fund or coin per source, unique on `(source, external_id)`. `last_seen_run_id` marks
-  the instruments in the source's latest successful run, and the "latest" views list only those.
+  the instruments in the source's latest successful run, and the "latest" views list only those. An upstream
+  response that lists one id twice fails its run (the response is still kept in `raw_payloads`).
 - `snapshots`: values at a point in time. `value` holds the unit value or price. `metrics` is jsonb with named
   numbers (`change_1m`, `change_7d`, `rank`, …; see `packages/shared/src/metrics.ts`).
   - **Dedupe rule:** mBank values come with a valuation date (`as_of`). Each instrument has at most one row per
@@ -178,6 +185,21 @@ Data endpoints are under `/api/v1`. OpenAPI document: `/api/openapi.json`. Inter
 
 The browser uses a client generated from the same definition (`apps/web/src/web/api.ts`). During SSR that client
 is answered in-process, without an HTTP round trip.
+
+## Pending upgrades
+
+Revisit these when the condition changes; last checked 2026-11-18.
+
+- **picomatch advisory**: CI's `bun audit` ignores GHSA-fc5q-39xc-vjpf (ReDoS; only build tooling reaches picomatch,
+  with this repository's globs). Remove the `--ignore` once a patched picomatch ships and the lockfile has it.
+- **Drizzle 1.0**: on the release after RC, rerun `bun run db:generate` (expect no diff), the migrations on an empty
+  database, and the SQL fault tests (`bun run --filter @fundstats/db test`).
+- **Nitro 3.0**: on the release after RC, check the web lifecycle: fail-fast start, `close` on SIGTERM and an
+  `apps/web/src/server/` edit picked up by `bun run dev` with one pool.
+- **Postgres 18.4**: the image is pinned by tag and digest in `compose.yaml`, `compose.dev.yaml` and
+  `packages/db/test/postgres.ts`; refresh all three together.
+- **Effect 4.1.4**: `effect`, `@effect/vitest`, `@effect/platform-bun` and `@effect/sql-pg` share one catalog version
+  in `package.json`; upgrade them together, then `bun run sync:repos`.
 
 ## Add a source
 

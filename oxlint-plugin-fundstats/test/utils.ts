@@ -52,7 +52,6 @@ interface RuleHarness {
 
 interface RuleHarnessOptions {
 	readonly filename?: string
-	readonly ruleOptions?: ReadonlyArray<unknown>
 }
 
 const collectStreamAsString = <E>(stream: Stream.Stream<Uint8Array, E>): Effect.Effect<string, E> =>
@@ -95,7 +94,7 @@ export const createOxlintRuleHarness = (ruleName: string, options: RuleHarnessOp
 			configPath,
 			yield* encodeOxlintConfig({
 				jsPlugins: [{ name: "fundstats", specifier: pluginPath }],
-				rules: { [ruleName]: ["error", ...(options.ruleOptions ?? [])] },
+				rules: { [ruleName]: "error" },
 			}),
 		)
 		yield* fs.makeDirectory(path.dirname(sourcePath), { recursive: true })

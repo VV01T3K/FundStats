@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router"
 
 import { cn } from "#/lib/utils"
 
-/** The brand-icon buttons that switch between sources, as on the old site. */
+/** The brand-icon buttons that switch between sources. */
 export function SourceNav() {
 	return (
 		<nav aria-label="Data sources" className="flex flex-wrap gap-2">
