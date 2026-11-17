@@ -16,7 +16,9 @@ export async function setup(project: TestProject) {
 		project.provide(DATABASE_URL, external)
 		return
 	}
-	container = await new PostgreSqlContainer("postgres:18-alpine")
+	container = await new PostgreSqlContainer(
+		"postgres:18.4-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15",
+	)
 		.withLabels({ "fundstats.test.pid": String(process.pid) })
 		.withDatabase("fundstats_test")
 		.start()
