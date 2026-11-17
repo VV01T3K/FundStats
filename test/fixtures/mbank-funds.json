@@ -1,0 +1,346 @@
+[
+  {
+    "id": "359",
+    "funId": "0039",
+    "shortName": "PZU Akcji KRAKOWIAK",
+    "longName": "PZU FIO Parasolowy Subfundusz PZU Akcji KRAKOWIAK",
+    "successFee": "20% z nadwyżki ponad benchmark",
+    "link": null,
+    "firstPurchaseMinAmount": 100,
+    "secondPurchaseMinAmount": 100,
+    "fixedCostOfManagement": 2,
+    "minBuyoutPrice": 0,
+    "currency": "PLN",
+    "risk": {
+      "id": "11",
+      "name": "wysokie",
+      "scale": 4
+    },
+    "perspective": {
+      "id": "8",
+      "name": "powyżej 5 lat"
+    },
+    "category": {
+      "id": "18",
+      "key": "AKC",
+      "value": "akcyjny",
+      "color": "thunderbirdRedUI"
+    },
+    "umbrella": {
+      "id": "121",
+      "name": "PZU FIO Parasolowy"
+    },
+    "globalLink": "https://form.mbank.pl/app/sfi_mb/logowanie.html?option=mbank&sprzedawca=strona_funduszu&",
+    "date": "2026-11-10",
+    "yield1d": 0.7401,
+    "yield1m": -1.5305,
+    "yield3m": 0.5924,
+    "yield6m": 14.2391,
+    "yield12m": 27.6921,
+    "yield3y": 101.6281,
+    "yield5y": 93.7309,
+    "yieldMax": 229.8818,
+    "value": 164.71
+  },
+  {
+    "id": "461",
+    "funId": "0615",
+    "shortName": "PZU Akcji Rynków Rozwiniętych",
+    "longName": "PZU FIO Parasolowy Subfundusz PZU Akcji Rynków Rozwiniętych",
+    "successFee": "20% z nadwyżki ponad benchmark",
+    "link": null,
+    "firstPurchaseMinAmount": 100,
+    "secondPurchaseMinAmount": 100,
+    "fixedCostOfManagement": 2,
+    "minBuyoutPrice": 0,
+    "currency": "PLN",
+    "risk": {
+      "id": "14",
+      "name": "średnie ",
+      "scale": 3
+    },
+    "perspective": {
+      "id": "8",
+      "name": "powyżej 5 lat"
+    },
+    "category": {
+      "id": "18",
+      "key": "AKC",
+      "value": "akcyjny",
+      "color": "thunderbirdRedUI"
+    },
+    "umbrella": {
+      "id": "121",
+      "name": "PZU FIO Parasolowy"
+    },
+    "globalLink": "https://form.mbank.pl/app/sfi_mb/logowanie.html?option=mbank&sprzedawca=strona_funduszu&",
+    "date": "2026-11-10",
+    "yield1d": -0.1493,
+    "yield1m": -4.8476,
+    "yield3m": -4.9152,
+    "yield6m": 0.2141,
+    "yield12m": 2.2943,
+    "yield3y": 38.0566,
+    "yield5y": 37.1466,
+    "yieldMax": 87.26,
+    "value": 93.63
+  },
+  {
+    "id": "634",
+    "funId": "0667",
+    "shortName": "AB SICAV I - International Technol.",
+    "longName": "AB SICAV I - International Technology Portfolio A PLN H",
+    "successFee": "Brak",
+    "link": null,
+    "firstPurchaseMinAmount": 1000,
+    "secondPurchaseMinAmount": 500,
+    "fixedCostOfManagement": 1.81,
+    "minBuyoutPrice": 0,
+    "currency": "PLN",
+    "risk": {
+      "id": "11",
+      "name": "wysokie",
+      "scale": 4
+    },
+    "perspective": {
+      "id": "8",
+      "name": "powyżej 5 lat"
+    },
+    "category": {
+      "id": "18",
+      "key": "AKC",
+      "value": "akcyjny",
+      "color": "thunderbirdRedUI"
+    },
+    "umbrella": {
+      "id": "154",
+      "name": "AB SICAV I"
+    },
+    "globalLink": "https://form.mbank.pl/app/sfi_mb/logowanie.html?option=mbank&sprzedawca=strona_funduszu&",
+    "date": "2026-11-13",
+    "yield1d": -1.9673,
+    "yield1m": -14.9328,
+    "yield3m": -14.9208,
+    "yield6m": -12.6909,
+    "yield12m": 16.7881,
+    "yield3y": 122.8902,
+    "yield5y": 59.8166,
+    "yieldMax": 253.6614,
+    "value": 360.77
+  },
+  {
+    "id": "579",
+    "funId": "0621",
+    "shortName": "Schroder Asian Convertible Bond",
+    "longName": "Schroder ISF Asian Convertible Bond A1 ACC PLN Hedged",
+    "successFee": "Brak",
+    "link": null,
+    "firstPurchaseMinAmount": 1000,
+    "secondPurchaseMinAmount": 500,
+    "fixedCostOfManagement": 1.25,
+    "minBuyoutPrice": 0,
+    "currency": "PLN",
+    "risk": {
+      "id": "14",
+      "name": "średnie ",
+      "scale": 3
+    },
+    "perspective": {
+      "id": "9",
+      "name": "Od 3 do 5 lat"
+    },
+    "category": {
+      "id": "16",
+      "key": "OBL",
+      "value": "dłużny",
+      "color": "funGreen"
+    },
+    "umbrella": {
+      "id": "152",
+      "name": "Schroder ISF"
+    },
+    "globalLink": "https://form.mbank.pl/app/sfi_mb/logowanie.html?option=mbank&sprzedawca=strona_funduszu&",
+    "date": "2026-11-13",
+    "yield1d": -0.6382,
+    "yield1m": -6.9255,
+    "yield3m": -10.038,
+    "yield6m": -9.9154,
+    "yield12m": 3.4356,
+    "yield3y": 59.6449,
+    "yield5y": 46.465,
+    "yieldMax": 175.9701,
+    "value": 965.8955
+  },
+  {
+    "id": "467",
+    "funId": "0651",
+    "shortName": "Fidelity Strategic Bond Fund",
+    "longName": "Fidelity Funds Strategic Bond Fund A-ACC-PLN (hedged)",
+    "successFee": "Brak",
+    "link": null,
+    "firstPurchaseMinAmount": 1000,
+    "secondPurchaseMinAmount": 500,
+    "fixedCostOfManagement": 1,
+    "minBuyoutPrice": 0,
+    "currency": "PLN",
+    "risk": {
+      "id": "10",
+      "name": "niskie",
+      "scale": 2
+    },
+    "perspective": {
+      "id": "10",
+      "name": "Do 3 lat"
+    },
+    "category": {
+      "id": "16",
+      "key": "OBL",
+      "value": "dłużny",
+      "color": "funGreen"
+    },
+    "umbrella": {
+      "id": "153",
+      "name": "Fidelity Funds SICAV"
+    },
+    "globalLink": "https://form.mbank.pl/app/sfi_mb/logowanie.html?option=mbank&sprzedawca=strona_funduszu&",
+    "date": "2026-11-13",
+    "yield1d": -0.2052,
+    "yield1m": 0.5513,
+    "yield3m": -2.2118,
+    "yield6m": -1.2855,
+    "yield12m": -0.6131,
+    "yield3y": 14.7915,
+    "yield5y": 9.7818,
+    "yieldMax": 47.1211,
+    "value": 14.59
+  },
+  {
+    "id": "369",
+    "funId": "0108",
+    "shortName": "PZU Zrównoważony",
+    "longName": "PZU FIO Parasolowy Subfundusz PZU Zrównoważony",
+    "successFee": "20% z nadwyżki ponad benchmark",
+    "link": null,
+    "firstPurchaseMinAmount": 100,
+    "secondPurchaseMinAmount": 100,
+    "fixedCostOfManagement": 2,
+    "minBuyoutPrice": 0,
+    "currency": "PLN",
+    "risk": {
+      "id": "14",
+      "name": "średnie ",
+      "scale": 3
+    },
+    "perspective": {
+      "id": "9",
+      "name": "Od 3 do 5 lat"
+    },
+    "category": {
+      "id": "19",
+      "key": "HYB",
+      "value": "mieszany",
+      "color": "flushOrange"
+    },
+    "umbrella": {
+      "id": "121",
+      "name": "PZU FIO Parasolowy"
+    },
+    "globalLink": "https://form.mbank.pl/app/sfi_mb/logowanie.html?option=mbank&sprzedawca=strona_funduszu&",
+    "date": "2026-11-10",
+    "yield1d": 0.6713,
+    "yield1m": -0.5526,
+    "yield3m": -0.2692,
+    "yield6m": 9.2068,
+    "yield12m": 20.8693,
+    "yield3y": 69.2463,
+    "yield5y": 67.2464,
+    "yieldMax": 151.4371,
+    "value": 125.97
+  },
+  {
+    "id": "392",
+    "funId": "0151",
+    "shortName": "PKO Dynamicznej Alokacji",
+    "longName": "PKO Parasolowy - FIO Subfundusz PKO Dynamicznej Alokacji",
+    "successFee": "Brak",
+    "link": null,
+    "firstPurchaseMinAmount": 100,
+    "secondPurchaseMinAmount": 100,
+    "fixedCostOfManagement": 2,
+    "minBuyoutPrice": 0,
+    "currency": "PLN",
+    "risk": {
+      "id": "14",
+      "name": "średnie ",
+      "scale": 3
+    },
+    "perspective": {
+      "id": "9",
+      "name": "Od 3 do 5 lat"
+    },
+    "category": {
+      "id": "19",
+      "key": "HYB",
+      "value": "mieszany",
+      "color": "flushOrange"
+    },
+    "umbrella": {
+      "id": "134",
+      "name": "PKO Parasolowy - FIO"
+    },
+    "globalLink": "https://form.mbank.pl/app/sfi_mb/logowanie.html?option=mbank&sprzedawca=strona_funduszu&",
+    "date": "2026-11-12",
+    "yield1d": -0.0057,
+    "yield1m": -0.6304,
+    "yield3m": -1.1146,
+    "yield6m": 1.0358,
+    "yield12m": 1.6057,
+    "yield3y": 11.0866,
+    "yield5y": 3.4877,
+    "yieldMax": 253.1,
+    "value": 176.55
+  },
+  {
+    "id": "506",
+    "funId": "0463",
+    "shortName": "Skarbiec Market Neutral",
+    "longName": "Skarbiec FIO Subfundusz Skarbiec - Market Neutral",
+    "successFee": "Brak",
+    "link": null,
+    "firstPurchaseMinAmount": 1000,
+    "secondPurchaseMinAmount": 100,
+    "fixedCostOfManagement": 1.95,
+    "minBuyoutPrice": 0,
+    "currency": "PLN",
+    "risk": {
+      "id": "14",
+      "name": "średnie ",
+      "scale": 3
+    },
+    "perspective": {
+      "id": "9",
+      "name": "Od 3 do 5 lat"
+    },
+    "category": {
+      "id": "17",
+      "key": "ALT",
+      "value": "alternatywny",
+      "color": "endeavourBlueUI"
+    },
+    "umbrella": {
+      "id": "120",
+      "name": "Skarbiec FIO"
+    },
+    "globalLink": "https://form.mbank.pl/app/sfi_mb/logowanie.html?option=mbank&sprzedawca=strona_funduszu&",
+    "date": "2026-11-12",
+    "yield1d": -0.3826,
+    "yield1m": 0.3592,
+    "yield3m": -4.1423,
+    "yield6m": -0.4951,
+    "yield12m": 1.5064,
+    "yield3y": 1.1658,
+    "yield5y": -14.3679,
+    "yieldMax": 1.3627,
+    "value": 114.55
+  }
+]

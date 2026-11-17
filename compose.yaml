@@ -1,0 +1,45 @@
+# Production stack: the app (TanStack Start + Effect backend + collector in one
+# process) and Postgres. Configure with a .env file next to this one; see
+# .env.example. Start: docker compose up -d --build
+name: fundstats
+
+services:
+  app:
+    build: .
+    image: fundstats:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://fundstats:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/fundstats
+      COLLECTOR_ENABLED: ${COLLECTOR_ENABLED:-true}
+      COLLECTOR_INTERVAL_MBANK: ${COLLECTOR_INTERVAL_MBANK:-}
+      COLLECTOR_INTERVAL_COINGECKO: ${COLLECTOR_INTERVAL_COINGECKO:-}
+      COLLECTOR_INTERVAL_COINPAPRIKA: ${COLLECTOR_INTERVAL_COINPAPRIKA:-}
+      COLLECTOR_INTERVAL_COINMARKETCAP: ${COLLECTOR_INTERVAL_COINMARKETCAP:-}
+      RAW_PAYLOAD_RETENTION_DAYS: ${RAW_PAYLOAD_RETENTION_DAYS:-30}
+      COINGECKO_API_KEY: ${COINGECKO_API_KEY:-}
+      CMC_API_KEY: ${CMC_API_KEY:-}
+    # Published on loopback only, for a reverse proxy on the same host. Set
+    # FUNDSTATS_BIND=0.0.0.0 to expose it on every interface.
+    ports:
+      - "${FUNDSTATS_BIND:-127.0.0.1}:${FUNDSTATS_PORT:-3000}:3000"
+
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: fundstats
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: fundstats
+    volumes:
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fundstats -d fundstats"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  db-data:
