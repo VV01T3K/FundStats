@@ -1,5 +1,18 @@
-import { Config, Context, type Duration, Effect, Layer, Option, Redacted } from "effect"
+import { Config, Context, Duration, Effect, Layer, Option, Redacted, Schema } from "effect"
 import { SOURCE_IDS } from "#/shared/sources.ts"
+
+/** Shortest accepted collector interval; anything lower would hammer the upstreams. */
+export const MIN_INTERVAL = Duration.minutes(1)
+
+const PositiveInt = Schema.Int.check(Schema.isGreaterThan(0, { message: "must be a positive integer" }))
+
+const Interval = Schema.DurationFromString.check(
+	Schema.makeFilter((d: Duration.Duration) =>
+		Duration.isFinite(d) && Duration.isGreaterThanOrEqualTo(d, MIN_INTERVAL)
+			? true
+			: `must be a finite duration of at least ${Duration.format(MIN_INTERVAL)}`,
+	),
+)
 
 /**
  * All environment configuration, read once through Effect Config when the
@@ -26,18 +39,18 @@ export class AppConfig extends Context.Service<
 		Effect.gen(function* () {
 			const base = yield* Config.all({
 				databaseUrl: Config.Redacted("DATABASE_URL"),
-				dbPoolMax: Config.Int("DB_POOL_MAX").pipe(Config.withDefault(10)),
+				dbPoolMax: Config.schema(PositiveInt, "DB_POOL_MAX").pipe(Config.withDefault(10)),
 				runMigrations: Config.Boolean("RUN_MIGRATIONS").pipe(Config.withDefault(true)),
 				migrationsDir: Config.String("MIGRATIONS_DIR").pipe(Config.withDefault("./drizzle")),
 				collectorEnabled: Config.Boolean("COLLECTOR_ENABLED").pipe(Config.withDefault(true)),
-				rawPayloadRetentionDays: Config.Int("RAW_PAYLOAD_RETENTION_DAYS").pipe(Config.withDefault(30)),
+				rawPayloadRetentionDays: Config.schema(PositiveInt, "RAW_PAYLOAD_RETENTION_DAYS").pipe(Config.withDefault(30)),
 				coingeckoApiKey: Config.Redacted("COINGECKO_API_KEY").pipe(Config.option),
 				cmcApiKey: Config.Redacted("CMC_API_KEY").pipe(Config.option),
 			})
 			// Overrides are read eagerly for known sources so a typo fails at boot.
 			const overrides = new Map<string, Duration.Duration>()
 			for (const id of SOURCE_IDS) {
-				const value = yield* Config.Duration(`COLLECTOR_INTERVAL_${id.toUpperCase()}`).pipe(Config.option)
+				const value = yield* Config.schema(Interval, `COLLECTOR_INTERVAL_${id.toUpperCase()}`).pipe(Config.option)
 				if (Option.isSome(value)) overrides.set(id, value.value)
 			}
 			return AppConfig.of({
