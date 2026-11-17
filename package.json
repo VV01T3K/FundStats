@@ -36,7 +36,7 @@
 		"fmt:check": "oxfmt --check",
 		"lint": "oxlint",
 		"typecheck": "effect-tsgo tsc --noEmit && bun run --filter '@fundstats/*' typecheck",
-		"test": "bun --bun vitest run",
+		"test": "bun --bun vitest run --maxWorkers=4",
 		"knip": "knip",
 		"sync:repos": "bun scripts/sync-repos.ts"
 	},
