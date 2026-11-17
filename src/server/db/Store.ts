@@ -49,7 +49,11 @@ export class Store extends Context.Service<
 		readonly saveRawPayload: (runId: number, source: string, payload: unknown) => E<void>
 		/** Writes instruments and snapshots and marks the run successful, in one transaction. */
 		readonly persist: (input: PersistInput) => E<PersistResult>
-		/** Closes runs left `running` by a crash or restart. */
+		/**
+		 * Closes runs left `running` by a crash or restart. A run counts as
+		 * abandoned only when its source's collection lock is free; a run that
+		 * another live process is still doing keeps its lock and is left alone.
+		 */
 		readonly closeInterruptedRuns: E<number>
 		readonly pruneRawPayloads: (olderThanDays: number) => E<number>
 		readonly runSummary: (source: string) => E<RunSummary>
@@ -116,7 +120,9 @@ export class Store extends Context.Service<
 									category: sql`excluded.category`,
 									currency: sql`excluded.currency`,
 									metadata: sql`excluded.metadata`,
-									lastSeenRunId: sql`excluded.last_seen_run_id`,
+									// Run ids grow in start order, so an older run that finishes late
+									// never moves an instrument back to its own (older) state.
+									lastSeenRunId: sql`greatest(${instruments.lastSeenRunId}, excluded.last_seen_run_id)`,
 									updatedAt: sql`now()`,
 								},
 							})
@@ -163,20 +169,41 @@ export class Store extends Context.Service<
 							finishedAt: new Date(),
 							instrumentCount: rows.length,
 							rowsWritten,
+							error: null,
 						})
 						.where(eq(collectionRuns.id, input.runId))
 					return { instrumentCount: rows.length, rowsWritten }
 				})
 
+			const closeAbandonedRuns = (source: string) =>
+				database
+					.use("closeInterruptedRuns", (db) =>
+						db
+							.update(collectionRuns)
+							.set({ status: "failed", finishedAt: new Date(), error: "Interrupted (app stopped during the run)" })
+							.where(and(eq(collectionRuns.source, source), eq(collectionRuns.status, "running")))
+							.returning({ id: collectionRuns.id }),
+					)
+					.pipe(Effect.map((rows) => rows.length))
+
 			const closeInterruptedRuns = database
-				.use("closeInterruptedRuns", (db) =>
+				.use("runningSources", (db) =>
 					db
-						.update(collectionRuns)
-						.set({ status: "failed", finishedAt: new Date(), error: "Interrupted (app stopped during the run)" })
-						.where(eq(collectionRuns.status, "running"))
-						.returning({ id: collectionRuns.id }),
+						.selectDistinct({ source: collectionRuns.source })
+						.from(collectionRuns)
+						.where(eq(collectionRuns.status, "running")),
 				)
-				.pipe(Effect.map((rows) => rows.length))
+				.pipe(
+					Effect.flatMap((rows) =>
+						Effect.forEach(rows, ({ source }) =>
+							database.withSourceLock(source, closeAbandonedRuns(source)).pipe(
+								// Held by a live collection elsewhere: that run is not abandoned.
+								Effect.catchTag("SourceBusy", () => Effect.succeed(0)),
+							),
+						),
+					),
+					Effect.map((counts) => counts.reduce((a, b) => a + b, 0)),
+				)
 
 			const pruneRawPayloads = (olderThanDays: number) =>
 				database
@@ -239,17 +266,33 @@ export class Store extends Context.Service<
 						       s.captured_at, s.as_of::text as as_of, s.value, s.metrics
 						from ${instruments} i
 						join lateral (
-							select captured_at, as_of, value, metrics
-							from ${snapshots} s
-							where s.instrument_id = i.id
-							order by s.captured_at desc
+							-- Dated values (funds): the newest valuation date is current, even if
+							-- an older date was captured later. Live quotes (crypto, no as_of):
+							-- the newest capture. Each branch is one index probe.
+							select captured_at, as_of, value, metrics from (
+								(select 0 as priority, captured_at, as_of, value, metrics
+								 from ${snapshots}
+								 where instrument_id = i.id and as_of is not null
+								 order by as_of desc
+								 limit 1)
+								union all
+								(select 1 as priority, captured_at, as_of, value, metrics
+								 from ${snapshots}
+								 where instrument_id = i.id
+								 order by captured_at desc
+								 limit 1)
+							) candidates
+							order by priority
 							limit 1
 						) s on true
 						where i.source = ${source}
+						  -- Run ids grow in start order and persist never moves last_seen_run_id
+						  -- backwards, so the highest successful id is the run instruments point at,
+						  -- whatever order overlapping runs finished in.
 						  and i.last_seen_run_id = (
 							select id from ${collectionRuns}
 							where source = ${source} and status = 'success'
-							order by started_at desc
+							order by id desc
 							limit 1
 						  )
 						order by (s.metrics->>'rank')::numeric asc nulls last, i.name asc

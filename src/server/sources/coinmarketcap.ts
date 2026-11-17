@@ -67,9 +67,12 @@ export const CmcWebListing = Schema.Struct({
 	}),
 })
 
-export type CmcPayload =
-	| { readonly api: "pro"; readonly body: typeof CmcProListings.Type }
-	| { readonly api: "web"; readonly body: typeof CmcWebListing.Type }
+/** What the collector stores: the response body tagged with the endpoint it came from. */
+export const CmcPayload = Schema.Union([
+	Schema.Struct({ api: Schema.Literal("pro"), body: CmcProListings }),
+	Schema.Struct({ api: Schema.Literal("web"), body: CmcWebListing }),
+])
+export type CmcPayload = typeof CmcPayload.Type
 
 const ranked = (rank: number | null | undefined): rank is number => typeof rank === "number" && rank > 0 && rank <= TOP
 
@@ -134,20 +137,19 @@ export const coinmarketcap = defineSource<CmcPayload>({
 	fetch: Effect.gen(function* () {
 		const config = yield* AppConfig
 		if (Option.isSome(config.cmcApiKey)) {
-			const { raw, payload } = yield* fetchJson(
+			const body = yield* fetchJson(
 				info.id,
 				HttpClientRequest.get("https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest").pipe(
 					HttpClientRequest.setUrlParams({ start: "1", limit: String(TOP), convert: "USD" }),
 					HttpClientRequest.acceptJson,
 					HttpClientRequest.setHeader("X-CMC_PRO_API_KEY", Redacted.value(config.cmcApiKey.value)),
 				),
-				CmcProListings,
 			)
-			return { raw: { api: "pro", body: raw }, payload: { api: "pro" as const, body: payload } }
+			return { api: "pro", body }
 		}
 		// Fallback without a key. It asks for one extra row because sponsored
 		// index products without a rank take a slot.
-		const { raw, payload } = yield* fetchJson(
+		const body = yield* fetchJson(
 			info.id,
 			HttpClientRequest.get("https://api.coinmarketcap.com/data-api/v3/cryptocurrency/listing").pipe(
 				HttpClientRequest.setUrlParams({
@@ -165,9 +167,9 @@ export const coinmarketcap = defineSource<CmcPayload>({
 					referer: "https://coinmarketcap.com/",
 				}),
 			),
-			CmcWebListing,
 		)
-		return { raw: { api: "web", body: raw }, payload: { api: "web" as const, body: payload } }
+		return { api: "web", body }
 	}),
+	payload: CmcPayload,
 	normalize: normalizeCmc,
 })

@@ -24,12 +24,16 @@ const program = Effect.gen(function* () {
 			Effect.map((r) => `${id}: ok, ${r.instrumentCount} instruments, ${r.rowsWritten} rows written`),
 			Effect.catch((error) => {
 				failed++
-				return Effect.succeed(`${id}: FAILED, ${error._tag}: ${error.message}`)
+				return Effect.succeed(
+					error._tag === "SourceBusy"
+						? `${id}: SKIPPED, ${error.message}; nothing was collected`
+						: `${id}: FAILED, ${error._tag}: ${error.message}`,
+				)
 			}),
 		)
 		yield* Console.log(result)
 	}
-	if (failed > 0) return yield* Effect.fail(new Error(`${failed} source(s) failed`))
+	if (failed > 0) return yield* Effect.fail(new Error(`${failed} source(s) failed or were skipped`))
 })
 
 program.pipe(Effect.provide(ServicesLayer), NodeRuntime.runMain)

@@ -2,10 +2,10 @@ import { Cause, Context, Duration, Effect, Layer, Option, Schema, Semaphore } fr
 import { FetchHttpClient, HttpClient } from "effect/http"
 import { SOURCE_IDS, type SourceId } from "#/shared/sources.ts"
 import { AppConfig } from "../config.ts"
-import type { DatabaseError } from "../db/Database.ts"
+import { Database, type DatabaseError, SourceBusy } from "../db/Database.ts"
 import { type PersistResult, Store } from "../db/Store.ts"
 import { registry } from "../sources/registry.ts"
-import { type AnySource, SourceError } from "../sources/Source.ts"
+import { type AnySource, decodePayload, SourceError } from "../sources/Source.ts"
 
 export class UnknownSource extends Schema.TaggedError<UnknownSource>()("UnknownSource", {
 	source: Schema.String,
@@ -17,8 +17,13 @@ export type RunTrigger = "schedule" | "cli" | "test"
 const FAILURE_RETRY = Duration.minutes(10)
 
 /**
- * Runs sources: fetch from upstream → keep raw payload → normalize → persist.
- * Every run is recorded in `collection_runs`, including failures.
+ * Runs sources: fetch from upstream → keep raw payload → decode → normalize →
+ * persist. Every run is recorded in `collection_runs`, including failures.
+ *
+ * A run holds its source's database lock from before the run row is created
+ * until persistence ends, so two processes (app and CLI, or two replicas)
+ * never collect the same source at once. A run that finds the lock taken
+ * fails with SourceBusy and records nothing.
  */
 export class Collector extends Context.Service<
 	Collector,
@@ -27,7 +32,7 @@ export class Collector extends Context.Service<
 		readonly runOnce: (
 			source: string,
 			trigger: RunTrigger,
-		) => Effect.Effect<PersistResult, UnknownSource | SourceError | DatabaseError>
+		) => Effect.Effect<PersistResult, UnknownSource | SourceBusy | SourceError | DatabaseError>
 	}
 >()("fundstats/server/collector/Collector") {
 	static readonly layerNoDeps = Layer.effect(
@@ -35,6 +40,7 @@ export class Collector extends Context.Service<
 		Effect.gen(function* () {
 			const config = yield* AppConfig
 			const store = yield* Store
+			const database = yield* Database
 			const httpClient = yield* HttpClient.HttpClient
 			// One run per source at a time inside this process.
 			const locks = new Map(SOURCE_IDS.map((id) => [id, Semaphore.makeUnsafe(1)]))
@@ -50,18 +56,18 @@ export class Collector extends Context.Service<
 					const id = sourceId as SourceId
 					const source: AnySource = registry[id]
 					const lock = locks.get(id) as Semaphore.Semaphore
-					return yield* Semaphore.withPermits(
-						lock,
-						1,
-					)(
+					const run = database.withSourceLock(
+						id,
 						Effect.gen(function* () {
 							const runId = yield* store.startRun(id, trigger)
 							const capturedAt = new Date()
 							return yield* Effect.gen(function* () {
-								const fetched = yield* source.fetch
-								yield* store.saveRawPayload(runId, id, fetched.raw)
+								const raw = yield* source.fetch
+								// Stored before decoding, so a changed upstream shape can be inspected and replayed.
+								yield* store.saveRawPayload(runId, id, raw)
+								const payload = yield* decodePayload(source, raw)
 								const rows = yield* Effect.try({
-									try: () => source.normalize(fetched.payload),
+									try: () => source.normalize(payload),
 									catch: (cause) =>
 										new SourceError({
 											source: id,
@@ -91,6 +97,8 @@ export class Collector extends Context.Service<
 							}).pipe(Effect.onError((cause) => store.failRun(runId, describe(cause)).pipe(Effect.ignore)))
 						}),
 					)
+					// In-process runs of one source wait for each other; other processes get SourceBusy.
+					return yield* Semaphore.withPermits(lock, 1)(run)
 				},
 				Effect.provideService(HttpClient.HttpClient, httpClient),
 				Effect.provideService(AppConfig, config),
@@ -107,6 +115,7 @@ const describe = (cause: Cause.Cause<unknown>): string => {
 	const error = Cause.squash(cause)
 	if (Cause.hasInterruptsOnly(cause)) return "Interrupted"
 	if (Schema.is(SourceError)(error)) return `${error.reason}: ${error.message}`
+	if (Schema.is(SourceBusy)(error)) return error.message
 	if (error instanceof Error) return error.message
 	return Cause.pretty(cause)
 }
@@ -144,6 +153,11 @@ export const CollectorScheduler = Layer.effectDiscard(
 				yield* Effect.sleep(delay)
 				yield* collector.runOnce(id, "schedule")
 			}).pipe(
+				// Another process (e.g. `bun run collect`) is collecting it right now;
+				// its run row decides when this source is due next.
+				Effect.catchTag("SourceBusy", (busy) =>
+					Effect.logInfo(`Skipped ${id}: ${busy.message}`).pipe(Effect.andThen(Effect.sleep("1 minute"))),
+				),
 				Effect.catchCause((cause) =>
 					Effect.logError(`Collector run for ${id} failed: ${describe(cause)}`).pipe(
 						// Avoid a hot loop if the database itself is down.

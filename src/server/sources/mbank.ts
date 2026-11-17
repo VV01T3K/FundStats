@@ -51,9 +51,9 @@ export const mbank = defineSource({
 					referer: "https://www.mbank.pl/serwis-ekonomiczny/notowania-funduszy/",
 				}),
 			),
-			MbankPayload,
 		),
 	),
+	payload: MbankPayload,
 	normalize: (funds) =>
 		funds.map((fund) => ({
 			externalId: String(fund.id),

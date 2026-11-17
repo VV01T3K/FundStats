@@ -15,6 +15,12 @@ export class DatabaseError extends Schema.TaggedError<DatabaseError>()("Database
 	cause: Schema.Defect(),
 }) {}
 
+/** Another process (or fiber) is already collecting this source. */
+export class SourceBusy extends Schema.TaggedError<SourceBusy>()("SourceBusy", {
+	source: Schema.String,
+	message: Schema.String,
+}) {}
+
 const toDatabaseError = (operation: string) => (cause: unknown) =>
 	new DatabaseError({
 		operation,
@@ -33,6 +39,17 @@ export class Database extends Context.Service<
 		/** Runs a Drizzle query, mapping any failure to DatabaseError. */
 		readonly use: <A>(operation: string, f: (db: Db) => Promise<A>) => Effect.Effect<A, DatabaseError>
 		readonly transaction: <A>(operation: string, f: (tx: Tx) => Promise<A>) => Effect.Effect<A, DatabaseError>
+		/**
+		 * Runs `effect` while holding the collection lock of `source`: a
+		 * session-level Postgres advisory lock on a dedicated connection, so it
+		 * serializes collections across processes (app, CLI, replicas). Fails
+		 * with SourceBusy instead of waiting when another session holds it. The
+		 * lock is released when `effect` ends, or by Postgres if the process dies.
+		 */
+		readonly withSourceLock: <A, E, R>(
+			source: string,
+			effect: Effect.Effect<A, E, R>,
+		) => Effect.Effect<A, E | SourceBusy | DatabaseError, R>
 	}
 >()("fundstats/server/db/Database") {
 	static readonly layer = Layer.effect(
@@ -64,8 +81,50 @@ export class Database extends Context.Service<
 				yield* runMigrations(pool, config.migrationsDir)
 			}
 
+			// The lock lives on its own connection, not a pool slot: a run holds it
+			// while its queries use the pool, so DB_POOL_MAX=1 cannot deadlock.
+			const withSourceLock = <A, E, R>(
+				source: string,
+				effect: Effect.Effect<A, E, R>,
+			): Effect.Effect<A, E | SourceBusy | DatabaseError, R> =>
+				Effect.acquireUseRelease(
+					Effect.tryPromise({
+						try: async () => {
+							const client = new pg.Client({ connectionString: Redacted.value(config.databaseUrl) })
+							// A dropped connection also drops the lock; it must not crash the process.
+							client.on("error", (error) => {
+								Effect.runFork(Effect.logWarning(`Collection lock connection of ${source} failed`, error.message))
+							})
+							try {
+								await client.connect()
+								const result = await client.query<{ locked: boolean }>(
+									"select pg_try_advisory_lock($1, hashtext($2)) as locked",
+									[SOURCE_LOCK_CLASS, source],
+								)
+								return { client, locked: result.rows[0]?.locked === true }
+							} catch (error) {
+								await client.end().catch(() => {})
+								throw error
+							}
+						},
+						catch: toDatabaseError("lockSource"),
+					}),
+					({ locked }): Effect.Effect<A, E | SourceBusy, R> =>
+						locked
+							? effect
+							: Effect.fail(
+									new SourceBusy({
+										source,
+										message: `another collection of ${source} is running (its lock is held)`,
+									}),
+								),
+					// Ending the session releases the advisory lock.
+					({ client }) => Effect.promise(() => client.end().catch(() => {})),
+				)
+
 			return Database.of({
 				db,
+				withSourceLock,
 				use: (operation, f) =>
 					Effect.tryPromise({ try: () => f(db), catch: toDatabaseError(operation) }).pipe(
 						Effect.withSpan(`db.${operation}`),
@@ -79,6 +138,9 @@ export class Database extends Context.Service<
 		}),
 	)
 }
+
+// First key of the per-source collection locks; the second is hashtext(source).
+const SOURCE_LOCK_CLASS = 727_002
 
 // Arbitrary constant; serializes migrations if two app processes boot at once.
 const MIGRATION_LOCK_ID = 727_001

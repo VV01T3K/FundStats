@@ -48,8 +48,9 @@ export const coingecko = defineSource({
 					onSome: (key) => HttpClientRequest.setHeader(req, "x-cg-demo-api-key", Redacted.value(key)),
 				}),
 		)
-		return yield* fetchJson(info.id, request, CoinGeckoPayload)
+		return yield* fetchJson(info.id, request)
 	}),
+	payload: CoinGeckoPayload,
 	normalize: (coins) =>
 		coins.map((coin) => ({
 			externalId: coin.id,
