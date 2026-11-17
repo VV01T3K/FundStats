@@ -56,14 +56,23 @@ export class Collector extends Context.Service<
 					const id = sourceId as SourceId
 					const source: AnySource = registry[id]
 					const lock = locks.get(id) as Semaphore.Semaphore
-					// Set once the run row exists; the failure is recorded outside the
-					// lock, so it is also recorded when the lock connection is lost.
-					let runId: number | undefined
+					// The run row to close if the run fails. Failure is recorded outside
+					// the lock, so it is also recorded when the lock connection is lost.
+					let openRun: number | undefined
 					const run = database
 						.withSourceLock(id, (lock) =>
 							Effect.gen(function* () {
 								const writer = store.writer(lock)
-								runId = yield* writer.startRun(id, trigger)
+								// Creating the row and binding its id is one uninterruptible step;
+								// an interruption in between would leave a row nobody closes.
+								const runId = yield* writer.startRun(id, trigger).pipe(
+									Effect.tap((created) =>
+										Effect.sync(() => {
+											openRun = created
+										}),
+									),
+									Effect.uninterruptible,
+								)
 								const capturedAt = new Date()
 								const raw = yield* source.fetch
 								// Stored before decoding, so a changed upstream shape can be inspected and replayed.
@@ -103,7 +112,7 @@ export class Collector extends Context.Service<
 							// failRun only touches a run that is still `running`, so a run whose
 							// persist committed keeps its success even if the fiber was interrupted.
 							Effect.onError((cause) =>
-								runId === undefined ? Effect.void : store.failRun(runId, describe(cause)).pipe(Effect.ignore),
+								openRun === undefined ? Effect.void : store.failRun(openRun, describe(cause)).pipe(Effect.ignore),
 							),
 						)
 					// In-process runs of one source wait for each other; other processes get SourceBusy.

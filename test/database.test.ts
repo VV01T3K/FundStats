@@ -14,6 +14,7 @@ import { Collector } from "#/server/collector/Collector.ts"
 import { AppConfig } from "#/server/config.ts"
 import { Database } from "#/server/db/Database.ts"
 import { Store } from "#/server/db/Store.ts"
+import { collectionRuns } from "#/server/db/schema.ts"
 import { ApiRoutesLayer } from "#/server/runtime.ts"
 import type { NormalizedRow } from "#/server/sources/Source.ts"
 import { fixture } from "./fixtures.ts"
@@ -139,6 +140,36 @@ const SOURCE_LOCK_HOLDERS = "select pid from pg_locks where locktype = 'advisory
 const terminateLockHolders = queryElsewhere<{ ok: boolean }>(
 	`select pg_terminate_backend(pid, 5000) as ok from (${SOURCE_LOCK_HOLDERS}) holders`,
 )
+
+/**
+ * Runs `effect` while another session blocks inserts into `table`, then lifts
+ * the block. `effect` returns a fiber to join once the block is gone.
+ */
+const withInsertsBlocked = <A, E, R>(table: string, effect: Effect.Effect<Fiber.Fiber<A, E>, E, R>) =>
+	Effect.acquireUseRelease(
+		Effect.promise(async () => {
+			const blocker = new pg.Client({ connectionString: inject("databaseUrl") })
+			await blocker.connect()
+			await blocker.query("begin")
+			await blocker.query(`lock table ${table} in share mode`)
+			return blocker
+		}),
+		(blocker) =>
+			effect.pipe(
+				Effect.tap(() => sleepReal(100)),
+				Effect.tap(() => Effect.promise(() => blocker.query("commit"))),
+			),
+		(blocker) => Effect.promise(() => blocker.end()),
+	)
+
+/** Waits until an insert into `table` is waiting on a lock. */
+const waitForBlockedInsert = (table: string) =>
+	waitFor(
+		`an insert into ${table} to block`,
+		queryElsewhere("select 1 from pg_stat_activity where wait_event_type = 'Lock' and query ilike $1", [
+			`insert into "${table}"%`,
+		]).pipe(Effect.map((rows) => rows.length > 0)),
+	)
 
 /** An upstream response the test releases by hand. */
 const gate = () => {
@@ -537,6 +568,45 @@ layer(TestServices)("losing the lock or the fiber mid-run", (it) => {
 			// the status matches what was committed (nothing).
 			assert.deepStrictEqual(runs[1], { id: runs[1].id, status: "failed", snapshots: 0 })
 			assert.strictEqual((yield* store.latest("coingecko")).length, 5, "latest must keep serving data")
+		}),
+	)
+
+	it.effect("an interrupted query still runs exactly once", () =>
+		Effect.gen(function* () {
+			yield* reset
+			const database = yield* Database
+			yield* withInsertsBlocked(
+				"collection_runs",
+				Effect.gen(function* () {
+					const fiber = yield* database
+						.use("insert", (db) =>
+							db.insert(collectionRuns).values({ source: "mbank", trigger: "test", status: "running" }),
+						)
+						.pipe(Effect.forkChild)
+					yield* waitForBlockedInsert("collection_runs")
+					return yield* Fiber.interrupt(fiber).pipe(Effect.forkChild)
+				}),
+			).pipe(Effect.flatMap(Fiber.join))
+			assert.strictEqual(yield* count("collection_runs"), 1)
+		}),
+	)
+
+	it.effect("interrupting a run while its row is being created still closes that row", () =>
+		Effect.gen(function* () {
+			yield* reset
+			const collector = yield* Collector
+			yield* withInsertsBlocked(
+				"collection_runs",
+				Effect.gen(function* () {
+					const fiber = yield* collector.runOnce("coingecko", "test").pipe(Effect.forkChild)
+					yield* waitForBlockedInsert("collection_runs")
+					return yield* Fiber.interrupt(fiber).pipe(Effect.forkChild)
+				}),
+			).pipe(Effect.flatMap(Fiber.join))
+			const runs = yield* queryElsewhere<{ status: string; error: string | null }>(
+				"select status, error from collection_runs",
+			)
+			assert.deepStrictEqual(runs, [{ status: "failed", error: "Interrupted" }])
 		}),
 	)
 

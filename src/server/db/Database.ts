@@ -43,16 +43,15 @@ export interface Executor {
  * Runs a promise that cannot be cancelled. An interruption aborts `signal`
  * and then waits for the promise to settle, so the database work it started
  * has finished (committed or rolled back) before the fiber ends.
+ *
+ * Drizzle queries are lazy thenables that execute on every `then`, so `run`'s
+ * result is adopted into one native promise, started exactly once, and only
+ * that promise is observed.
  */
-const settled = <A>(operation: string, run: (signal: AbortSignal) => Promise<A>): Effect.Effect<A, DatabaseError> =>
+const settled = <A>(operation: string, run: (signal: AbortSignal) => PromiseLike<A>): Effect.Effect<A, DatabaseError> =>
 	Effect.callback<A, DatabaseError>((resume) => {
 		const controller = new AbortController()
-		let promise: Promise<A>
-		try {
-			promise = run(controller.signal)
-		} catch (error) {
-			promise = Promise.reject(error)
-		}
+		const promise = new Promise<A>((resolve) => resolve(run(controller.signal)))
 		promise.then(
 			(value) => resume(Effect.succeed(value)),
 			(error) => resume(Effect.fail(toDatabaseError(operation)(error))),
