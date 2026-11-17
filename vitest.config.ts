@@ -1,13 +1,12 @@
 import { defineConfig } from "vitest/config"
 
+// Runs every workspace's tests; each workspace also runs its own with `vitest run`.
 export default defineConfig({
-	resolve: { tsconfigPaths: true },
 	test: {
-		include: ["test/**/*.test.ts", "oxlint-plugin-fundstats/**/*.test.ts"],
-		globalSetup: ["test/setup/postgres.ts"],
-		// Tests never call live upstreams; the collector is never started.
-		env: { COLLECTOR_ENABLED: "false" },
-		testTimeout: 30_000,
-		hookTimeout: 120_000,
+		projects: [
+			"apps/*",
+			"packages/*",
+			{ test: { name: "oxlint-plugin-fundstats", include: ["oxlint-plugin-fundstats/**/*.test.ts"] } },
+		],
 	},
 })

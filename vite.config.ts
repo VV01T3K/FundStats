@@ -1,3 +1,5 @@
+import * as NodePath from "node:path"
+
 import tailwindcss from "@tailwindcss/vite"
 import { devtools } from "@tanstack/devtools-vite"
 import { tanstackStart } from "@tanstack/react-start/plugin/vite"
@@ -5,11 +7,16 @@ import viteReact from "@vitejs/plugin-react"
 import { nitro } from "nitro/vite"
 import { defineConfig } from "vite-plus"
 
-const GENERATED = ["src/routeTree.gen.ts", "drizzle/meta/**"]
-// shadcn components are copied in as-is and updated by its CLI.
-const VENDORED = ["src/components/ui/**", ".repos/**"]
+const WEB = `${import.meta.dirname}/apps/web`
 
+const GENERATED = ["apps/web/src/routeTree.gen.ts", "packages/db/drizzle/meta/**"]
+// shadcn components are copied in as-is and updated by its CLI.
+const VENDORED = ["apps/web/src/components/ui/**", ".repos/**"]
+
+// Also the web app's build config: apps/web runs `vp dev|build --config ../../vite.config.ts` from its own
+// directory, which is Vite's root there. `.env` stays at the repository root.
 export default defineConfig({
+	envDir: import.meta.dirname,
 	resolve: { tsconfigPaths: true },
 	server: { port: Number(process.env.PORT ?? 3000), strictPort: false },
 	plugins: [
@@ -17,10 +24,11 @@ export default defineConfig({
 		nitro({
 			preset: "node-server",
 			// Boots the backend at process start and exits non-zero if that fails.
-			plugins: ["./src/server/boot.ts"],
+			plugins: [`${WEB}/src/server/boot.ts`],
 		}),
 		tailwindcss(),
-		tanstackStart(),
+		// Relative, so it holds both in apps/web and when `vp check` loads this file from the repository root.
+		tanstackStart({ srcDirectory: NodePath.relative(process.cwd(), `${WEB}/src`) }),
 		viteReact(),
 	],
 	fmt: {
@@ -30,10 +38,17 @@ export default defineConfig({
 		sortImports: {},
 		sortTailwindcss: {},
 		sortPackageJson: {},
-		ignorePatterns: [...GENERATED, ...VENDORED, "test/fixtures/**", "public/**", "bun.lock", ".output/**"],
+		ignorePatterns: [
+			...GENERATED,
+			...VENDORED,
+			"apps/collector/test/fixtures/**",
+			"apps/web/public/**",
+			"bun.lock",
+			"**/.output/**",
+		],
 	},
 	lint: {
-		ignorePatterns: [...GENERATED, ...VENDORED, ".output/**"],
+		ignorePatterns: [...GENERATED, ...VENDORED, "**/.output/**"],
 		plugins: ["eslint", "oxc", "react", "unicorn", "typescript"],
 		jsPlugins: ["./oxlint-plugin-fundstats/index.ts"],
 		categories: {
@@ -119,7 +134,7 @@ export default defineConfig({
 		},
 		overrides: [
 			{
-				files: ["**/*.test.ts", "test/**", "oxlint-plugin-fundstats/test/**"],
+				files: ["**/*.test.ts", "**/test/**"],
 				rules: { "fundstats/prefer-effect-fn": "off" },
 			},
 		],

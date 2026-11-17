@@ -1,0 +1,26 @@
+{
+	"name": "@fundstats/collector",
+	"version": "2.0.0",
+	"private": true,
+	"type": "module",
+	"imports": {
+		"#/*": "./src/*"
+	},
+	"scripts": {
+		"dev": "bun src/bin.ts start",
+		"start": "bun src/bin.ts start",
+		"collect": "bun src/bin.ts collect",
+		"migrate": "bun src/bin.ts migrate",
+		"typecheck": "effect-tsgo tsc --noEmit",
+		"test": "vitest run"
+	},
+	"dependencies": {
+		"@effect/platform-node": "4.1.4",
+		"@fundstats/db": "workspace:*",
+		"@fundstats/shared": "workspace:*",
+		"effect": "4.1.4"
+	},
+	"devDependencies": {
+		"@effect/vitest": "4.1.4"
+	}
+}
