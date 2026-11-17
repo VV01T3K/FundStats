@@ -56,15 +56,18 @@ export class Collector extends Context.Service<
 					const id = sourceId as SourceId
 					const source: AnySource = registry[id]
 					const lock = locks.get(id) as Semaphore.Semaphore
-					const run = database.withSourceLock(
-						id,
-						Effect.gen(function* () {
-							const runId = yield* store.startRun(id, trigger)
-							const capturedAt = new Date()
-							return yield* Effect.gen(function* () {
+					// Set once the run row exists; the failure is recorded outside the
+					// lock, so it is also recorded when the lock connection is lost.
+					let runId: number | undefined
+					const run = database
+						.withSourceLock(id, (lock) =>
+							Effect.gen(function* () {
+								const writer = store.writer(lock)
+								runId = yield* writer.startRun(id, trigger)
+								const capturedAt = new Date()
 								const raw = yield* source.fetch
 								// Stored before decoding, so a changed upstream shape can be inspected and replayed.
-								yield* store.saveRawPayload(runId, id, raw)
+								yield* writer.saveRawPayload(runId, id, raw)
 								const payload = yield* decodePayload(source, raw)
 								const rows = yield* Effect.try({
 									try: () => source.normalize(payload),
@@ -83,7 +86,7 @@ export class Collector extends Context.Service<
 										message: "Upstream returned no instruments",
 									})
 								}
-								const result = yield* store.persist({
+								const result = yield* writer.persist({
 									source: id,
 									kind: source.info.kind,
 									runId,
@@ -94,9 +97,15 @@ export class Collector extends Context.Service<
 									`Collected ${id}: ${result.instrumentCount} instruments, ${result.rowsWritten} rows written`,
 								)
 								return result
-							}).pipe(Effect.onError((cause) => store.failRun(runId, describe(cause)).pipe(Effect.ignore)))
-						}),
-					)
+							}),
+						)
+						.pipe(
+							// failRun only touches a run that is still `running`, so a run whose
+							// persist committed keeps its success even if the fiber was interrupted.
+							Effect.onError((cause) =>
+								runId === undefined ? Effect.void : store.failRun(runId, describe(cause)).pipe(Effect.ignore),
+							),
+						)
 					// In-process runs of one source wait for each other; other processes get SourceBusy.
 					return yield* Semaphore.withPermits(lock, 1)(run)
 				},

@@ -33,15 +33,21 @@ const FixtureHttpClient = Layer.succeed(
 	HttpClient.HttpClient,
 	HttpClient.make((request, url) => {
 		requests++
-		const body = upstream[url.hostname]?.()
 		const headers = { "content-type": "application/json" }
-		const response =
-			body === undefined
-				? new Response("not found", { status: 404 })
-				: body === STALL
-					? new Response(new ReadableStream({ start: (c) => c.enqueue(new TextEncoder().encode("[")) }), { headers })
-					: new Response(JSON.stringify(body), { headers })
-		return Effect.succeed(HttpClientResponse.fromWeb(request, response))
+		const respond = (body: unknown) =>
+			HttpClientResponse.fromWeb(
+				request,
+				body === undefined
+					? new Response("not found", { status: 404 })
+					: body === STALL
+						? new Response(new ReadableStream({ start: (c) => c.enqueue(new TextEncoder().encode("[")) }), { headers })
+						: new Response(JSON.stringify(body), { headers }),
+			)
+		const body = upstream[url.hostname]?.()
+		// A promise is an upstream that answers once the test resolves it.
+		return body instanceof Promise
+			? Effect.promise(() => body).pipe(Effect.map(respond))
+			: Effect.succeed(respond(body))
 	}),
 )
 
@@ -96,6 +102,52 @@ const holdLockElsewhere = (source: string) =>
 		}),
 		(client) => Effect.promise(() => client.end()),
 	)
+
+/** Run writes on the pool, outside any source lock, for tests that set up runs by hand. */
+const writer = Effect.gen(function* () {
+	return (yield* Store).writer(yield* Database)
+})
+
+/** Real time; the tests run on TestClock, which Effect.sleep would wait for. */
+const sleepReal = (ms: number) => Effect.promise(() => new Promise<void>((resolve) => setTimeout(resolve, ms)))
+
+/** Polls `check` in real time until it holds; fails the test after `ms`. */
+const waitFor = <E, R>(what: string, check: Effect.Effect<boolean, E, R>, ms = 5_000) =>
+	Effect.gen(function* () {
+		for (let waited = 0; waited < ms; waited += 25) {
+			if (yield* check) return
+			yield* sleepReal(25)
+		}
+		assert.fail(`timed out waiting for ${what}`)
+	})
+
+/** One query on a fresh connection of its own, like another process would make. */
+const queryElsewhere = <T extends pg.QueryResultRow>(text: string, values: ReadonlyArray<unknown> = []) =>
+	Effect.promise(async () => {
+		const client = new pg.Client({ connectionString: inject("databaseUrl") })
+		await client.connect()
+		try {
+			return (await client.query<T>(text, [...values])).rows
+		} finally {
+			await client.end()
+		}
+	})
+
+const SOURCE_LOCK_HOLDERS = "select pid from pg_locks where locktype = 'advisory' and classid = 727002 and granted"
+
+/** Kills the Postgres sessions holding a collection lock and waits until they are gone. */
+const terminateLockHolders = queryElsewhere<{ ok: boolean }>(
+	`select pg_terminate_backend(pid, 5000) as ok from (${SOURCE_LOCK_HOLDERS}) holders`,
+)
+
+/** An upstream response the test releases by hand. */
+const gate = () => {
+	let open!: () => void
+	const opened = new Promise<void>((resolve) => {
+		open = resolve
+	})
+	return { open, after: <A>(value: () => A) => opened.then(value) }
+}
 
 const row = (externalId: string, asOf: string | null, value: number): NormalizedRow => ({
 	externalId,
@@ -224,11 +276,23 @@ layer(TestServices)("concurrent and stalled collections", (it) => {
 		Effect.gen(function* () {
 			yield* reset
 			const store = yield* Store
-			const older = yield* store.startRun("coingecko", "test")
-			const newer = yield* store.startRun("coingecko", "test")
+			const older = yield* (yield* writer).startRun("coingecko", "test")
+			const newer = yield* (yield* writer).startRun("coingecko", "test")
 			const rows = [row("a", null, 1), row("b", null, 2)]
-			yield* store.persist({ source: "coingecko", kind: "crypto", runId: newer, capturedAt: new Date(), rows })
-			yield* store.persist({ source: "coingecko", kind: "crypto", runId: older, capturedAt: new Date(), rows })
+			yield* (yield* writer).persist({
+				source: "coingecko",
+				kind: "crypto",
+				runId: newer,
+				capturedAt: new Date(),
+				rows,
+			})
+			yield* (yield* writer).persist({
+				source: "coingecko",
+				kind: "crypto",
+				runId: older,
+				capturedAt: new Date(),
+				rows,
+			})
 			assert.strictEqual((yield* store.latest("coingecko")).length, 2)
 		}),
 	)
@@ -237,16 +301,16 @@ layer(TestServices)("concurrent and stalled collections", (it) => {
 		Effect.gen(function* () {
 			yield* reset
 			const store = yield* Store
-			const first = yield* store.startRun("mbank", "test")
-			yield* store.persist({
+			const first = yield* (yield* writer).startRun("mbank", "test")
+			yield* (yield* writer).persist({
 				source: "mbank",
 				kind: "fund",
 				runId: first,
 				capturedAt: new Date("2026-11-16T12:00:00Z"),
 				rows: [row("f", "2026-11-16", 10)],
 			})
-			const second = yield* store.startRun("mbank", "test")
-			yield* store.persist({
+			const second = yield* (yield* writer).startRun("mbank", "test")
+			yield* (yield* writer).persist({
 				source: "mbank",
 				kind: "fund",
 				runId: second,
@@ -291,8 +355,8 @@ layer(TestServices)("concurrent and stalled collections", (it) => {
 		Effect.gen(function* () {
 			yield* reset
 			const store = yield* Store
-			const abandoned = yield* store.startRun("mbank", "cli")
-			const live = yield* store.startRun("coinpaprika", "cli")
+			const abandoned = yield* (yield* writer).startRun("mbank", "cli")
+			const live = yield* (yield* writer).startRun("coinpaprika", "cli")
 			const closed = yield* Effect.scoped(
 				Effect.gen(function* () {
 					yield* holdLockElsewhere("coinpaprika")
@@ -309,9 +373,9 @@ layer(TestServices)("concurrent and stalled collections", (it) => {
 		Effect.gen(function* () {
 			yield* reset
 			const store = yield* Store
-			const runId = yield* store.startRun("coingecko", "cli")
+			const runId = yield* (yield* writer).startRun("coingecko", "cli")
 			yield* store.failRun(runId, "Interrupted (app stopped during the run)")
-			yield* store.persist({
+			yield* (yield* writer).persist({
 				source: "coingecko",
 				kind: "crypto",
 				runId,
@@ -319,6 +383,178 @@ layer(TestServices)("concurrent and stalled collections", (it) => {
 				rows: [row("a", null, 1)],
 			})
 			assert.deepStrictEqual(yield* runStatus(runId), { status: "success", error: null })
+		}),
+	)
+})
+
+layer(TestServices)("losing the lock or the fiber mid-run", (it) => {
+	it.effect("losing the lock connection stops the run, records it failed, and writes nothing more", () =>
+		Effect.gen(function* () {
+			yield* reset
+			const collector = yield* Collector
+			const original = upstream["api.coingecko.com"]
+			const upstreamGate = gate()
+			upstream["api.coingecko.com"] = () => upstreamGate.after(() => fixture("coingecko-markets.json"))
+			try {
+				const fiber = yield* collector.runOnce("coingecko", "test").pipe(Effect.flip, Effect.forkChild)
+				yield* waitFor(
+					"the run to hold its lock",
+					queryElsewhere(SOURCE_LOCK_HOLDERS).pipe(Effect.map((rows) => rows.length === 1)),
+				)
+				// The run waits on its upstream; its lock connection is killed meanwhile.
+				yield* terminateLockHolders
+				yield* waitFor(
+					"the run to stop",
+					Effect.sync(() => fiber.pollUnsafe() !== undefined),
+				)
+				const error = yield* Fiber.join(fiber)
+				assert.match(error.message, /Lost the collection lock of coingecko/)
+				const [run] = yield* queryElsewhere<{ id: number; status: string; error: string }>(
+					"select id, status, error from collection_runs",
+				)
+				assert.strictEqual(run.status, "failed")
+				assert.match(run.error, /Lost the collection lock/)
+				// Had the run kept going after its upstream answered, it would write now.
+				upstreamGate.open()
+				yield* sleepReal(200)
+				assert.strictEqual(yield* count("raw_payloads"), 0)
+				assert.strictEqual(yield* count("snapshots"), 0)
+				// The next run takes the freed lock and serves its data.
+				upstream["api.coingecko.com"] = original
+				yield* collector.runOnce("coingecko", "test")
+				assert.strictEqual((yield* (yield* Store).latest("coingecko")).length, 5)
+			} finally {
+				upstream["api.coingecko.com"] = original
+			}
+		}),
+	)
+
+	it.effect("a run writes through the session that holds its lock", () =>
+		Effect.gen(function* () {
+			const database = yield* Database
+			const { writer: writerPid, holders } = yield* database.withSourceLock("coingecko", (lock) =>
+				Effect.gen(function* () {
+					const result = yield* lock.use("pid", (db) =>
+						db.execute<{ pid: number }>(sql`select pg_backend_pid() as pid`),
+					)
+					return { writer: result.rows[0].pid, holders: yield* queryElsewhere<{ pid: number }>(SOURCE_LOCK_HOLDERS) }
+				}),
+			)
+			// So when Postgres frees the lock (that session ended), the run's writes cannot land either.
+			assert.deepStrictEqual(
+				holders.map((h) => h.pid),
+				[writerPid],
+			)
+		}),
+	)
+
+	it.effect("once the lock connection is gone, writes through it fail even before the run notices", () =>
+		Effect.gen(function* () {
+			yield* reset
+			const database = yield* Database
+			const error = yield* Effect.scoped(
+				database.withSourceLock("coingecko", (lock) =>
+					Effect.gen(function* () {
+						yield* terminateLockHolders
+						// Postgres has freed the lock: another session takes it right away.
+						yield* holdLockElsewhere("coingecko")
+						yield* lock.use("write", (db) =>
+							db.execute(
+								sql`insert into collection_runs (source, trigger, status) values ('coingecko', 'test', 'running')`,
+							),
+						)
+					}),
+				),
+			).pipe(Effect.flip)
+			assert.strictEqual(error._tag, "DatabaseError")
+			assert.strictEqual(yield* count("collection_runs"), 0, "no write may land while another session holds the lock")
+		}),
+	)
+
+	it.effect("an interrupted transaction is rolled back, and the interruption waits for it", () =>
+		Effect.gen(function* () {
+			yield* reset
+			const database = yield* Database
+			const statements = gate()
+			let finished = false
+			const fiber = yield* database
+				.transaction("slow", async (tx) => {
+					await tx.execute(
+						sql`insert into collection_runs (source, trigger, status) values ('mbank', 'test', 'running')`,
+					)
+					await statements.after(() => undefined)
+				})
+				.pipe(Effect.forkChild)
+			yield* sleepReal(100)
+			const interrupter = yield* Fiber.interrupt(fiber).pipe(
+				Effect.tap(() => Effect.sync(() => (finished = true))),
+				Effect.forkChild,
+			)
+			yield* sleepReal(100)
+			assert.isFalse(finished, "the interruption must wait for the transaction")
+			statements.open()
+			yield* Fiber.join(interrupter)
+			assert.strictEqual(yield* count("collection_runs"), 0)
+		}),
+	)
+
+	it.effect("interrupting a run during persist leaves the last good data served and the run status true", () =>
+		Effect.gen(function* () {
+			yield* reset
+			const collector = yield* Collector
+			const store = yield* Store
+			yield* collector.runOnce("coingecko", "test")
+			assert.strictEqual((yield* store.latest("coingecko")).length, 5)
+
+			// Another session blocks snapshot inserts, so the next persist hangs mid-transaction.
+			const blocker = new pg.Client({ connectionString: inject("databaseUrl") })
+			yield* Effect.promise(async () => {
+				await blocker.connect()
+				await blocker.query("begin")
+				await blocker.query("lock table snapshots in share mode")
+			})
+			try {
+				const fiber = yield* collector.runOnce("coingecko", "test").pipe(Effect.forkChild)
+				yield* waitFor(
+					"persist to wait on the snapshot lock",
+					queryElsewhere(
+						"select 1 from pg_stat_activity where wait_event_type = 'Lock' and query ilike 'insert into \"snapshots\"%'",
+					).pipe(Effect.map((rows) => rows.length > 0)),
+				)
+				const interrupter = yield* Fiber.interrupt(fiber).pipe(Effect.forkChild)
+				yield* sleepReal(100)
+				yield* Effect.promise(() => blocker.query("commit"))
+				yield* Fiber.join(interrupter)
+			} finally {
+				yield* Effect.promise(() => blocker.end())
+			}
+
+			const runs = yield* queryElsewhere<{ id: number; status: string; snapshots: number }>(
+				"select r.id, r.status, (select count(*)::int from snapshots s where s.run_id = r.id) as snapshots from collection_runs r order by r.id",
+			)
+			assert.strictEqual(runs.length, 2)
+			// Interrupted before its commit: rolled back and recorded as failed, so
+			// the status matches what was committed (nothing).
+			assert.deepStrictEqual(runs[1], { id: runs[1].id, status: "failed", snapshots: 0 })
+			assert.strictEqual((yield* store.latest("coingecko")).length, 5, "latest must keep serving data")
+		}),
+	)
+
+	it.effect("recording a failure after a run committed keeps the run successful", () =>
+		Effect.gen(function* () {
+			yield* reset
+			const store = yield* Store
+			const runId = yield* (yield* writer).startRun("coingecko", "test")
+			yield* (yield* writer).persist({
+				source: "coingecko",
+				kind: "crypto",
+				runId,
+				capturedAt: new Date(),
+				rows: [row("a", null, 1)],
+			})
+			yield* store.failRun(runId, "Interrupted")
+			assert.deepStrictEqual(yield* runStatus(runId), { status: "success", error: null })
+			assert.strictEqual((yield* store.latest("coingecko")).length, 1)
 		}),
 	)
 })

@@ -1,6 +1,6 @@
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres"
 import { migrate } from "drizzle-orm/node-postgres/migrator"
-import { Context, Effect, Layer, Redacted, Schema } from "effect"
+import { Context, Deferred, Effect, Exit, Layer, Redacted, Schema } from "effect"
 import pg from "pg"
 import { AppConfig } from "../config.ts"
 import * as schema from "./schema.ts"
@@ -28,27 +28,83 @@ const toDatabaseError = (operation: string) => (cause: unknown) =>
 		cause,
 	})
 
+/** Runs Drizzle queries on the pool or on one connection, mapping failures to DatabaseError. */
+export interface Executor {
+	readonly use: <A>(operation: string, f: (db: Db) => Promise<A>) => Effect.Effect<A, DatabaseError>
+	/**
+	 * Runs `f` in a transaction. If the fiber is interrupted, the transaction
+	 * is rolled back when `f` returns, and the interruption waits for that, so
+	 * an interrupted caller never races a commit it does not know about.
+	 */
+	readonly transaction: <A>(operation: string, f: (tx: Tx) => Promise<A>) => Effect.Effect<A, DatabaseError>
+}
+
+/**
+ * Runs a promise that cannot be cancelled. An interruption aborts `signal`
+ * and then waits for the promise to settle, so the database work it started
+ * has finished (committed or rolled back) before the fiber ends.
+ */
+const settled = <A>(operation: string, run: (signal: AbortSignal) => Promise<A>): Effect.Effect<A, DatabaseError> =>
+	Effect.callback<A, DatabaseError>((resume) => {
+		const controller = new AbortController()
+		let promise: Promise<A>
+		try {
+			promise = run(controller.signal)
+		} catch (error) {
+			promise = Promise.reject(error)
+		}
+		promise.then(
+			(value) => resume(Effect.succeed(value)),
+			(error) => resume(Effect.fail(toDatabaseError(operation)(error))),
+		)
+		return Effect.promise(() => {
+			controller.abort()
+			return promise.then(
+				() => undefined,
+				() => undefined,
+			)
+		})
+	})
+
+class RolledBack extends Error {}
+
+const makeExecutor = (db: Db): Executor => ({
+	use: (operation, f) => settled(operation, () => f(db)).pipe(Effect.withSpan(`db.${operation}`)),
+	transaction: (operation, f) =>
+		settled(operation, (signal) =>
+			db.transaction(async (tx) => {
+				const result = await f(tx)
+				// Interrupted while the statements ran: roll back instead of committing.
+				if (signal.aborted) throw new RolledBack(`${operation} was interrupted and rolled back`)
+				return result
+			}),
+		).pipe(Effect.withSpan(`db.${operation}`)),
+})
+
 /**
  * The Drizzle client over a pg connection pool. The pool is opened when the
  * layer is built and closed when the runtime is disposed.
  */
 export class Database extends Context.Service<
 	Database,
-	{
-		readonly db: Db
-		/** Runs a Drizzle query, mapping any failure to DatabaseError. */
-		readonly use: <A>(operation: string, f: (db: Db) => Promise<A>) => Effect.Effect<A, DatabaseError>
-		readonly transaction: <A>(operation: string, f: (tx: Tx) => Promise<A>) => Effect.Effect<A, DatabaseError>
+	Executor & {
 		/**
-		 * Runs `effect` while holding the collection lock of `source`: a
+		 * Runs `f` while holding the collection lock of `source`: a
 		 * session-level Postgres advisory lock on a dedicated connection, so it
 		 * serializes collections across processes (app, CLI, replicas). Fails
-		 * with SourceBusy instead of waiting when another session holds it. The
-		 * lock is released when `effect` ends, or by Postgres if the process dies.
+		 * with SourceBusy instead of waiting when another session holds it.
+		 *
+		 * `f` gets an Executor bound to that same connection; a collection does
+		 * all its writes through it. The lock exists exactly as long as the
+		 * connection does, so once Postgres frees the lock (connection lost or
+		 * terminated) no further write of this run can succeed, and a
+		 * transaction cut off mid-way is rolled back. Losing the connection also
+		 * interrupts `f` and fails with a DatabaseError (operation
+		 * "sourceLock"). The lock is released when `f` ends.
 		 */
 		readonly withSourceLock: <A, E, R>(
 			source: string,
-			effect: Effect.Effect<A, E, R>,
+			f: (lock: Executor) => Effect.Effect<A, E, R>,
 		) => Effect.Effect<A, E | SourceBusy | DatabaseError, R>
 	}
 >()("fundstats/server/db/Database") {
@@ -81,37 +137,58 @@ export class Database extends Context.Service<
 				yield* runMigrations(pool, config.migrationsDir)
 			}
 
-			// The lock lives on its own connection, not a pool slot: a run holds it
-			// while its queries use the pool, so DB_POOL_MAX=1 cannot deadlock.
+			// The lock lives on its own connection, not a pool slot, so DB_POOL_MAX=1
+			// cannot deadlock and the run's writes are fenced by the lock's session.
 			const withSourceLock = <A, E, R>(
 				source: string,
-				effect: Effect.Effect<A, E, R>,
+				f: (lock: Executor) => Effect.Effect<A, E, R>,
 			): Effect.Effect<A, E | SourceBusy | DatabaseError, R> =>
 				Effect.acquireUseRelease(
 					Effect.tryPromise({
 						try: async () => {
 							const client = new pg.Client({ connectionString: Redacted.value(config.databaseUrl) })
-							// A dropped connection also drops the lock; it must not crash the process.
+							const lost = Deferred.makeUnsafe<never, DatabaseError>()
+							let releasing = false
+							const onLost = (reason: string, cause?: unknown) => {
+								if (releasing) return
+								Deferred.doneUnsafe(
+									lost,
+									Exit.fail(
+										new DatabaseError({
+											operation: "sourceLock",
+											message: `Lost the collection lock of ${source}: ${reason}`,
+											cause,
+										}),
+									),
+								)
+							}
+							// A dropped connection drops the lock too; it must stop the run, not crash the process.
 							client.on("error", (error) => {
 								Effect.runFork(Effect.logWarning(`Collection lock connection of ${source} failed`, error.message))
+								onLost(error.message, error)
 							})
+							client.on("end", () => onLost("its database connection ended"))
+							const release = () => {
+								releasing = true
+								return client.end().catch(() => {})
+							}
 							try {
 								await client.connect()
 								const result = await client.query<{ locked: boolean }>(
 									"select pg_try_advisory_lock($1, hashtext($2)) as locked",
 									[SOURCE_LOCK_CLASS, source],
 								)
-								return { client, locked: result.rows[0]?.locked === true }
+								return { client, lost, release, locked: result.rows[0]?.locked === true }
 							} catch (error) {
-								await client.end().catch(() => {})
+								await release()
 								throw error
 							}
 						},
 						catch: toDatabaseError("lockSource"),
 					}),
-					({ locked }): Effect.Effect<A, E | SourceBusy, R> =>
+					({ client, lost, locked }): Effect.Effect<A, E | SourceBusy | DatabaseError, R> =>
 						locked
-							? effect
+							? Effect.raceFirst(f(makeExecutor(drizzle(client, { schema }))), Deferred.await(lost))
 							: Effect.fail(
 									new SourceBusy({
 										source,
@@ -119,21 +196,12 @@ export class Database extends Context.Service<
 									}),
 								),
 					// Ending the session releases the advisory lock.
-					({ client }) => Effect.promise(() => client.end().catch(() => {})),
+					({ release }) => Effect.promise(release),
 				)
 
 			return Database.of({
-				db,
 				withSourceLock,
-				use: (operation, f) =>
-					Effect.tryPromise({ try: () => f(db), catch: toDatabaseError(operation) }).pipe(
-						Effect.withSpan(`db.${operation}`),
-					),
-				transaction: (operation, f) =>
-					Effect.tryPromise({
-						try: () => db.transaction((tx) => f(tx)),
-						catch: toDatabaseError(operation),
-					}).pipe(Effect.withSpan(`db.${operation}`)),
+				...makeExecutor(db),
 			})
 		}),
 	)

@@ -114,7 +114,9 @@ Default intervals: mBank every 6 hours (its feed changes once per business day),
 After a failed run, the next attempt comes within 10 minutes.
 
 One source is collected by one process at a time: a run holds a Postgres advisory lock for its source until its
-data is stored. A `bun run collect` while the app is collecting that source (or the other way round) skips it and
+data is stored. The run writes through the connection that holds the lock, so if that connection is lost the run
+stops, nothing more of it is written, and it is recorded as failed. An interrupted run rolls back its unfinished
+transaction, and a run that committed keeps its success. A `bun run collect` while the app is collecting that source (or the other way round) skips it and
 says so (`SKIPPED`, exit status 1). At boot the app closes runs left `running` only when their source's lock is
 free, so a run still going in another process is left alone.
 

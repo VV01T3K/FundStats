@@ -4,7 +4,7 @@ import type { CollectionRun, SnapshotRow } from "#/shared/api.ts"
 import type { Metrics } from "#/shared/metrics.ts"
 import type { InstrumentKind } from "#/shared/sources.ts"
 import type { NormalizedRow } from "../sources/Source.ts"
-import { Database, type DatabaseError } from "./Database.ts"
+import { Database, type DatabaseError, type Executor } from "./Database.ts"
 import { collectionRuns, instruments, rawPayloads, snapshots } from "./schema.ts"
 
 export interface PersistInput {
@@ -37,6 +37,14 @@ export interface HistoryResult {
 
 type E<A> = Effect.Effect<A, DatabaseError>
 
+/** The writes of one collection run. */
+export interface RunWriter {
+	readonly startRun: (source: string, trigger: string) => E<number>
+	readonly saveRawPayload: (runId: number, source: string, payload: unknown) => E<void>
+	/** Writes instruments and snapshots and marks the run successful, in one transaction. */
+	readonly persist: (input: PersistInput) => E<PersistResult>
+}
+
 /**
  * All reads and writes of collected data. The collector writes through it, the
  * API reads through it; nothing else touches the tables directly.
@@ -44,11 +52,18 @@ type E<A> = Effect.Effect<A, DatabaseError>
 export class Store extends Context.Service<
 	Store,
 	{
-		readonly startRun: (source: string, trigger: string) => E<number>
+		/**
+		 * The writes of a collection run, through `lock`: the connection holding
+		 * the source's collection lock (Database.withSourceLock), so they fail
+		 * once the lock is lost.
+		 */
+		readonly writer: (lock: Executor) => RunWriter
+		/**
+		 * Marks a run failed if it is still running. A run that committed
+		 * (success) or was already closed keeps its status, so recording a late
+		 * failure never hides committed data.
+		 */
 		readonly failRun: (runId: number, error: string) => E<void>
-		readonly saveRawPayload: (runId: number, source: string, payload: unknown) => E<void>
-		/** Writes instruments and snapshots and marks the run successful, in one transaction. */
-		readonly persist: (input: PersistInput) => E<PersistResult>
 		/**
 		 * Closes runs left `running` by a crash or restart. A run counts as
 		 * abandoned only when its source's collection lock is free; a run that
@@ -66,8 +81,14 @@ export class Store extends Context.Service<
 		Effect.gen(function* () {
 			const database = yield* Database
 
-			const startRun = (source: string, trigger: string) =>
-				database
+			const writer = (exec: Executor): RunWriter => ({
+				startRun: (source, trigger) => startRun(exec, source, trigger),
+				saveRawPayload: (runId, source, payload) => saveRawPayload(exec, runId, source, payload),
+				persist: (input) => persist(exec, input),
+			})
+
+			const startRun = (exec: Executor, source: string, trigger: string) =>
+				exec
 					.use("startRun", (db) =>
 						db
 							.insert(collectionRuns)
@@ -82,17 +103,17 @@ export class Store extends Context.Service<
 						db
 							.update(collectionRuns)
 							.set({ status: "failed", finishedAt: new Date(), error: error.slice(0, 4000) })
-							.where(eq(collectionRuns.id, runId)),
+							.where(and(eq(collectionRuns.id, runId), eq(collectionRuns.status, "running"))),
 					)
 					.pipe(Effect.asVoid)
 
-			const saveRawPayload = (runId: number, source: string, payload: unknown) =>
-				database
+			const saveRawPayload = (exec: Executor, runId: number, source: string, payload: unknown) =>
+				exec
 					.use("saveRawPayload", (db) => db.insert(rawPayloads).values({ runId, source, payload }))
 					.pipe(Effect.asVoid)
 
-			const persist = (input: PersistInput) =>
-				database.transaction("persist", async (tx) => {
+			const persist = (exec: Executor, input: PersistInput) =>
+				exec.transaction("persist", async (tx) => {
 					// One row per external id; a duplicate in one upsert batch is a Postgres error.
 					const rows = [...new Map(input.rows.map((row) => [row.externalId, row])).values()]
 					let rowsWritten = 0
@@ -175,12 +196,16 @@ export class Store extends Context.Service<
 					return { instrumentCount: rows.length, rowsWritten }
 				})
 
-			const closeAbandonedRuns = (source: string) =>
-				database
+			const closeAbandonedRuns = (lock: Executor, source: string) =>
+				lock
 					.use("closeInterruptedRuns", (db) =>
 						db
 							.update(collectionRuns)
-							.set({ status: "failed", finishedAt: new Date(), error: "Interrupted (app stopped during the run)" })
+							.set({
+								status: "failed",
+								finishedAt: new Date(),
+								error: "Interrupted: the process collecting it stopped or lost its database connection",
+							})
 							.where(and(eq(collectionRuns.source, source), eq(collectionRuns.status, "running")))
 							.returning({ id: collectionRuns.id }),
 					)
@@ -196,10 +221,12 @@ export class Store extends Context.Service<
 				.pipe(
 					Effect.flatMap((rows) =>
 						Effect.forEach(rows, ({ source }) =>
-							database.withSourceLock(source, closeAbandonedRuns(source)).pipe(
-								// Held by a live collection elsewhere: that run is not abandoned.
-								Effect.catchTag("SourceBusy", () => Effect.succeed(0)),
-							),
+							database
+								.withSourceLock(source, (lock) => closeAbandonedRuns(lock, source))
+								.pipe(
+									// Held by a live collection elsewhere: that run is not abandoned.
+									Effect.catchTag("SourceBusy", () => Effect.succeed(0)),
+								),
 						),
 					),
 					Effect.map((counts) => counts.reduce((a, b) => a + b, 0)),
@@ -340,10 +367,8 @@ export class Store extends Context.Service<
 				})
 
 			return Store.of({
-				startRun,
+				writer,
 				failRun,
-				saveRawPayload,
-				persist,
 				closeInterruptedRuns,
 				pruneRawPayloads,
 				runSummary,
