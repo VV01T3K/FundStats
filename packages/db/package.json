@@ -1,0 +1,29 @@
+{
+	"name": "@fundstats/db",
+	"version": "2.0.0",
+	"private": true,
+	"type": "module",
+	"exports": {
+		"./*": "./src/*.ts",
+		"./test/*": "./test/*.ts"
+	},
+	"scripts": {
+		"typecheck": "effect-tsgo tsc --noEmit",
+		"test": "bun --bun vitest run",
+		"db:generate": "drizzle-kit generate"
+	},
+	"dependencies": {
+		"@effect/sql-pg": "catalog:",
+		"@fundstats/shared": "workspace:*",
+		"drizzle-orm": "catalog:",
+		"effect": "catalog:"
+	},
+	"devDependencies": {
+		"@effect/platform-bun": "catalog:",
+		"@effect/vitest": "catalog:",
+		"@testcontainers/postgresql": "catalog:",
+		"@types/bun": "catalog:",
+		"drizzle-kit": "catalog:",
+		"vitest": "catalog:"
+	}
+}

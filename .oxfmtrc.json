@@ -1,0 +1,19 @@
+{
+	"$schema": "./node_modules/oxfmt/configuration_schema.json",
+	"useTabs": true,
+	"printWidth": 120,
+	"semi": false,
+	"sortImports": {},
+	"sortTailwindcss": {},
+	"sortPackageJson": {},
+	"ignorePatterns": [
+		"apps/web/src/routeTree.gen.ts",
+		"packages/db/drizzle/**/snapshot.json",
+		"apps/web/src/components/ui/**",
+		".repos/**",
+		"apps/collector/test/fixtures/**",
+		"apps/web/public/**",
+		"bun.lock",
+		"**/.output/**"
+	]
+}

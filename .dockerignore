@@ -1,8 +1,10 @@
-node_modules
-.output
-.nitro
-.tanstack
+**/node_modules
+**/.output
+**/.nitro
+**/.tanstack
+**/dist
 .git
+.repos
 .env
 .env.*
 !.env.example

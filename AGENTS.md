@@ -1,8 +1,9 @@
 # FundStats
 
-Collects fund and crypto statistics from public upstreams into Postgres and serves them as tables. One TanStack
-Start app: React in `src/web` and `src/routes`, an Effect 4 backend in `src/server`, shared contracts in `src/shared`.
-See README for layout and scripts. Conventions adapted from [t3code](https://github.com/pingdotgg/t3code)'s AGENTS.md.
+Collects fund and crypto statistics from public upstreams into Postgres and serves them as tables. A Bun workspaces
+monorepo: `apps/web` (TanStack Start pages and the read-only Effect HttpApi), `apps/collector` (the Effect process that
+collects and writes), `packages/db` (Drizzle schema, migrations, Store/RunStore on Effect SQL) and `packages/shared`
+(source catalog, metrics, the API contract). Everything runs on Bun 1.4.4. See README for layout and scripts. Conventions adapted from [t3code](https://github.com/pingdotgg/t3code)'s AGENTS.md.
 
 ## Reference source
 
@@ -12,6 +13,11 @@ See README for layout and scripts. Conventions adapted from [t3code](https://git
 
 ## Taste
 
+- The web app never writes: it imports `Store` and `Database.layerReadOnly` only. Writes go through `RunStore`, and a
+  run's writes through the Drizzle database `SourceLocks.withSourceLock` hands it (the lock's own session).
+- Database code uses Drizzle's Effect query builder (`drizzle-orm/effect-postgres`); queries are Effects. No
+  promise-based drivers, no hand-written wrappers around the client.
+- Effect code stays runtime-agnostic; only `apps/collector/src/main.ts` picks the platform (`@effect/platform-bun`).
 - Server features are services (`Context.Service` + `layer`). Routes and HTTP handlers stay thin: decode input, call
   one service method, map errors.
 - Import Effect modules as namespaces: `import * as Effect from "effect/Effect"`, never from `"effect"`.
@@ -34,19 +40,21 @@ See README for layout and scripts. Conventions adapted from [t3code](https://git
 - `it.effect` runs on a `TestClock`; advance it with `TestClock.adjust`. Never sleep, poll, or measure wall-clock
   time: await the `Deferred`, `Queue` or event that marks the milestone. A test that needs a timeout to pass is wrong.
 - No per-test timeouts or retries, no `it(...)` inside loops (use `it.effect.each`), no hand-made Effect runtimes.
-- The database tests run against a real Postgres from testcontainers. Never call a live upstream; use the saved
-  fixtures in `test/fixtures/`.
+- The database tests run against a real Postgres from testcontainers (`packages/db/test/postgres.ts`, shared by the
+  workspaces; helpers in `packages/db/test/support.ts`). Never call a live upstream; use the saved fixtures in
+  `apps/collector/test/fixtures/`.
+- Tests live in the workspace that owns the code. Vitest runs under Bun (`bun --bun vitest run`); `bun test` cannot
+  load `@effect/vitest`.
 
 ## Verifying
 
-Run these before pushing; CI runs the same:
+Run these before pushing; CI runs the same, plus `bun audit` and `bun run build`:
 
 ```sh
-bun run check       # vp check: format check + oxlint (type-aware, with oxlint-plugin-fundstats)
-bun run typecheck   # effect-tsgo: TypeScript with the Effect language service
-bun run knip        # unused files, exports, dependencies
-bun run test        # vitest, real Postgres, plus the lint rule tests
+bun run check       # oxfmt --check, oxlint (type-aware, with oxlint-plugin-fundstats), effect-tsgo, knip
+bun run test        # vitest under Bun for every workspace, real Postgres, plus the lint rule tests
 ```
 
-`vp check --fix` and `bun run fmt` fix formatting. Lint rules live in `vite.config.ts`, the Effect diagnostics in
-`tsconfig.effect.json`.
+`bun run fmt` fixes formatting. Lint rules live in `.oxlintrc.json`, formatting in `.oxfmtrc.json`, the Effect
+diagnostics in `tsconfig.effect.json`, shared dependency versions in the root `package.json` catalog. Don't use
+`bun lint` or `bun fmt` (canary).

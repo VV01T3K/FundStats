@@ -1,0 +1,21 @@
+{
+	"name": "@fundstats/shared",
+	"version": "2.0.0",
+	"private": true,
+	"type": "module",
+	"exports": {
+		"./*": "./src/*.ts"
+	},
+	"scripts": {
+		"typecheck": "effect-tsgo tsc --noEmit",
+		"test": "bun --bun vitest run"
+	},
+	"dependencies": {
+		"effect": "catalog:"
+	},
+	"devDependencies": {
+		"@effect/vitest": "catalog:",
+		"@types/bun": "catalog:",
+		"vitest": "catalog:"
+	}
+}

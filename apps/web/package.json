@@ -1,0 +1,51 @@
+{
+	"name": "@fundstats/web",
+	"version": "2.0.0",
+	"private": true,
+	"type": "module",
+	"imports": {
+		"#/*": "./src/*"
+	},
+	"scripts": {
+		"dev": "bun --bun vite dev",
+		"build": "bun --bun vite build",
+		"start": "bun .output/server/index.mjs",
+		"preview": "bun --bun vite preview",
+		"typecheck": "effect-tsgo tsc --noEmit",
+		"test": "bun --bun vitest run"
+	},
+	"dependencies": {
+		"@fundstats/db": "workspace:*",
+		"@fundstats/shared": "workspace:*",
+		"@tanstack/react-query": "5.107.1",
+		"@tanstack/react-router": "1.170.46",
+		"@tanstack/react-router-ssr-query": "1.167.3",
+		"@tanstack/react-start": "catalog:",
+		"@tanstack/react-table": "9.3.1",
+		"class-variance-authority": "^0.7.1",
+		"clsx": "^2.1.1",
+		"effect": "catalog:",
+		"lucide-react": "^1.73.0",
+		"nitro": "catalog:",
+		"radix-ui": "^1.8.1",
+		"react": "19.3.1",
+		"react-dom": "19.3.1",
+		"tailwind-merge": "^3.7.0",
+		"tw-animate-css": "^1.4.0"
+	},
+	"devDependencies": {
+		"@effect/vitest": "catalog:",
+		"@tailwindcss/vite": "4.3.5",
+		"@tanstack/devtools-vite": "^0.8.6",
+		"@tanstack/react-devtools": "0.10.14",
+		"@tanstack/react-query-devtools": "5.107.1",
+		"@tanstack/react-router-devtools": "^1.167.3",
+		"@types/bun": "catalog:",
+		"@types/react": "^19.3.0",
+		"@types/react-dom": "^19.3.0",
+		"@vitejs/plugin-react": "6.3.0",
+		"tailwindcss": "4.3.5",
+		"vite": "catalog:",
+		"vitest": "catalog:"
+	}
+}
