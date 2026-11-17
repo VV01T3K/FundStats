@@ -42,7 +42,6 @@ const Interval = Schema.DurationFromString.check(
 export class CollectorConfig extends Context.Service<
 	CollectorConfig,
 	{
-		readonly runMigrations: boolean
 		readonly migrationsDir: string
 		readonly collectorEnabled: boolean
 		/** Per-source interval overrides from COLLECTOR_INTERVAL_<SOURCE>. */
@@ -58,7 +57,6 @@ export class CollectorConfig extends Context.Service<
 		CollectorConfig,
 		Effect.gen(function* () {
 			const base = yield* Config.all({
-				runMigrations: Config.Boolean("RUN_MIGRATIONS").pipe(Config.withDefault(true)),
 				migrationsDir: Config.String("MIGRATIONS_DIR").pipe(Config.withDefault(migrationsFolder)),
 				collectorEnabled: Config.Boolean("COLLECTOR_ENABLED").pipe(Config.withDefault(true)),
 				rawPayloadRetentionDays: Config.schema(PositiveInt, "RAW_PAYLOAD_RETENTION_DAYS").pipe(Config.withDefault(30)),

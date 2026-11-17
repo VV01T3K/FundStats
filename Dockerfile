@@ -30,7 +30,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD ["/usr/local/bin/bun", "-e", "fetch('http://127.0.0.1:'+process.env.PORT+'/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
 CMD [".output/server/index.mjs"]
 
-# ---- collector: migrations on start, then every source on its schedule ----
+# ---- collector: every source on its schedule; `collector.js migrate` applies the migrations ----
 FROM ${BUN_DISTROLESS} AS collector
 ENV NODE_ENV=production \
     MIGRATIONS_DIR=/app/drizzle
