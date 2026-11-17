@@ -151,8 +151,8 @@ export const coinmarketcap = defineSource<CmcPayload>({
 			)
 			return { api: "pro", body }
 		}
-		// Fallback without a key. It asks for one extra row because sponsored
-		// index products without a rank take a slot.
+		// Fallback without a key. It asks for 5 rows beyond TOP because sponsored
+		// index products without a rank take slots in the listing.
 		const body = yield* fetchJson(
 			info.id,
 			HttpClientRequest.get("https://api.coinmarketcap.com/data-api/v3/cryptocurrency/listing").pipe(

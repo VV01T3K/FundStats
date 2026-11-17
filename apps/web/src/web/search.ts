@@ -3,7 +3,7 @@ import type { TableConfig } from "./tables/types.ts"
 /**
  * URL search params of a table view. Validation is lenient: unknown or
  * invalid values are dropped and the view falls back to the source defaults,
- * so old or hand-edited links never break.
+ * so a hand-edited link still opens the table.
  */
 export interface TableSearch {
 	/** Setting a param to undefined removes it from the URL. */

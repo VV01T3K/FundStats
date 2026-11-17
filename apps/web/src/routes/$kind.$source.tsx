@@ -68,7 +68,7 @@ function SourceTablePage() {
 						<Choice
 							key={p}
 							active={view.period === p}
-							// Choosing a period also sorts by it, as the old tables did.
+							// Choosing a period also sorts by it.
 							onClick={() => update({ period: p, sort: undefined, dir: undefined })}
 						>
 							{p}
