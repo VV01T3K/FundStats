@@ -1,0 +1,23 @@
+# Local Postgres for development: docker compose -f compose.dev.yaml up -d
+# The host port defaults to 55432 so it does not clash with a system Postgres.
+name: fundstats-v2-dev
+
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: fundstats
+      POSTGRES_PASSWORD: fundstats
+      POSTGRES_DB: fundstats
+    ports:
+      - "127.0.0.1:${FUNDSTATS_DB_PORT:-55432}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fundstats -d fundstats"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  db-data:
