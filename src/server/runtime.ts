@@ -5,10 +5,14 @@
  *
  * Nothing in here may be imported from browser code.
  */
-import { Effect, Layer, ManagedRuntime } from "effect"
+import * as Effect from "effect/Effect"
 import { HttpRouter, HttpServer } from "effect/http"
 import { HttpApiBuilder, HttpApiScalar } from "effect/http-api"
+import * as Layer from "effect/Layer"
+import * as ManagedRuntime from "effect/ManagedRuntime"
+
 import { FundStatsApi } from "#/shared/api.ts"
+
 import { ApiHandlers } from "./api/handlers.ts"
 import { Collector, CollectorScheduler } from "./collector/Collector.ts"
 import { AppConfig } from "./config.ts"
@@ -28,7 +32,7 @@ export const ApiRoutesLayer = Layer.mergeAll(
 	HttpApiScalar.layer(FundStatsApi, { path: "/api/docs" }),
 )
 
-export const makeServer = () => {
+const makeServer = () => {
 	const memoMap = Layer.makeMemoMapUnsafe()
 	const runtime = ManagedRuntime.make(
 		Layer.mergeAll(ServicesLayer, CollectorScheduler.pipe(Layer.provide(ServicesLayer))),

@@ -21,7 +21,7 @@ export async function setup(project: TestProject) {
 		return
 	}
 	container = await new PostgreSqlContainer("postgres:18-alpine")
-		.withName(`fundstats-v2-test-${process.pid}-${Date.now()}`)
+		.withLabels({ "fundstats.test.pid": String(process.pid) })
 		.withDatabase("fundstats_test")
 		.start()
 	project.provide("databaseUrl", container.getConnectionUri())

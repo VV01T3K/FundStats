@@ -1,11 +1,13 @@
 import { assert, describe, it } from "@effect/vitest"
-import { ConfigProvider, Duration, Effect, Layer } from "effect"
+import * as ConfigProvider from "effect/ConfigProvider"
+import * as Duration from "effect/Duration"
+import * as Effect from "effect/Effect"
+import * as Layer from "effect/Layer"
+
 import { AppConfig } from "#/server/config.ts"
 
 const load = (env: Record<string, string>) =>
-	Effect.gen(function* () {
-		return yield* AppConfig
-	}).pipe(
+	Effect.service(AppConfig).pipe(
 		Effect.provide(
 			AppConfig.layer.pipe(
 				Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ DATABASE_URL: "postgres://x", ...env }))),
@@ -14,14 +16,14 @@ const load = (env: Record<string, string>) =>
 	)
 
 describe("config validation", () => {
-	for (const value of ["0 seconds", "-5 minutes", "Infinity", "30 seconds"]) {
-		it.effect(`rejects COLLECTOR_INTERVAL_MBANK=${value}`, () =>
+	it.effect.each(["0 seconds", "-5 minutes", "Infinity", "30 seconds"])(
+		"rejects COLLECTOR_INTERVAL_MBANK=%s",
+		(value) =>
 			Effect.gen(function* () {
 				const error = yield* load({ COLLECTOR_INTERVAL_MBANK: value }).pipe(Effect.flip)
 				assert.strictEqual(error._tag, "ConfigError")
 			}),
-		)
-	}
+	)
 
 	it.effect("accepts an interval of one minute or more", () =>
 		Effect.gen(function* () {
@@ -50,7 +52,7 @@ describe("config validation", () => {
 		}),
 	)
 
-	for (const [name, value] of [
+	it.effect.each([
 		["DB_POOL_MAX", "0"],
 		["DB_POOL_MAX", "-3"],
 		["RAW_PAYLOAD_RETENTION_DAYS", "0"],
@@ -59,12 +61,10 @@ describe("config validation", () => {
 		["DB_STATEMENT_TIMEOUT", "500 millis"],
 		["DB_STATEMENT_TIMEOUT", "-5 seconds"],
 		["DB_STATEMENT_TIMEOUT", "Infinity"],
-	] as const) {
-		it.effect(`rejects ${name}=${value}`, () =>
-			Effect.gen(function* () {
-				const error = yield* load({ [name]: value }).pipe(Effect.flip)
-				assert.strictEqual(error._tag, "ConfigError")
-			}),
-		)
-	}
+	] as const)("rejects %s=%s", ([name, value]) =>
+		Effect.gen(function* () {
+			const error = yield* load({ [name]: value }).pipe(Effect.flip)
+			assert.strictEqual(error._tag, "ConfigError")
+		}),
+	)
 })

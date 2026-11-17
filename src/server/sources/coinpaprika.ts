@@ -1,7 +1,10 @@
-import { Effect, Schema } from "effect"
+import * as Effect from "effect/Effect"
 import { HttpClientRequest } from "effect/http"
+import * as Schema from "effect/Schema"
+
 import { metrics } from "#/shared/metrics.ts"
 import { SOURCES } from "#/shared/sources.ts"
+
 import { defineSource, fetchJson } from "./Source.ts"
 
 const info = SOURCES.coinpaprika
@@ -37,7 +40,7 @@ const inTop = (ticker: { readonly rank: number }) => ticker.rank > 0 && ticker.r
  * decoded. Entries without a numeric rank are kept (at most 2×TOP), so a
  * changed upstream shape still leaves a payload to inspect.
  */
-export const trimTickers = (raw: unknown): unknown =>
+const trimTickers = (raw: unknown): unknown =>
 	Array.isArray(raw)
 		? raw
 				.filter((ticker: unknown) => {

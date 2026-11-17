@@ -1,8 +1,16 @@
-import { Config, Context, Duration, Effect, Layer, Option, Redacted, Schema } from "effect"
+import * as Config from "effect/Config"
+import * as Context from "effect/Context"
+import * as Duration from "effect/Duration"
+import * as Effect from "effect/Effect"
+import * as Layer from "effect/Layer"
+import * as Option from "effect/Option"
+import * as Redacted from "effect/Redacted"
+import * as Schema from "effect/Schema"
+
 import { SOURCE_IDS } from "#/shared/sources.ts"
 
 /** Shortest accepted collector interval; anything lower would hammer the upstreams. */
-export const MIN_INTERVAL = Duration.minutes(1)
+const MIN_INTERVAL = Duration.minutes(1)
 
 const PositiveInt = Schema.Int.check(Schema.isGreaterThan(0, { message: "must be a positive integer" }))
 
@@ -15,7 +23,7 @@ const Interval = Schema.DurationFromString.check(
 )
 
 /** Shortest accepted statement timeout; anything lower would cancel ordinary queries. */
-export const MIN_STATEMENT_TIMEOUT = Duration.seconds(1)
+const MIN_STATEMENT_TIMEOUT = Duration.seconds(1)
 
 const StatementTimeout = Schema.DurationFromString.check(
 	Schema.makeFilter((d: Duration.Duration) =>
@@ -46,7 +54,7 @@ export class AppConfig extends Context.Service<
 		readonly coingeckoApiKey: Option.Option<Redacted.Redacted<string>>
 		readonly cmcApiKey: Option.Option<Redacted.Redacted<string>>
 	}
->()("fundstats/server/AppConfig") {
+>()("fundstats/server/config/AppConfig") {
 	static readonly layer = Layer.effect(
 		AppConfig,
 		Effect.gen(function* () {

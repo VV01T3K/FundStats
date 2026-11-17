@@ -6,13 +6,14 @@
  */
 import { queryOptions } from "@tanstack/react-query"
 import { createIsomorphicFn } from "@tanstack/react-start"
-import { Effect } from "effect"
+import * as Effect from "effect/Effect"
 import { FetchHttpClient } from "effect/http"
 import { HttpApiClient } from "effect/http-api"
+
 import { FundStatsApi } from "#/shared/api.ts"
 import type { SourceId } from "#/shared/sources.ts"
 
-export type ApiClient = HttpApiClient.ForApi<typeof FundStatsApi>
+type ApiClient = HttpApiClient.ForApi<typeof FundStatsApi>
 
 const transport = createIsomorphicFn()
 	.server(() => ({
@@ -26,7 +27,7 @@ const transport = createIsomorphicFn()
 	.client(() => ({ baseUrl: window.location.origin, fetch: globalThis.fetch.bind(globalThis) }))
 
 /** Runs one typed API call and returns its result as a Promise. */
-export const callApi = <A, E>(call: (client: ApiClient) => Effect.Effect<A, E>): Promise<A> => {
+const callApi = <A, E>(call: (client: ApiClient) => Effect.Effect<A, E>): Promise<A> => {
 	const { baseUrl, fetch } = transport()
 	return Effect.runPromise(
 		HttpApiClient.make(FundStatsApi, { baseUrl }).pipe(
@@ -36,13 +37,6 @@ export const callApi = <A, E>(call: (client: ApiClient) => Effect.Effect<A, E>):
 		),
 	)
 }
-
-export const sourcesQuery = () =>
-	queryOptions({
-		queryKey: ["sources"],
-		queryFn: () => callApi((api) => api.sources.list()),
-		staleTime: 60_000,
-	})
 
 export const latestQuery = (source: SourceId) =>
 	queryOptions({

@@ -1,8 +1,10 @@
 import { AlertTriangle } from "lucide-react"
+
 import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert"
 import { Badge } from "#/components/ui/badge"
 import type { SnapshotRow, SourceStatus } from "#/shared/api.ts"
 import { SOURCES } from "#/shared/sources.ts"
+
 import { formatDateTime } from "../format.ts"
 
 /** "Data as of" line, plus a visible warning when the source is stale or its last run failed. */
@@ -21,7 +23,7 @@ export function SourceStatusBar({
 
 	return (
 		<div className="space-y-3">
-			<div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+			<div className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
 				<span>
 					Data as of <span className="text-foreground">{asOf ?? (updated ? formatDateTime(updated) : "never")}</span>
 				</span>

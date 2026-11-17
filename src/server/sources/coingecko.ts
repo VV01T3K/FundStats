@@ -1,7 +1,12 @@
-import { Effect, Option, Redacted, Schema } from "effect"
+import * as Effect from "effect/Effect"
 import { HttpClientRequest } from "effect/http"
+import * as Option from "effect/Option"
+import * as Redacted from "effect/Redacted"
+import * as Schema from "effect/Schema"
+
 import { metrics } from "#/shared/metrics.ts"
 import { SOURCES } from "#/shared/sources.ts"
+
 import { AppConfig } from "../config.ts"
 import { defineSource, fetchJson } from "./Source.ts"
 
@@ -9,7 +14,7 @@ const info = SOURCES.coingecko
 
 const Change = Schema.optional(Schema.NullOr(Schema.Number))
 
-export const CoinGeckoCoin = Schema.Struct({
+const CoinGeckoCoin = Schema.Struct({
 	id: Schema.String,
 	symbol: Schema.String,
 	name: Schema.String,

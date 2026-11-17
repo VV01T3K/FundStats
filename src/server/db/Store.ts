@@ -1,13 +1,19 @@
 import { and, desc, eq, lt, sql } from "drizzle-orm"
-import { Context, Effect, Layer } from "effect"
+import * as Context from "effect/Context"
+import * as DateTime from "effect/DateTime"
+import * as Duration from "effect/Duration"
+import * as Effect from "effect/Effect"
+import * as Layer from "effect/Layer"
+
 import type { CollectionRun, SnapshotRow } from "#/shared/api.ts"
 import type { Metrics } from "#/shared/metrics.ts"
 import type { InstrumentKind } from "#/shared/sources.ts"
+
 import type { NormalizedRow } from "../sources/Source.ts"
 import { Database, type DatabaseError, type Executor } from "./Database.ts"
 import { collectionRuns, instruments, rawPayloads, snapshots } from "./schema.ts"
 
-export interface PersistInput {
+interface PersistInput {
 	readonly source: string
 	readonly kind: InstrumentKind
 	readonly runId: number
@@ -98,7 +104,7 @@ export class Store extends Context.Service<
 					.use("reserveRunId", (db) =>
 						db.execute<{ id: number }>(sql`select nextval(pg_get_serial_sequence('collection_runs', 'id'))::int as id`),
 					)
-					.pipe(Effect.map((result) => result.rows[0].id))
+					.pipe(Effect.map((result) => result.rows[0]!.id))
 
 			const startRun = (exec: Executor, runId: number, source: string, trigger: string) =>
 				exec
@@ -106,14 +112,17 @@ export class Store extends Context.Service<
 					.pipe(Effect.asVoid)
 
 			const failRun = (runId: number, error: string) =>
-				database
-					.use("failRun", (db) =>
-						db
-							.update(collectionRuns)
-							.set({ status: "failed", finishedAt: new Date(), error: error.slice(0, 4000) })
-							.where(and(eq(collectionRuns.id, runId), eq(collectionRuns.status, "running"))),
-					)
-					.pipe(Effect.asVoid)
+				DateTime.nowAsDate.pipe(
+					Effect.flatMap((finishedAt) =>
+						database.use("failRun", (db) =>
+							db
+								.update(collectionRuns)
+								.set({ status: "failed", finishedAt, error: error.slice(0, 4000) })
+								.where(and(eq(collectionRuns.id, runId), eq(collectionRuns.status, "running"))),
+						),
+					),
+					Effect.asVoid,
+				)
 
 			const saveRawPayload = (exec: Executor, runId: number, source: string, payload: unknown) =>
 				exec
@@ -195,7 +204,8 @@ export class Store extends Context.Service<
 						.update(collectionRuns)
 						.set({
 							status: "success",
-							finishedAt: new Date(),
+							// When this write ran, after the snapshot writes, not when the app started persisting.
+							finishedAt: sql`clock_timestamp()`,
 							instrumentCount: rows.length,
 							rowsWritten,
 							error: null,
@@ -205,19 +215,22 @@ export class Store extends Context.Service<
 				})
 
 			const closeAbandonedRuns = (lock: Executor, source: string) =>
-				lock
-					.use("closeInterruptedRuns", (db) =>
-						db
-							.update(collectionRuns)
-							.set({
-								status: "failed",
-								finishedAt: new Date(),
-								error: "Interrupted: the process collecting it stopped or lost its database connection",
-							})
-							.where(and(eq(collectionRuns.source, source), eq(collectionRuns.status, "running")))
-							.returning({ id: collectionRuns.id }),
-					)
-					.pipe(Effect.map((rows) => rows.length))
+				DateTime.nowAsDate.pipe(
+					Effect.flatMap((finishedAt) =>
+						lock.use("closeInterruptedRuns", (db) =>
+							db
+								.update(collectionRuns)
+								.set({
+									status: "failed",
+									finishedAt,
+									error: "Interrupted: the process collecting it stopped or lost its database connection",
+								})
+								.where(and(eq(collectionRuns.source, source), eq(collectionRuns.status, "running")))
+								.returning({ id: collectionRuns.id }),
+						),
+					),
+					Effect.map((rows) => rows.length),
+				)
 
 			const closeInterruptedRuns = database
 				.use("runningSources", (db) =>
@@ -233,7 +246,7 @@ export class Store extends Context.Service<
 								.withSourceLock(source, (lock) => closeAbandonedRuns(lock, source))
 								.pipe(
 									// Held by a live collection elsewhere: that run is not abandoned.
-									Effect.catchTag("SourceBusy", () => Effect.succeed(0)),
+									Effect.catchTags({ SourceBusy: () => Effect.succeed(0) }),
 								),
 						),
 					),
@@ -241,14 +254,15 @@ export class Store extends Context.Service<
 				)
 
 			const pruneRawPayloads = (olderThanDays: number) =>
-				database
-					.use("pruneRawPayloads", (db) =>
-						db
-							.delete(rawPayloads)
-							.where(lt(rawPayloads.fetchedAt, new Date(Date.now() - olderThanDays * 86_400_000)))
-							.returning({ id: rawPayloads.id }),
-					)
-					.pipe(Effect.map((rows) => rows.length))
+				DateTime.now.pipe(
+					Effect.map((now) => DateTime.toDateUtc(DateTime.subtractDuration(now, Duration.days(olderThanDays)))),
+					Effect.flatMap((cutoff) =>
+						database.use("pruneRawPayloads", (db) =>
+							db.delete(rawPayloads).where(lt(rawPayloads.fetchedAt, cutoff)).returning({ id: rawPayloads.id }),
+						),
+					),
+					Effect.map((rows) => rows.length),
+				)
 
 			const toRun = (row: typeof collectionRuns.$inferSelect): CollectionRun => ({
 				id: row.id,
@@ -292,7 +306,7 @@ export class Store extends Context.Service<
 						category: string | null
 						currency: string | null
 						metadata: Record<string, unknown>
-						captured_at: Date
+						captured_at: string | Date
 						as_of: string | null
 						value: string | null
 						metrics: Metrics
@@ -332,21 +346,19 @@ export class Store extends Context.Service<
 						  )
 						order by (s.metrics->>'rank')::numeric asc nulls last, i.name asc
 					`)
-					return result.rows.map(
-						(r): SnapshotRow => ({
-							instrumentId: r.id,
-							externalId: r.external_id,
-							name: r.name,
-							symbol: r.symbol,
-							category: r.category,
-							currency: r.currency,
-							metadata: r.metadata,
-							capturedAt: new Date(r.captured_at).toISOString(),
-							asOf: r.as_of,
-							value: r.value === null ? null : Number(r.value),
-							metrics: r.metrics,
-						}),
-					)
+					return result.rows.map((r): SnapshotRow => ({
+						instrumentId: r.id,
+						externalId: r.external_id,
+						name: r.name,
+						symbol: r.symbol,
+						category: r.category,
+						currency: r.currency,
+						metadata: r.metadata,
+						capturedAt: DateTime.formatIso(DateTime.makeUnsafe(r.captured_at)),
+						asOf: r.as_of,
+						value: r.value === null ? null : Number(r.value),
+						metrics: r.metrics,
+					}))
 				})
 
 			const history = (source: string, externalId: string, limit: number) =>

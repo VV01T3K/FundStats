@@ -1,8 +1,8 @@
 name: CI
 
 on:
+  # Every PR, including ones stacked on a feature branch.
   pull_request:
-    branches: [v2, dev]
 
 permissions:
   contents: read
@@ -26,6 +26,9 @@ jobs:
         with:
           bun-version: 1.4.4
       - run: bun install --frozen-lockfile
+      # Format check, then oxlint with type-aware rules and the local plugin.
+      - run: bun run check
       - run: bun run typecheck
-      - run: bun run lint
+      - run: bun run knip
       - run: bun run test
+      - run: bun run build

@@ -1,3 +1,5 @@
+import * as DateTime from "effect/DateTime"
+
 // Fixed locale and time zone so server-rendered and hydrated text match.
 const dateTime = new Intl.DateTimeFormat("en-GB", {
 	timeZone: "Europe/Warsaw",
@@ -8,7 +10,7 @@ const dateTime = new Intl.DateTimeFormat("en-GB", {
 	minute: "2-digit",
 })
 
-export const formatDateTime = (iso: string) => `${dateTime.format(new Date(iso))} (Warsaw)`
+export const formatDateTime = (iso: string) => `${DateTime.formatIntl(DateTime.makeUnsafe(iso), dateTime)} (Warsaw)`
 
 const fixed2 = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const priceFormat = new Intl.NumberFormat("en-US", { maximumSignificantDigits: 6 })

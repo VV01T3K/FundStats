@@ -1,5 +1,7 @@
 import { assert, describe, it } from "@effect/vitest"
-import { Duration } from "effect"
+import * as DateTime from "effect/DateTime"
+import * as Duration from "effect/Duration"
+
 import { isStale } from "#/server/api/handlers.ts"
 import type { CollectionRun } from "#/shared/api.ts"
 import { metrics, momentum } from "#/shared/metrics.ts"
@@ -23,33 +25,35 @@ describe("momentum", () => {
 	})
 })
 
-const run = (status: CollectionRun["status"], startedAt: Date): CollectionRun => ({
+const run = (status: CollectionRun["status"], startedAt: DateTime.Utc): CollectionRun => ({
 	id: 1,
 	status,
 	trigger: "schedule",
-	startedAt: startedAt.toISOString(),
-	finishedAt: startedAt.toISOString(),
+	startedAt: DateTime.formatIso(startedAt),
+	finishedAt: DateTime.formatIso(startedAt),
 	instrumentCount: 1,
 	rowsWritten: 1,
 	error: null,
 })
 
 describe("staleness", () => {
-	const now = Date.parse("2026-11-16T12:00:00Z")
+	const at = DateTime.makeUnsafe("2026-11-16T12:00:00Z")
+	const now = DateTime.toEpochMillis(at)
+	const minutesAgo = (minutes: number) => DateTime.subtract(at, { minutes })
 	const interval = Duration.minutes(30)
 
 	it("is fresh shortly after a success", () => {
-		const ok = run("success", new Date(now - 20 * 60_000))
+		const ok = run("success", minutesAgo(20))
 		assert.isFalse(isStale({ lastRun: ok, lastSuccess: ok }, interval, now))
 	})
 
 	it("is stale after a failed run, even with older data", () => {
-		const ok = run("success", new Date(now - 20 * 60_000))
-		assert.isTrue(isStale({ lastRun: run("failed", new Date(now)), lastSuccess: ok }, interval, now))
+		const ok = run("success", minutesAgo(20))
+		assert.isTrue(isStale({ lastRun: run("failed", at), lastSuccess: ok }, interval, now))
 	})
 
 	it("is stale when the last success is more than two intervals old", () => {
-		const ok = run("success", new Date(now - 70 * 60_000))
+		const ok = run("success", minutesAgo(70))
 		assert.isTrue(isStale({ lastRun: ok, lastSuccess: ok }, interval, now))
 	})
 })

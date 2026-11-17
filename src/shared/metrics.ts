@@ -1,14 +1,9 @@
 /**
- * Metric names stored in `snapshots.metrics`. Every source maps its upstream
- * fields onto these names, so the same period means the same key everywhere.
- *
- * - `change_<period>` is a percentage change over that period (5 = +5 %).
- * - Fund periods use calendar units (1m, 3m, ...); crypto uses day counts as the
- *   upstreams report them (24h, 7d, 30d, ...). They are not merged because a
- *   calendar month and 30 days are not the same window.
- * - `rank` is the upstream's market rank where it has one.
+ * Metric names in `snapshots.metrics`, shared by every source. `change_<period>` is a percentage
+ * (5 = +5 %); funds use calendar periods (1m, 3m) and crypto day counts (24h, 7d, 30d), kept apart
+ * because a month is not 30 days. `rank` is the upstream's market rank where it has one.
  */
-export const METRICS = {
+const METRICS = {
 	change_1d: "Change 1 day",
 	change_1m: "Change 1 month",
 	change_3m: "Change 3 months",
@@ -47,7 +42,7 @@ export const metrics = (values: Partial<Record<MetricName, number | null | undef
  * Derived values are computed from stored metrics when they are read, never
  * stored, so changing a formula needs no data migration.
  */
-export const MOMENTUM_WEIGHTS = [
+const MOMENTUM_WEIGHTS = [
 	["change_1m", 4],
 	["change_3m", 3],
 	["change_6m", 2],

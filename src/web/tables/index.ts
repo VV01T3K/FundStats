@@ -1,5 +1,6 @@
 import { MOMENTUM_FORMULA, momentum } from "#/shared/metrics.ts"
 import type { SourceId } from "#/shared/sources.ts"
+
 import { percent, type TableConfig } from "./types.ts"
 
 const price = (header: string) =>
