@@ -48,7 +48,10 @@ export interface RunWriter {
 	readonly reserveRunId: E<number>
 	readonly startRun: (runId: number, source: string, trigger: string) => E<void>
 	readonly saveRawPayload: (runId: number, source: string, payload: unknown) => E<void>
-	/** Writes instruments and snapshots and marks the run successful, in one transaction. */
+	/**
+	 * Writes instruments and snapshots and marks the run successful, in one transaction. The only status
+	 * change not from `running`: committed rows are shown, so their run must read as successful.
+	 */
 	readonly persist: (input: PersistInput) => E<PersistResult>
 }
 
