@@ -1,23 +1,18 @@
 /**
- * Nitro runtime plugin: boots the Effect runtime (config validation, database
- * connection, migrations, collector) when the server process starts, not on
- * the first request. Nitro holds incoming requests until this finishes. If
- * boot fails, for example because DATABASE_URL is missing, the process exits
- * with status 1 so the container restarts or the deploy fails visibly,
- * instead of answering every request with a 500.
- *
- * Registered in vite.config.ts (`nitro({ plugins })`). getServer() keeps one
- * instance per process, so a re-run of this plugin (dev reloads) never starts
- * a second collector.
+ * Nitro plugin that boots the backend when the process starts (requests wait for it). A failed boot
+ * exits with status 1 so the deploy fails visibly instead of answering 500s. getServer() keeps one
+ * instance per process, so dev reloads never start a second collector.
  */
+import * as Effect from "effect/Effect"
 import { definePlugin } from "nitro"
+
 import { getServer } from "./runtime.ts"
 
 export default definePlugin(async () => {
 	try {
 		await getServer()
 	} catch (error) {
-		console.error("FundStats failed to start:", error)
+		await Effect.runPromise(Effect.logError("FundStats failed to start:", error))
 		process.exit(1)
 	}
 })

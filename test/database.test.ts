@@ -4,33 +4,55 @@
  * answers with the saved fixtures; nothing here touches the network.
  */
 
-import net from "node:net"
+import * as NodeNet from "node:net"
+
 import { assert, layer } from "@effect/vitest"
 import { sql } from "drizzle-orm"
-import { ConfigProvider, Effect, Fiber, Layer } from "effect"
+import * as Clock from "effect/Clock"
+import * as ConfigProvider from "effect/ConfigProvider"
+import * as DateTime from "effect/DateTime"
+import * as Deferred from "effect/Deferred"
+import * as Effect from "effect/Effect"
+import * as Exit from "effect/Exit"
+import * as Fiber from "effect/Fiber"
 import { HttpClient, HttpClientResponse, HttpRouter, HttpServer } from "effect/http"
+import * as Layer from "effect/Layer"
 import { TestClock } from "effect/testing"
 import pg from "pg"
-import { inject } from "vitest"
+import { expect, inject } from "vitest"
+
 import { Collector } from "#/server/collector/Collector.ts"
 import { AppConfig } from "#/server/config.ts"
 import { Database } from "#/server/db/Database.ts"
-import { Store } from "#/server/db/Store.ts"
 import { collectionRuns } from "#/server/db/schema.ts"
+import { Store } from "#/server/db/Store.ts"
 import { ApiRoutesLayer } from "#/server/runtime.ts"
 import type { NormalizedRow } from "#/server/sources/Source.ts"
+
 import { fixture } from "./fixtures.ts"
 
 /** Returned by an upstream stub: send headers, then never finish the body. */
 const STALL = Symbol("stall")
 let requests = 0
 
-const upstream: Record<string, () => unknown> = {
-	"www.mbank.pl": () => fixture("mbank-funds.json"),
-	"api.coingecko.com": () => fixture("coingecko-markets.json"),
-	"api.coinpaprika.com": () => fixture("coinpaprika-tickers.json"),
-	"api.coinmarketcap.com": () => fixture("coinmarketcap-web-listing.json"),
+const upstream = {
+	"www.mbank.pl": (): unknown => fixture("mbank-funds.json"),
+	"api.coingecko.com": (): unknown => fixture("coingecko-markets.json"),
+	"api.coinpaprika.com": (): unknown => fixture("coinpaprika-tickers.json"),
+	"api.coinmarketcap.com": (): unknown => fixture("coinmarketcap-web-listing.json"),
 }
+
+const isUpstreamHost = (hostname: string): hostname is keyof typeof upstream => Object.hasOwn(upstream, hostname)
+
+/** The element at `index`; fails the test when it is missing. */
+const at = <A>(items: ReadonlyArray<A>, index: number): A => {
+	const item = items[index]
+	assert.isDefined(item)
+	return item
+}
+
+/** A fixed capture time for writes set up by hand. */
+const capturedAt = (iso = "2026-11-16T12:00:00Z") => DateTime.toDateUtc(DateTime.makeUnsafe(iso))
 
 const FixtureHttpClient = Layer.succeed(
 	HttpClient.HttpClient,
@@ -46,7 +68,7 @@ const FixtureHttpClient = Layer.succeed(
 						? new Response(new ReadableStream({ start: (c) => c.enqueue(new TextEncoder().encode("[")) }), { headers })
 						: new Response(JSON.stringify(body), { headers }),
 			)
-		const body = upstream[url.hostname]?.()
+		const body = isUpstreamHost(url.hostname) ? upstream[url.hostname]() : undefined
 		// A promise is an upstream that answers once the test resolves it.
 		return body instanceof Promise
 			? Effect.promise(() => body).pipe(Effect.map(respond))
@@ -81,7 +103,7 @@ const count = (table: string) =>
 		const result = yield* use("count", (db) =>
 			db.execute<{ n: number }>(sql.raw(`select count(*)::int as n from ${table}`)),
 		)
-		return result.rows[0].n
+		return at(result.rows, 0).n
 	})
 
 const reset = Effect.gen(function* () {
@@ -120,30 +142,25 @@ const startRun = (source: string, trigger: string) =>
 		return runId
 	})
 
-/** Real time; the tests run on TestClock, which Effect.sleep would wait for. */
-const sleepReal = (ms: number) => Effect.promise(() => new Promise<void>((resolve) => setTimeout(resolve, ms)))
-
-/** Polls `check` in real time until it holds; fails the test after `ms`. */
-const waitFor = <E, R>(what: string, check: Effect.Effect<boolean, E, R>, ms = 5_000) =>
-	Effect.gen(function* () {
-		for (let waited = 0; waited < ms; waited += 25) {
-			if (yield* check) return
-			yield* sleepReal(25)
-		}
-		assert.fail(`timed out waiting for ${what}`)
-	})
+/**
+ * Requests interruption of a fiber suspended on database I/O. Its cleanup (the abort) starts
+ * before this returns; await the fiber to see the interruption finish.
+ */
+const requestInterrupt = <A, E>(fiber: Fiber.Fiber<A, E>) => Effect.sync(() => fiber.interruptUnsafe())
 
 /** One query on a fresh connection of its own, like another process would make. */
+const queryOnNewConnection = async <T extends pg.QueryResultRow>(text: string, values: ReadonlyArray<unknown>) => {
+	const client = new pg.Client({ connectionString: inject("databaseUrl") })
+	await client.connect()
+	try {
+		return (await client.query<T>(text, [...values])).rows
+	} finally {
+		await client.end()
+	}
+}
+
 const queryElsewhere = <T extends pg.QueryResultRow>(text: string, values: ReadonlyArray<unknown> = []) =>
-	Effect.promise(async () => {
-		const client = new pg.Client({ connectionString: inject("databaseUrl") })
-		await client.connect()
-		try {
-			return (await client.query<T>(text, [...values])).rows
-		} finally {
-			await client.end()
-		}
-	})
+	Effect.promise(() => queryOnNewConnection<T>(text, values))
 
 const SOURCE_LOCK_HOLDERS = "select pid from pg_locks where locktype = 'advisory' and classid = 727002 and granted"
 
@@ -152,11 +169,8 @@ const terminateLockHolders = queryElsewhere<{ ok: boolean }>(
 	`select pg_terminate_backend(pid, 5000) as ok from (${SOURCE_LOCK_HOLDERS}) holders`,
 )
 
-/**
- * Runs `effect` while another session blocks inserts into `table`, then lifts
- * the block. `effect` returns a fiber to join once the block is gone.
- */
-const withInsertsBlocked = <A, E, R>(table: string, effect: Effect.Effect<Fiber.Fiber<A, E>, E, R>) =>
+/** Runs `effect` while another session blocks inserts into `table`, then lifts the block. */
+const withInsertsBlocked = <A, E, R>(table: string, effect: Effect.Effect<A, E, R>) =>
 	Effect.acquireUseRelease(
 		Effect.promise(async () => {
 			const blocker = new pg.Client({ connectionString: inject("databaseUrl") })
@@ -165,21 +179,22 @@ const withInsertsBlocked = <A, E, R>(table: string, effect: Effect.Effect<Fiber.
 			await blocker.query(`lock table ${table} in share mode`)
 			return blocker
 		}),
-		(blocker) =>
-			effect.pipe(
-				Effect.tap(() => sleepReal(100)),
-				Effect.tap(() => Effect.promise(() => blocker.query("commit"))),
-			),
+		(blocker) => effect.pipe(Effect.tap(() => Effect.promise(() => blocker.query("commit")))),
 		(blocker) => Effect.promise(() => blocker.end()),
 	)
 
-/** Waits until an insert into `table` is waiting on a lock. */
+/** Waits until Postgres reports an insert into `table` waiting on a lock; nothing signals that. */
 const waitForBlockedInsert = (table: string) =>
-	waitFor(
-		`an insert into ${table} to block`,
-		queryElsewhere("select 1 from pg_stat_activity where wait_event_type = 'Lock' and query ilike $1", [
-			`insert into "${table}"%`,
-		]).pipe(Effect.map((rows) => rows.length > 0)),
+	Effect.promise(() =>
+		expect
+			.poll(async () => {
+				const waiting = await queryOnNewConnection(
+					"select 1 from pg_stat_activity where wait_event_type = 'Lock' and query ilike $1",
+					[`insert into "${table}"%`],
+				)
+				return waiting.length
+			})
+			.toBeGreaterThan(0),
 	)
 
 /** An upstream response the test releases by hand. */
@@ -211,7 +226,7 @@ const runStatus = (id: number) =>
 				sql`select status, error from collection_runs where id = ${id}`,
 			),
 		)
-		return result.rows[0]
+		return at(result.rows, 0)
 	})
 
 layer(TestServices)("collector and storage", (it) => {
@@ -243,7 +258,7 @@ layer(TestServices)("collector and storage", (it) => {
 			const original = upstream["www.mbank.pl"]
 			upstream["www.mbank.pl"] = () => {
 				const funds = fixture("mbank-funds.json") as Array<{ yield1m: number }>
-				funds[0].yield1m += 1
+				at(funds, 0).yield1m += 1
 				return funds
 			}
 			try {
@@ -325,14 +340,14 @@ layer(TestServices)("concurrent and stalled collections", (it) => {
 				source: "coingecko",
 				kind: "crypto",
 				runId: newer,
-				capturedAt: new Date(),
+				capturedAt: capturedAt(),
 				rows,
 			})
 			yield* (yield* writer).persist({
 				source: "coingecko",
 				kind: "crypto",
 				runId: older,
-				capturedAt: new Date(),
+				capturedAt: capturedAt(),
 				rows,
 			})
 			assert.strictEqual((yield* store.latest("coingecko")).length, 2)
@@ -348,7 +363,7 @@ layer(TestServices)("concurrent and stalled collections", (it) => {
 				source: "mbank",
 				kind: "fund",
 				runId: first,
-				capturedAt: new Date("2026-11-16T12:00:00Z"),
+				capturedAt: capturedAt("2026-11-16T12:00:00Z"),
 				rows: [row("f", "2026-11-16", 10)],
 			})
 			const second = yield* startRun("mbank", "test")
@@ -356,10 +371,10 @@ layer(TestServices)("concurrent and stalled collections", (it) => {
 				source: "mbank",
 				kind: "fund",
 				runId: second,
-				capturedAt: new Date("2026-11-17T12:00:00Z"),
+				capturedAt: capturedAt("2026-11-17T12:00:00Z"),
 				rows: [row("f", "2026-11-13", 9)],
 			})
-			const [latest] = yield* store.latest("mbank")
+			const latest = at(yield* store.latest("mbank"), 0)
 			assert.strictEqual(latest.asOf, "2026-11-16")
 			assert.strictEqual(latest.value, 10)
 		}),
@@ -370,16 +385,18 @@ layer(TestServices)("concurrent and stalled collections", (it) => {
 			yield* reset
 			const collector = yield* Collector
 			const original = upstream["api.coingecko.com"]
-			upstream["api.coingecko.com"] = () => STALL
+			const requested = yield* Deferred.make<void>()
+			upstream["api.coingecko.com"] = () => {
+				Deferred.doneUnsafe(requested, Exit.void)
+				return STALL
+			}
 			requests = 0
 			const fiber = yield* collector.runOnce("coingecko", "test").pipe(Effect.flip, Effect.forkChild)
 			try {
-				// Database calls take real time, so advance the test clock in steps.
-				for (let i = 0; i < 100 && fiber.pollUnsafe() === undefined; i++) {
-					yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 20)))
-					yield* TestClock.adjust("30 seconds")
-				}
-				assert.isDefined(fiber.pollUnsafe(), "the run must end instead of hanging")
+				// The run's database work is done once it asks its upstream; from then on only the clock drives it.
+				yield* Deferred.await(requested)
+				// Four 30 second attempts and the backoff between them.
+				yield* TestClock.adjust("5 minutes")
 				const error = yield* Fiber.join(fiber)
 				assert.strictEqual(error._tag, "SourceError")
 				assert.strictEqual((error as { reason?: string }).reason, "timeout")
@@ -421,7 +438,7 @@ layer(TestServices)("concurrent and stalled collections", (it) => {
 				source: "coingecko",
 				kind: "crypto",
 				runId,
-				capturedAt: new Date(),
+				capturedAt: capturedAt(),
 				rows: [row("a", null, 1)],
 			})
 			assert.deepStrictEqual(yield* runStatus(runId), { status: "success", error: null })
@@ -436,31 +453,33 @@ layer(TestServices)("losing the lock or the fiber mid-run", (it) => {
 			const collector = yield* Collector
 			const original = upstream["api.coingecko.com"]
 			const upstreamGate = gate()
-			upstream["api.coingecko.com"] = () => upstreamGate.after(() => fixture("coingecko-markets.json"))
+			const requested = yield* Deferred.make<void>()
+			const answers: Array<Promise<unknown>> = []
+			upstream["api.coingecko.com"] = () => {
+				Deferred.doneUnsafe(requested, Exit.void)
+				const answer = upstreamGate.after(() => fixture("coingecko-markets.json"))
+				answers.push(answer)
+				return answer
+			}
 			try {
 				const fiber = yield* collector.runOnce("coingecko", "test").pipe(Effect.flip, Effect.forkChild)
-				yield* waitFor(
-					"the run to hold its lock and wait on its upstream",
-					Effect.all([queryElsewhere(SOURCE_LOCK_HOLDERS), queryElsewhere("select 1 from collection_runs")]).pipe(
-						Effect.map(([holders, runs]) => holders.length === 1 && runs.length === 1),
-					),
-				)
+				// A run asks its upstream only once it holds its lock and has created its run row.
+				yield* Deferred.await(requested)
+				assert.lengthOf(yield* queryElsewhere(SOURCE_LOCK_HOLDERS), 1)
 				// The run waits on its upstream; its lock connection is killed meanwhile.
 				yield* terminateLockHolders
-				yield* waitFor(
-					"the run to stop",
-					Effect.sync(() => fiber.pollUnsafe() !== undefined),
-				)
 				const error = yield* Fiber.join(fiber)
 				assert.match(error.message, /Lost the collection lock of coingecko/)
-				const [run] = yield* queryElsewhere<{ id: number; status: string; error: string }>(
+				const runs = yield* queryElsewhere<{ id: number; status: string; error: string }>(
 					"select id, status, error from collection_runs",
 				)
+				assert.lengthOf(runs, 1)
+				const run = at(runs, 0)
 				assert.strictEqual(run.status, "failed")
 				assert.match(run.error, /Lost the collection lock/)
 				// Had the run kept going after its upstream answered, it would write now.
 				upstreamGate.open()
-				yield* sleepReal(200)
+				yield* Effect.promise(() => Promise.all(answers))
 				assert.strictEqual(yield* count("raw_payloads"), 0)
 				assert.strictEqual(yield* count("snapshots"), 0)
 				// The next run takes the freed lock and serves its data.
@@ -481,7 +500,10 @@ layer(TestServices)("losing the lock or the fiber mid-run", (it) => {
 					const result = yield* lock.use("pid", (db) =>
 						db.execute<{ pid: number }>(sql`select pg_backend_pid() as pid`),
 					)
-					return { writer: result.rows[0].pid, holders: yield* queryElsewhere<{ pid: number }>(SOURCE_LOCK_HOLDERS) }
+					return {
+						writer: at(result.rows, 0).pid,
+						holders: yield* queryElsewhere<{ pid: number }>(SOURCE_LOCK_HOLDERS),
+					}
 				}),
 			)
 			// So when Postgres frees the lock (that session ended), the run's writes cannot land either.
@@ -519,25 +541,22 @@ layer(TestServices)("losing the lock or the fiber mid-run", (it) => {
 		Effect.gen(function* () {
 			yield* reset
 			const database = yield* Database
+			const inserted = gate()
 			const statements = gate()
-			let finished = false
 			const fiber = yield* database
 				.transaction("slow", async (tx) => {
 					await tx.execute(
 						sql`insert into collection_runs (source, trigger, status) values ('mbank', 'test', 'running')`,
 					)
+					inserted.open()
 					await statements.after(() => undefined)
 				})
 				.pipe(Effect.forkChild)
-			yield* sleepReal(100)
-			const interrupter = yield* Fiber.interrupt(fiber).pipe(
-				Effect.tap(() => Effect.sync(() => (finished = true))),
-				Effect.forkChild,
-			)
-			yield* sleepReal(100)
-			assert.isFalse(finished, "the interruption must wait for the transaction")
+			yield* Effect.promise(() => inserted.after(() => undefined))
+			yield* requestInterrupt(fiber)
+			assert.isUndefined(fiber.pollUnsafe(), "the interruption must wait for the transaction")
 			statements.open()
-			yield* Fiber.join(interrupter)
+			yield* Fiber.await(fiber)
 			assert.strictEqual(yield* count("collection_runs"), 0)
 		}),
 	)
@@ -559,16 +578,10 @@ layer(TestServices)("losing the lock or the fiber mid-run", (it) => {
 			})
 			try {
 				const fiber = yield* collector.runOnce("coingecko", "test").pipe(Effect.forkChild)
-				yield* waitFor(
-					"persist to wait on the snapshot lock",
-					queryElsewhere(
-						"select 1 from pg_stat_activity where wait_event_type = 'Lock' and query ilike 'insert into \"snapshots\"%'",
-					).pipe(Effect.map((rows) => rows.length > 0)),
-				)
-				const interrupter = yield* Fiber.interrupt(fiber).pipe(Effect.forkChild)
-				yield* sleepReal(100)
+				yield* waitForBlockedInsert("snapshots")
+				yield* requestInterrupt(fiber)
 				yield* Effect.promise(() => blocker.query("commit"))
-				yield* Fiber.join(interrupter)
+				yield* Fiber.await(fiber)
 			} finally {
 				yield* Effect.promise(() => blocker.end())
 			}
@@ -579,7 +592,7 @@ layer(TestServices)("losing the lock or the fiber mid-run", (it) => {
 			assert.strictEqual(runs.length, 2)
 			// Interrupted before its commit: rolled back and recorded as failed, so
 			// the status matches what was committed (nothing).
-			assert.deepStrictEqual(runs[1], { id: runs[1].id, status: "failed", snapshots: 0 })
+			assert.deepStrictEqual(at(runs, 1), { id: at(runs, 1).id, status: "failed", snapshots: 0 })
 			assert.strictEqual((yield* store.latest("coingecko")).length, 5, "latest must keep serving data")
 		}),
 	)
@@ -597,9 +610,10 @@ layer(TestServices)("losing the lock or the fiber mid-run", (it) => {
 						)
 						.pipe(Effect.forkChild)
 					yield* waitForBlockedInsert("collection_runs")
-					return yield* Fiber.interrupt(fiber).pipe(Effect.forkChild)
+					yield* requestInterrupt(fiber)
+					return fiber
 				}),
-			).pipe(Effect.flatMap(Fiber.join))
+			).pipe(Effect.flatMap(Fiber.await))
 			assert.strictEqual(yield* count("collection_runs"), 1)
 		}),
 	)
@@ -613,9 +627,10 @@ layer(TestServices)("losing the lock or the fiber mid-run", (it) => {
 				Effect.gen(function* () {
 					const fiber = yield* collector.runOnce("coingecko", "test").pipe(Effect.forkChild)
 					yield* waitForBlockedInsert("collection_runs")
-					return yield* Fiber.interrupt(fiber).pipe(Effect.forkChild)
+					yield* requestInterrupt(fiber)
+					return fiber
 				}),
-			).pipe(Effect.flatMap(Fiber.join))
+			).pipe(Effect.flatMap(Fiber.await))
 			const runs = yield* queryElsewhere<{ status: string; error: string | null }>(
 				"select status, error from collection_runs",
 			)
@@ -632,7 +647,7 @@ layer(TestServices)("losing the lock or the fiber mid-run", (it) => {
 				source: "coingecko",
 				kind: "crypto",
 				runId,
-				capturedAt: new Date(),
+				capturedAt: capturedAt(),
 				rows: [row("a", null, 1)],
 			})
 			yield* store.failRun(runId, "Interrupted")
@@ -648,35 +663,47 @@ layer(TestServices)("losing the lock or the fiber mid-run", (it) => {
  * replies on that connection never reach the client ("withhold"), and with
  * "drop" the connection is then cut.
  */
+/** The Postgres ReadyForQuery message for an idle session: `Z`, length 5, status `I`. */
+const READY_FOR_QUERY = "Z\0\0\0\x05I"
+
 const replyLosingProxy = Effect.acquireRelease(
 	Effect.promise(
 		() =>
 			new Promise<{
 				url: string
-				loseRepliesAfter: (pattern: string, then: "withhold" | "drop") => void
+				loseRepliesAfter: (pattern: string, action: "withhold" | "drop") => void
 				triggered: () => boolean
+				reached: Promise<void>
 				close: () => Promise<void>
 			}>((resolve) => {
 				const target = new URL(inject("databaseUrl"))
-				let rule: { pattern: string; then: "withhold" | "drop" } | undefined
+				let rule: { pattern: string; action: "withhold" | "drop" } | undefined
 				let fired = false
-				const sockets = new Set<net.Socket>()
-				const server = net.createServer((client) => {
-					const upstream = net.connect(Number(target.port), target.hostname)
+				let markReached!: () => void
+				const reached = new Promise<void>((done) => {
+					markReached = done
+				})
+				const sockets = new Set<NodeNet.Socket>()
+				const server = NodeNet.createServer((client) => {
+					const upstream = NodeNet.connect(Number(target.port), target.hostname)
 					sockets.add(client).add(upstream)
 					let withheld = false
+					let dropOnReply = false
 					client.on("data", (chunk) => {
 						if (rule && chunk.toString("latin1").includes(rule.pattern)) {
-							const { then } = rule
+							const { action } = rule
 							rule = undefined
 							withheld = true
 							fired = true
-							if (then === "drop") setTimeout(() => client.destroy(), 300)
+							markReached()
+							dropOnReply = action === "drop"
 						}
 						upstream.write(chunk)
 					})
 					upstream.on("data", (chunk) => {
 						if (!withheld) client.write(chunk)
+						// Cut only once Postgres has finished (and committed) the withheld query.
+						else if (dropOnReply && chunk.toString("latin1").includes(READY_FOR_QUERY)) client.destroy()
 					})
 					client.on("close", () => upstream.destroy())
 					upstream.on("close", () => client.destroy())
@@ -686,7 +713,7 @@ const replyLosingProxy = Effect.acquireRelease(
 				server.listen(0, "127.0.0.1", () => {
 					const url = new URL(target)
 					url.hostname = "127.0.0.1"
-					url.port = String((server.address() as net.AddressInfo).port)
+					url.port = String((server.address() as NodeNet.AddressInfo).port)
 					resolve({
 						url: url.toString(),
 						close: () =>
@@ -694,10 +721,11 @@ const replyLosingProxy = Effect.acquireRelease(
 								for (const socket of sockets) socket.destroy()
 								server.close(() => done())
 							}),
-						loseRepliesAfter: (pattern, then) => {
-							rule = { pattern, then }
+						loseRepliesAfter: (pattern, action) => {
+							rule = { pattern, action }
 						},
 						triggered: () => fired,
+						reached,
 					})
 				})
 			}),
@@ -743,20 +771,20 @@ layer(TestServices, { excludeTestServices: true })("bounded waits and lost repli
 				const shown = yield* database.use("show", (db) =>
 					db.execute<{ statement_timeout: string }>(sql`show statement_timeout`),
 				)
-				assert.strictEqual(shown.rows[0].statement_timeout, "1s")
+				assert.strictEqual(at(shown.rows, 0).statement_timeout, "1s")
 				const blocker = new pg.Client({ connectionString: inject("databaseUrl") })
 				yield* Effect.promise(async () => {
 					await blocker.connect()
 					await blocker.query("begin")
 					await blocker.query("lock table collection_runs in share mode")
 				})
-				const started = Date.now()
+				const started = yield* Clock.currentTimeMillis
 				const error = yield* database
 					.use("insert", (db) =>
 						db.insert(collectionRuns).values({ source: "mbank", trigger: "test", status: "running" }),
 					)
 					.pipe(Effect.flip, Effect.ensuring(Effect.promise(() => blocker.end())))
-				return { error, waited: Date.now() - started }
+				return { error, waited: (yield* Clock.currentTimeMillis) - started }
 			}).pipe(Effect.provide(servicesOn(inject("databaseUrl"))))
 			// Drizzle wraps the Postgres error; its message names the reason.
 			assert.match(String((result.error.cause as { cause?: unknown }).cause), /statement timeout/)
@@ -775,16 +803,12 @@ layer(TestServices, { excludeTestServices: true })("bounded waits and lost repli
 					const fiber = yield* database
 						.use("withheld", (db) => db.execute(sql`select 'withheld reply' as marker`))
 						.pipe(Effect.forkChild)
-					yield* waitFor("the query to reach Postgres", Effect.sync(proxy.triggered))
-					const started = Date.now()
-					const interrupter = yield* Fiber.interrupt(fiber).pipe(Effect.forkChild)
-					// Statement timeout (1 s) plus the reply grace (5 s), with room to spare.
-					yield* waitFor(
-						"the interruption to finish",
-						Effect.sync(() => interrupter.pollUnsafe() !== undefined),
-						10_000,
-					)
-					assert.isAtLeast(Date.now() - started, 5_000, "it waited for the reply first")
+					yield* Effect.promise(() => proxy.reached)
+					const started = yield* Clock.currentTimeMillis
+					// Bounded by the statement timeout (1 s) plus the reply grace (5 s).
+					yield* Fiber.interrupt(fiber)
+					const waited = (yield* Clock.currentTimeMillis) - started
+					assert.isAtLeast(waited, 5_000, "it waited for the reply first")
 				}).pipe(
 					// Cut the frozen connection before the pool closes, or closing it would wait for that query.
 					Effect.ensuring(Effect.promise(proxy.close)),
@@ -834,6 +858,10 @@ layer(ApiTest)("HTTP API", (it) => {
 			const collector = yield* Collector
 			yield* collector.runOnce("mbank", "test")
 			yield* collector.runOnce("coinmarketcap", "test")
+			// The clock reads the moment mbank was collected, so it is fresh.
+			const { lastSuccess } = yield* (yield* Store).runSummary("mbank")
+			assert.isNotNull(lastSuccess)
+			yield* TestClock.setTime(DateTime.toEpochMillis(DateTime.makeUnsafe(lastSuccess.startedAt)))
 
 			const latest = yield* call("/api/v1/sources/mbank/latest")
 			assert.strictEqual(latest.status, 200)

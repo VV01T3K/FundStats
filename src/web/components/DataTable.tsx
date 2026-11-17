@@ -9,10 +9,12 @@ import {
 } from "@tanstack/react-table"
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react"
 import { useMemo } from "react"
+
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "#/components/ui/table"
 import { Tooltip, TooltipContent, TooltipTrigger } from "#/components/ui/tooltip"
 import { cn } from "#/lib/utils"
 import type { SnapshotRow } from "#/shared/api.ts"
+
 import { formatNumber, formatPercent, formatPrice, trendClass } from "../format.ts"
 import { NAME_COLUMN, type ResolvedView } from "../search.ts"
 import type { NumericColumn, TableConfig } from "../tables/types.ts"
@@ -41,38 +43,34 @@ const buildColumns = (config: TableConfig): Array<Column> => [
 		cell: ({ row }) => {
 			const subtitle = config.subtitle?.(row.original)
 			return (
-				<div className="min-w-0 max-w-[14rem] sm:max-w-[22rem]">
+				<div className="max-w-[14rem] min-w-0 sm:max-w-[22rem]">
 					<div className="truncate font-medium" title={row.original.name}>
 						{row.original.name}
 						{row.original.symbol && config.source !== "mbank" ? (
-							<span className="ml-2 text-xs text-muted-foreground">{row.original.symbol}</span>
+							<span className="text-muted-foreground ml-2 text-xs">{row.original.symbol}</span>
 						) : null}
 					</div>
-					{subtitle ? <div className="text-xs text-muted-foreground">{subtitle}</div> : null}
+					{subtitle ? <div className="text-muted-foreground text-xs">{subtitle}</div> : null}
 				</div>
 			)
 		},
 	},
-	...config.columns.map(
-		(column): Column => ({
-			id: column.id,
-			header: column.header,
-			accessorFn: (row) => column.value(row) ?? undefined,
-			// Rows without data for the column always go to the bottom.
-			sortUndefined: "last",
-			sortDescFirst: true,
-			meta: { numeric: true, description: column.description },
-			cell: ({ getValue }) => {
-				const value = (getValue() as number | undefined) ?? null
-				if (value === null) return <span className="text-muted-foreground">–</span>
-				return (
-					<span className={column.format === "price" ? undefined : trendClass(value)}>
-						{formatValue(column, value)}
-					</span>
-				)
-			},
-		}),
-	),
+	...config.columns.map((column): Column => ({
+		id: column.id,
+		header: column.header,
+		accessorFn: (row) => column.value(row) ?? undefined,
+		// Rows without data for the column always go to the bottom.
+		sortUndefined: "last",
+		sortDescFirst: true,
+		meta: { numeric: true, description: column.description },
+		cell: ({ getValue }) => {
+			const value = (getValue() as number | undefined) ?? null
+			if (value === null) return <span className="text-muted-foreground">–</span>
+			return (
+				<span className={column.format === "price" ? undefined : trendClass(value)}>{formatValue(column, value)}</span>
+			)
+		},
+	})),
 ]
 
 interface DataTableProps {
@@ -167,7 +165,7 @@ export function DataTable({ config, rows, view, onSortChange }: DataTableProps) 
 							className={cn(highlighted && "bg-highlight hover:bg-highlight")}
 							data-highlighted={highlighted || undefined}
 						>
-							<TableCell className="text-right tabular-nums text-muted-foreground">{index + 1}</TableCell>
+							<TableCell className="text-muted-foreground text-right tabular-nums">{index + 1}</TableCell>
 							{row.getAllCells().map((cell) => (
 								<TableCell
 									key={cell.id}
@@ -181,7 +179,7 @@ export function DataTable({ config, rows, view, onSortChange }: DataTableProps) 
 				})}
 				{rows.length === 0 ? (
 					<TableRow>
-						<TableCell colSpan={columns.length + 1} className="py-10 text-center text-muted-foreground">
+						<TableCell colSpan={columns.length + 1} className="text-muted-foreground py-10 text-center">
 							No rows match this filter.
 						</TableCell>
 					</TableRow>

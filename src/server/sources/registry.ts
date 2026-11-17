@@ -1,4 +1,5 @@
 import type { SourceId } from "#/shared/sources.ts"
+
 import { coingecko } from "./coingecko.ts"
 import { coinmarketcap } from "./coinmarketcap.ts"
 import { coinpaprika } from "./coinpaprika.ts"
@@ -12,6 +13,3 @@ export const registry = {
 	coinpaprika,
 	coinmarketcap,
 } as const satisfies Record<SourceId, AnySource>
-
-export const getSource = (id: string): AnySource | undefined =>
-	Object.hasOwn(registry, id) ? registry[id as SourceId] : undefined

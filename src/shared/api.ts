@@ -1,3 +1,4 @@
+import { HttpApi, HttpApiEndpoint, HttpApiError, HttpApiGroup, OpenApi } from "effect/http-api"
 /**
  * The HTTP API contract. Imported by the server (handlers) and by the web
  * client (typed HttpApiClient), so it must not import server-only code.
@@ -5,14 +6,14 @@
  * Versioning: data endpoints live under /api/v1. A breaking change gets a new
  * group under /api/v2 next to the old one.
  */
-import { Schema } from "effect"
-import { HttpApi, HttpApiEndpoint, HttpApiError, HttpApiGroup, OpenApi } from "effect/http-api"
+import * as Schema from "effect/Schema"
+
 import { SOURCE_IDS } from "./sources.ts"
 
-export const SourceIdSchema = Schema.Literals(SOURCE_IDS)
+const SourceIdSchema = Schema.Literals(SOURCE_IDS)
 
-export const RunStatus = Schema.Literals(["running", "success", "failed"])
-export type RunStatus = typeof RunStatus.Type
+const RunStatus = Schema.Literals(["running", "success", "failed"])
+type RunStatus = typeof RunStatus.Type
 
 /** ISO 8601 timestamps travel as strings so responses stay plain JSON. */
 const Timestamp = Schema.String
@@ -43,7 +44,7 @@ export const SourceStatus = Schema.Struct({
 })
 export type SourceStatus = typeof SourceStatus.Type
 
-export const MetricValues = Schema.Record(Schema.String, Schema.Number)
+const MetricValues = Schema.Record(Schema.String, Schema.Number)
 
 export const SnapshotRow = Schema.Struct({
 	instrumentId: Schema.Int,
@@ -61,28 +62,28 @@ export const SnapshotRow = Schema.Struct({
 })
 export type SnapshotRow = typeof SnapshotRow.Type
 
-export const LatestSnapshot = Schema.Struct({
+const LatestSnapshot = Schema.Struct({
 	source: SourceStatus,
 	rows: Schema.Array(SnapshotRow),
 })
-export type LatestSnapshot = typeof LatestSnapshot.Type
+type LatestSnapshot = typeof LatestSnapshot.Type
 
-export const HistoryPoint = Schema.Struct({
+const HistoryPoint = Schema.Struct({
 	capturedAt: Timestamp,
 	asOf: Schema.NullOr(Schema.String),
 	value: Schema.NullOr(Schema.Number),
 	metrics: MetricValues,
 })
 
-export const InstrumentHistory = Schema.Struct({
+const InstrumentHistory = Schema.Struct({
 	source: SourceIdSchema,
 	externalId: Schema.String,
 	name: Schema.String,
 	points: Schema.Array(HistoryPoint),
 })
-export type InstrumentHistory = typeof InstrumentHistory.Type
+type InstrumentHistory = typeof InstrumentHistory.Type
 
-export const Health = Schema.Struct({
+const Health = Schema.Struct({
 	status: Schema.Literal("ok"),
 	database: Schema.Literal("ok"),
 	collectorEnabled: Schema.Boolean,
@@ -100,14 +101,14 @@ export class InstrumentNotFound extends Schema.TaggedError<InstrumentNotFound>()
 	{ httpApiStatus: 404 },
 ) {}
 
-export class SystemApi extends HttpApiGroup.make("system", { topLevel: true }).add(
+class SystemApi extends HttpApiGroup.make("system", { topLevel: true }).add(
 	HttpApiEndpoint.get("health", "/health", {
 		success: Health,
 		error: HttpApiError.ServiceUnavailable,
 	}),
 ) {}
 
-export class SourcesApi extends HttpApiGroup.make("sources")
+class SourcesApi extends HttpApiGroup.make("sources")
 	.add(
 		HttpApiEndpoint.get("list", "/sources", {
 			success: Schema.Array(SourceStatus),

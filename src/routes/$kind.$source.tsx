@@ -1,6 +1,7 @@
 import { useSuspenseQuery } from "@tanstack/react-query"
 import { createFileRoute, notFound } from "@tanstack/react-router"
 import { useMemo } from "react"
+
 import { Button } from "#/components/ui/button"
 import { isSourceId, KIND_SEGMENT, SOURCES, type SourceId } from "#/shared/sources.ts"
 import { latestQuery } from "#/web/api.ts"
@@ -31,7 +32,7 @@ function SourceTablePage() {
 	const navigate = Route.useNavigate()
 	const { data } = useSuspenseQuery(latestQuery(source))
 	const config = getTable(source)
-	const view = resolveView(config, search)
+	const view = useMemo(() => resolveView(config, search), [config, search])
 
 	const rows = useMemo(
 		() =>
@@ -46,7 +47,7 @@ function SourceTablePage() {
 		<section className="space-y-4">
 			<div className="flex flex-wrap items-baseline justify-between gap-2">
 				<h1 className="text-2xl font-semibold tracking-tight">{SOURCES[source].name}</h1>
-				<span className="text-sm text-muted-foreground">{rows.length} rows</span>
+				<span className="text-muted-foreground text-sm">{rows.length} rows</span>
 			</div>
 
 			<SourceStatusBar status={data.source} rows={data.rows} />
@@ -96,7 +97,7 @@ function SourceTablePage() {
 			</div>
 
 			<div className="text-center">
-				<a href="#top" className="text-sm text-muted-foreground underline underline-offset-4">
+				<a href="#top" className="text-muted-foreground text-sm underline underline-offset-4">
 					Back to top
 				</a>
 			</div>
@@ -107,7 +108,7 @@ function SourceTablePage() {
 function FilterGroup({ label, children }: { readonly label: string; readonly children: React.ReactNode }) {
 	return (
 		<div className="flex flex-wrap items-center gap-2">
-			<span className="w-full text-xs uppercase tracking-wide text-muted-foreground sm:w-auto sm:min-w-24">
+			<span className="text-muted-foreground w-full text-xs tracking-wide uppercase sm:w-auto sm:min-w-24">
 				{label}
 			</span>
 			{children}

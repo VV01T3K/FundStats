@@ -4,8 +4,10 @@ import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools"
 import { createRootRouteWithContext, HeadContent, Link, Scripts } from "@tanstack/react-router"
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools"
 import type { ReactNode } from "react"
+
 import { TooltipProvider } from "#/components/ui/tooltip"
 import { SourceNav } from "#/web/components/SourceNav.tsx"
+
 import appCss from "../styles.css?url"
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
@@ -49,7 +51,7 @@ function RootDocument({ children }: { children: ReactNode }) {
 							<SourceNav />
 						</header>
 						<main className="flex-1">{children}</main>
-						<footer className="text-xs text-muted-foreground">
+						<footer className="text-muted-foreground text-xs">
 							Data is collected periodically from public provider APIs and served from the FundStats database. Not
 							investment advice.{" "}
 							<a href="/api/docs" className="underline underline-offset-4">

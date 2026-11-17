@@ -30,7 +30,7 @@ export interface TableConfig {
 }
 
 /** Reads a stored metric; missing means no data. */
-export const metric =
+const metric =
 	(name: string) =>
 	(row: SnapshotRow): number | null =>
 		row.metrics[name] ?? null

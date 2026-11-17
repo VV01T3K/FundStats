@@ -1,7 +1,10 @@
-import { Effect, Schema } from "effect"
+import * as Effect from "effect/Effect"
 import { HttpClientRequest } from "effect/http"
+import * as Schema from "effect/Schema"
+
 import { metrics } from "#/shared/metrics.ts"
 import { SOURCES } from "#/shared/sources.ts"
+
 import { defineSource, fetchJson } from "./Source.ts"
 
 const info = SOURCES.mbank
@@ -11,7 +14,7 @@ const Yield = Schema.optional(Schema.NullOr(Schema.Number))
 
 const Named = Schema.Struct({ id: Schema.optional(Schema.String), name: Schema.String })
 
-export const MbankFund = Schema.Struct({
+const MbankFund = Schema.Struct({
 	id: Schema.Union([Schema.String, Schema.Number]),
 	funId: Schema.optional(Schema.NullOr(Schema.String)),
 	shortName: Schema.String,
@@ -34,7 +37,7 @@ export const MbankFund = Schema.Struct({
 	yield5y: Yield,
 	yieldMax: Yield,
 })
-export type MbankFund = typeof MbankFund.Type
+type MbankFund = typeof MbankFund.Type
 
 export const MbankPayload = Schema.Array(MbankFund)
 

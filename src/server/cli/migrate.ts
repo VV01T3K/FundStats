@@ -1,6 +1,8 @@
 /** Applies pending database migrations: `bun run db:migrate`. */
-import { NodeRuntime } from "@effect/platform-node"
-import { Effect, Layer } from "effect"
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
+import * as Effect from "effect/Effect"
+import * as Layer from "effect/Layer"
+
 import { AppConfig } from "../config.ts"
 import { Database } from "../db/Database.ts"
 

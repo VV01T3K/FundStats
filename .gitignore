@@ -11,3 +11,6 @@ dist-ssr
 .vinxi
 __unconfig*
 todos.json
+
+# Reference source for agents (bun run sync:repos)
+.repos/

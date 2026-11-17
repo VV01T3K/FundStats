@@ -12,6 +12,7 @@ import {
 	timestamp,
 	uniqueIndex,
 } from "drizzle-orm/pg-core"
+
 import type { Metrics } from "#/shared/metrics.ts"
 
 /**
@@ -79,12 +80,9 @@ export const instruments = pgTable(
 )
 
 /**
- * Values of one instrument at one point in time.
- *
- * Dedupe rule: when the upstream gives a date the values are for (`as_of`,
- * e.g. mBank's fund valuation date), there is at most one row per instrument
- * and date; re-collecting the same date updates the row only if a value
- * changed. Live quotes without a date (crypto) get one row per collection.
+ * Values of one instrument at one point in time. Dedupe rule: dated values (`as_of`, e.g. mBank's
+ * valuation date) keep one row per instrument and date, rewritten only when a value changed;
+ * live quotes without a date (crypto) get one row per collection.
  */
 export const snapshots = pgTable(
 	"snapshots",
@@ -102,6 +100,8 @@ export const snapshots = pgTable(
 	(t) => [
 		// Latest snapshot per instrument and per-instrument history.
 		index("snapshots_instrument_captured_idx").on(t.instrumentId, t.capturedAt.desc()),
-		uniqueIndex("snapshots_instrument_as_of_idx").on(t.instrumentId, t.asOf).where(sql`${t.asOf} is not null`),
+		uniqueIndex("snapshots_instrument_as_of_idx")
+			.on(t.instrumentId, t.asOf)
+			.where(sql`${t.asOf} is not null`),
 	],
 )

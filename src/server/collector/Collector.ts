@@ -1,11 +1,22 @@
-import { Cause, Context, Duration, Effect, Layer, Option, Schema, Semaphore } from "effect"
+import * as Cause from "effect/Cause"
+import * as Clock from "effect/Clock"
+import * as Context from "effect/Context"
+import * as DateTime from "effect/DateTime"
+import * as Duration from "effect/Duration"
+import * as Effect from "effect/Effect"
 import { FetchHttpClient, HttpClient } from "effect/http"
+import * as Layer from "effect/Layer"
+import * as Option from "effect/Option"
+import * as Schema from "effect/Schema"
+import * as Semaphore from "effect/Semaphore"
+
 import { SOURCE_IDS, type SourceId } from "#/shared/sources.ts"
+
 import { AppConfig } from "../config.ts"
 import { Database, type DatabaseError, SourceBusy } from "../db/Database.ts"
 import { type PersistResult, Store } from "../db/Store.ts"
 import { registry } from "../sources/registry.ts"
-import { type AnySource, decodePayload, SourceError } from "../sources/Source.ts"
+import { type AnySource, SourceError } from "../sources/Source.ts"
 
 export class UnknownSource extends Schema.TaggedError<UnknownSource>()("UnknownSource", {
 	source: Schema.String,
@@ -17,13 +28,9 @@ export type RunTrigger = "schedule" | "cli" | "test"
 const FAILURE_RETRY = Duration.minutes(10)
 
 /**
- * Runs sources: fetch from upstream → keep raw payload → decode → normalize →
- * persist. Every run is recorded in `collection_runs`, including failures.
- *
- * A run holds its source's database lock from before the run row is created
- * until persistence ends, so two processes (app and CLI, or two replicas)
- * never collect the same source at once. A run that finds the lock taken
- * fails with SourceBusy and records nothing.
+ * Runs sources: fetch → keep raw payload → decode → normalize → persist, recording every run.
+ * A run holds its source's database lock for its whole lifetime, so two processes never collect
+ * the same source at once; a run that finds the lock taken fails with SourceBusy and records nothing.
  */
 export class Collector extends Context.Service<
 	Collector,
@@ -68,11 +75,11 @@ export class Collector extends Context.Service<
 								const runId = yield* writer.reserveRunId
 								openRun = runId
 								yield* writer.startRun(runId, id, trigger)
-								const capturedAt = new Date()
+								const capturedAt = yield* DateTime.nowAsDate
 								const raw = yield* source.fetch
 								// Stored before decoding, so a changed upstream shape can be inspected and replayed.
 								yield* writer.saveRawPayload(runId, id, raw)
-								const payload = yield* decodePayload(source, raw)
+								const payload = yield* source.decode(raw)
 								const rows = yield* Effect.try({
 									try: () => source.normalize(payload),
 									catch: (cause) =>
@@ -124,11 +131,14 @@ export class Collector extends Context.Service<
 	static readonly layer = Collector.layerNoDeps.pipe(Layer.provide(FetchHttpClient.layer))
 }
 
+const isSourceError = Schema.is(SourceError)
+const isSourceBusy = Schema.is(SourceBusy)
+
 const describe = (cause: Cause.Cause<unknown>): string => {
 	const error = Cause.squash(cause)
 	if (Cause.hasInterruptsOnly(cause)) return "Interrupted"
-	if (Schema.is(SourceError)(error)) return `${error.reason}: ${error.message}`
-	if (Schema.is(SourceBusy)(error)) return error.message
+	if (isSourceError(error)) return `${error.reason}: ${error.message}`
+	if (isSourceBusy(error)) return error.message
 	if (error instanceof Error) return error.message
 	return Cause.pretty(cause)
 }
@@ -160,17 +170,19 @@ export const CollectorScheduler = Layer.effectDiscard(
 				let delay = Duration.zero
 				if (lastRun) {
 					const wait = lastRun.status === "failed" ? Duration.min(every, FAILURE_RETRY) : every
-					const due = Date.parse(lastRun.startedAt) + Duration.toMillis(wait)
-					delay = Duration.millis(Math.max(0, due - Date.now()))
+					const due = DateTime.toEpochMillis(DateTime.makeUnsafe(lastRun.startedAt)) + Duration.toMillis(wait)
+					const now = yield* Clock.currentTimeMillis
+					delay = Duration.millis(Math.max(0, due - now))
 				}
 				yield* Effect.sleep(delay)
 				yield* collector.runOnce(id, "schedule")
 			}).pipe(
 				// Another process (e.g. `bun run collect`) is collecting it right now;
 				// its run row decides when this source is due next.
-				Effect.catchTag("SourceBusy", (busy) =>
-					Effect.logInfo(`Skipped ${id}: ${busy.message}`).pipe(Effect.andThen(Effect.sleep("1 minute"))),
-				),
+				Effect.catchTags({
+					SourceBusy: (busy) =>
+						Effect.logInfo(`Skipped ${id}: ${busy.message}`).pipe(Effect.andThen(Effect.sleep("1 minute"))),
+				}),
 				Effect.catchCause((cause) =>
 					Effect.logError(`Collector run for ${id} failed: ${describe(cause)}`).pipe(
 						// Avoid a hot loop if the database itself is down.

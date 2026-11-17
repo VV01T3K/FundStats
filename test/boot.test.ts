@@ -9,8 +9,7 @@ vi.mock("#/server/runtime.ts", () => ({ getServer }))
 
 const runPlugin = async () => {
 	const { default: plugin } = await import("#/server/boot.ts")
-	// biome-ignore lint/suspicious/noExplicitAny: the plugin does not use the Nitro app.
-	await plugin({} as any)
+	await plugin({} as never)
 }
 
 afterEach(() => {

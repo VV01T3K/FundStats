@@ -6,11 +6,12 @@ import type { TableConfig } from "./tables/types.ts"
  * so old or hand-edited links never break.
  */
 export interface TableSearch {
-	readonly sort?: string
-	readonly dir?: "asc" | "desc"
-	readonly category?: string
-	readonly period?: string
-	readonly threshold?: number
+	/** Setting a param to undefined removes it from the URL. */
+	readonly sort?: string | undefined
+	readonly dir?: "asc" | "desc" | undefined
+	readonly category?: string | undefined
+	readonly period?: string | undefined
+	readonly threshold?: number | undefined
 }
 
 const text = (value: unknown) =>

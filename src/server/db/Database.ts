@@ -1,13 +1,21 @@
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres"
 import { migrate } from "drizzle-orm/node-postgres/migrator"
-import { Context, Deferred, Duration, Effect, Exit, Layer, Redacted, Schema } from "effect"
+import * as Context from "effect/Context"
+import * as Deferred from "effect/Deferred"
+import * as Duration from "effect/Duration"
+import * as Effect from "effect/Effect"
+import * as Exit from "effect/Exit"
+import * as Layer from "effect/Layer"
+import * as Redacted from "effect/Redacted"
+import * as Schema from "effect/Schema"
 import pg from "pg"
+
 import { AppConfig } from "../config.ts"
 import * as schema from "./schema.ts"
 
-export type Db = NodePgDatabase<typeof schema>
+type Db = NodePgDatabase<typeof schema>
 /** A transaction handle; it has the same query API as `Db`. */
-export type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0]
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0]
 
 export class DatabaseError extends Schema.TaggedError<DatabaseError>()("DatabaseError", {
 	operation: Schema.String,
@@ -40,17 +48,9 @@ export interface Executor {
 }
 
 /**
- * Runs a promise that cannot be cancelled. An interruption aborts `signal`
- * and then waits for the promise to settle, so the database work it started
- * has normally finished (committed or rolled back) before the fiber ends.
- * The wait is bounded by `maxWait`: Postgres cancels a statement after the
- * statement timeout, so only a reply that never arrives (a dead network)
- * outlasts it. Giving up then is safe: run status only changes from
- * `running`, and the transaction's row lock orders it against that change.
- *
- * Drizzle queries are lazy thenables that execute on every `then`, so `run`'s
- * result is adopted into one native promise, started exactly once, and only
- * that promise is observed.
+ * Runs an uncancellable promise; interruption aborts `signal` and waits (at most `maxWait`, past
+ * the statement timeout) for it to settle, so its database work has finished before the fiber ends.
+ * Drizzle queries are lazy thenables that run on every `then`, so `run` is adopted into one promise.
  */
 const settled = <A>(
 	operation: string,
@@ -73,7 +73,9 @@ const settled = <A>(
 		}).pipe(Effect.timeoutOption(maxWait), Effect.asVoid)
 	})
 
-class RolledBack extends Error {}
+class RolledBack extends Schema.TaggedError<RolledBack>()("RolledBack", {
+	message: Schema.String,
+}) {}
 
 /** How long an interruption waits past the statement timeout for a reply. */
 const REPLY_GRACE = Duration.seconds(5)
@@ -87,7 +89,7 @@ const makeExecutor = (db: Db, statementTimeout: Duration.Duration): Executor => 
 				db.transaction(async (tx) => {
 					const result = await f(tx)
 					// Interrupted while the statements ran: roll back instead of committing.
-					if (signal.aborted) throw new RolledBack(`${operation} was interrupted and rolled back`)
+					if (signal.aborted) throw new RolledBack({ message: `${operation} was interrupted and rolled back` })
 					return result
 				}),
 			).pipe(Effect.withSpan(`db.${operation}`)),
@@ -102,18 +104,9 @@ export class Database extends Context.Service<
 	Database,
 	Executor & {
 		/**
-		 * Runs `f` while holding the collection lock of `source`: a
-		 * session-level Postgres advisory lock on a dedicated connection, so it
-		 * serializes collections across processes (app, CLI, replicas). Fails
-		 * with SourceBusy instead of waiting when another session holds it.
-		 *
-		 * `f` gets an Executor bound to that same connection; a collection does
-		 * all its writes through it. The lock exists exactly as long as the
-		 * connection does, so once Postgres frees the lock (connection lost or
-		 * terminated) no further write of this run can succeed, and a
-		 * transaction cut off mid-way is rolled back. Losing the connection also
-		 * interrupts `f` and fails with a DatabaseError (operation
-		 * "sourceLock"). The lock is released when `f` ends.
+		 * Runs `f` holding `source`'s session advisory lock on a dedicated connection (SourceBusy if
+		 * taken). `f` writes through an Executor on that connection, so no write outlives the lock.
+		 * Losing the connection interrupts `f` and fails with DatabaseError("sourceLock").
 		 */
 		readonly withSourceLock: <A, E, R>(
 			source: string,
@@ -125,6 +118,7 @@ export class Database extends Context.Service<
 		Database,
 		Effect.gen(function* () {
 			const config = yield* AppConfig
+			const services = yield* Effect.context<never>()
 			// Every connection, pooled or holding a source lock, gets the statement
 			// timeout, so a statement blocked on a lock fails instead of waiting forever.
 			const connection = {
@@ -137,7 +131,7 @@ export class Database extends Context.Service<
 			)
 			// An idle client error (e.g. Postgres restarted) must not crash the process.
 			pool.on("error", (error) => {
-				Effect.runFork(Effect.logWarning("Postgres pool client error", error.message))
+				Effect.runForkWith(services)(Effect.logWarning("Postgres pool client error", error.message))
 			})
 			const db = drizzle(pool, { schema })
 
@@ -177,7 +171,9 @@ export class Database extends Context.Service<
 							}
 							// A dropped connection drops the lock too; it must stop the run, not crash the process.
 							client.on("error", (error) => {
-								Effect.runFork(Effect.logWarning(`Collection lock connection of ${source} failed`, error.message))
+								Effect.runForkWith(services)(
+									Effect.logWarning(`Collection lock connection of ${source} failed`, error.message),
+								)
 								onLost(error.message, error)
 							})
 							client.on("end", () => onLost("its database connection ended"))
@@ -230,7 +226,7 @@ const SOURCE_LOCK_CLASS = 727_002
 const MIGRATION_LOCK_ID = 727_001
 
 /** Applies the drizzle-kit SQL migrations in `dir`, holding an advisory lock. */
-export const runMigrations = (pool: pg.Pool, dir: string) =>
+const runMigrations = (pool: pg.Pool, dir: string) =>
 	Effect.tryPromise({
 		try: async () => {
 			const client = await pool.connect()
