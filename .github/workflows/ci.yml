@@ -13,22 +13,20 @@ concurrency:
 
 jobs:
   check:
-    # ubuntu-latest has Docker, which the tests need for their Postgres container (testcontainers).
+    # ubuntu-latest has Docker, which the tests need for their Postgres containers (testcontainers).
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      # Same Node major as the Dockerfile; vitest and vite run on Node.
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 26
+      # Same Bun as packageManager and the Dockerfile.
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.4
       - run: bun install --frozen-lockfile
-      # Format check, then oxlint with type-aware rules and the local plugin.
+      # GHSA-fc5q-39xc-vjpf (picomatch ReDoS) has no patched release yet; only build tooling
+      # (vite, knip, the TanStack Start plugin) reaches picomatch, with globs from this repository.
+      - run: bun audit --audit-level=high --ignore=GHSA-fc5q-39xc-vjpf
+      # Format check, oxlint (type-aware, with the local plugin), effect-tsgo and knip.
       - run: bun run check
-      - run: bun run typecheck
-      - run: bun run knip
       - run: bun run test
       - run: bun run build

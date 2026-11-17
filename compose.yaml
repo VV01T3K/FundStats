@@ -1,18 +1,40 @@
-# Production stack: the app (TanStack Start + Effect backend + collector in one
-# process) and Postgres. Configure with a .env file next to this one; see
-# .env.example. Start: docker compose up -d --build
+# Production stack: the web app (pages + read-only API), the collector and Postgres.
+# Configure with a .env file next to this one; see .env.example. Start: docker compose up -d --build
 name: fundstats
 
+x-database-url: &database-url postgres://fundstats:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/fundstats
+
 services:
-  app:
-    build: .
-    image: fundstats:latest
+  web:
+    build:
+      context: .
+      target: web
+    image: fundstats-web:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      # The collector applies the migrations the web app reads through.
+      collector:
+        condition: service_started
+    environment:
+      DATABASE_URL: *database-url
+    # Published on loopback only, for a reverse proxy on the same host. Set
+    # FUNDSTATS_BIND=0.0.0.0 to expose it on every interface.
+    ports:
+      - "${FUNDSTATS_BIND:-127.0.0.1}:${FUNDSTATS_PORT:-3000}:3000"
+
+  collector:
+    build:
+      context: .
+      target: collector
+    image: fundstats-collector:latest
     restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgres://fundstats:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/fundstats
+      DATABASE_URL: *database-url
       COLLECTOR_ENABLED: ${COLLECTOR_ENABLED:-true}
       COLLECTOR_INTERVAL_MBANK: ${COLLECTOR_INTERVAL_MBANK:-}
       COLLECTOR_INTERVAL_COINGECKO: ${COLLECTOR_INTERVAL_COINGECKO:-}
@@ -21,10 +43,6 @@ services:
       RAW_PAYLOAD_RETENTION_DAYS: ${RAW_PAYLOAD_RETENTION_DAYS:-30}
       COINGECKO_API_KEY: ${COINGECKO_API_KEY:-}
       CMC_API_KEY: ${CMC_API_KEY:-}
-    # Published on loopback only, for a reverse proxy on the same host. Set
-    # FUNDSTATS_BIND=0.0.0.0 to expose it on every interface.
-    ports:
-      - "${FUNDSTATS_BIND:-127.0.0.1}:${FUNDSTATS_PORT:-3000}:3000"
 
   db:
     image: postgres:18-alpine
