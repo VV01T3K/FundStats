@@ -137,7 +137,8 @@ function SourceTablePage() {
 						value={search.q ?? ""}
 						onChange={(q) => update({ q: q.trim() || undefined })}
 						placeholder={config.kind === "fund" ? "Nazwa lub kod" : "Nazwa lub symbol"}
-						className="min-w-0 flex-1 sm:w-40 sm:flex-none"
+						// Funds share the row with every filter; crypto tables have none.
+						className={cn("min-w-0 flex-1 sm:flex-none", config.kind === "fund" ? "sm:w-40" : "sm:w-56")}
 					/>
 					<div className="flex items-center gap-2 sm:hidden">
 						<FiltersSheet config={config} rows={data.rows} view={view} update={update} shown={rows.length} />
