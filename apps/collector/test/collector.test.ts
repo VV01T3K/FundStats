@@ -211,6 +211,24 @@ layer(TestServices)("collector and storage", (it) => {
 		}),
 	)
 
+	it.effect("a rejected JSON null response is kept as jsonb null", () =>
+		Effect.gen(function* () {
+			yield* reset
+			const collector = yield* Collector
+			const original = upstream["api.coinpaprika.com"]
+			upstream["api.coinpaprika.com"] = () => null
+			try {
+				assert.strictEqual((yield* collector.runOnce("coinpaprika", "test").pipe(Effect.flip))._tag, "SourceError")
+			} finally {
+				upstream["api.coinpaprika.com"] = original
+			}
+			const kept = yield* queryElsewhere<{ type: string | null }>(
+				"select jsonb_typeof(payload) as type from raw_payloads",
+			)
+			assert.deepStrictEqual(kept, [{ type: "null" }])
+		}),
+	)
+
 	it.effect("an upstream that lists an instrument twice fails the run and keeps its response", () =>
 		Effect.gen(function* () {
 			yield* reset
@@ -394,6 +412,37 @@ layer(TestServices)("losing the lock or the fiber mid-run", (it) => {
 					upstream["api.coingecko.com"] = original
 				}
 			}),
+	)
+
+	it.effect("a response rejected after the lock connection was lost is still recorded with its reason", () =>
+		Effect.gen(function* () {
+			yield* reset
+			const collector = yield* Collector
+			const original = upstream["api.coingecko.com"]
+			const upstreamGate = gate()
+			const requested = yield* Deferred.make<void>()
+			upstream["api.coingecko.com"] = () => {
+				Deferred.doneUnsafe(requested, Exit.void)
+				return upstreamGate.after(() => ({ error: "maintenance" }))
+			}
+			try {
+				const fiber = yield* collector.runOnce("coingecko", "test").pipe(Effect.flip, Effect.forkChild)
+				yield* Deferred.await(requested)
+				yield* terminateLockHolders
+				upstreamGate.open()
+				const error = yield* Fiber.join(fiber)
+				assert.strictEqual(error._tag, "SourceError")
+				const runs = yield* queryElsewhere<{ status: string; error: string; payload: unknown }>(
+					"select r.status, r.error, p.payload from collection_runs r join raw_payloads p on p.run_id = r.id",
+				)
+				assert.lengthOf(runs, 1)
+				assert.strictEqual(at(runs, 0).status, "failed")
+				assert.match(at(runs, 0).error, /^decode: /)
+				assert.deepStrictEqual(at(runs, 0).payload, { error: "maintenance" })
+			} finally {
+				upstream["api.coingecko.com"] = original
+			}
+		}),
 	)
 
 	it.effect("interrupting a run during persist leaves the last good data served and the run status true", () =>

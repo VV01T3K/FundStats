@@ -62,9 +62,10 @@ export class Collector extends Context.Service<
 					}
 					const id = sourceId as SourceId
 					const source: AnySource = registry[id]
-					// The run row to close if the run fails. Failure is recorded outside
-					// the lock, so it is also recorded when the lock connection is lost.
+					// The run row to close if the run fails, and the response it rejected. Failure is recorded
+					// outside the lock, so it is also recorded when the lock connection is lost.
 					let openRun: number | undefined
+					let rejectedPayload = Option.none<unknown>()
 					return yield* sourceLocks
 						.withSourceLock(
 							id,
@@ -120,7 +121,11 @@ export class Collector extends Context.Service<
 										return normalized
 									}).pipe(
 										// Only a rejected response is kept, so a changed upstream shape can be inspected and replayed.
-										Effect.tapError(() => writer.saveRawPayload(runId, raw)),
+										Effect.tapError(() =>
+											Effect.sync(() => {
+												rejectedPayload = Option.some(raw)
+											}),
+										),
 									)
 									const result = yield* writer.persist({ source: id, runId, capturedAt, rows })
 									yield* Effect.logInfo(
@@ -136,7 +141,7 @@ export class Collector extends Context.Service<
 							Effect.onError((cause) =>
 								openRun === undefined
 									? Effect.void
-									: store.failRun(openRun, describe(cause)).pipe(
+									: store.failRun(openRun, describe(cause), rejectedPayload).pipe(
 											// The run's own error is what the caller gets; this one is only logged.
 											Effect.catchCause((recording) =>
 												Effect.logError(`Could not record run ${openRun} as failed: ${describe(recording)}`),

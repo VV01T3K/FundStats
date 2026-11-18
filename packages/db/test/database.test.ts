@@ -11,10 +11,11 @@ import * as Duration from "effect/Duration"
 import * as Effect from "effect/Effect"
 import * as Fiber from "effect/Fiber"
 import * as Layer from "effect/Layer"
+import * as Option from "effect/Option"
 
 import { Database } from "../src/Database.ts"
 import { RunStore } from "../src/RunStore.ts"
-import { collectionRuns } from "../src/schema.ts"
+import { collectionRuns, newestSnapshotFirst, snapshots } from "../src/schema.ts"
 import { SourceLocks } from "../src/SourceLocks.ts"
 import { Store } from "../src/Store.ts"
 import {
@@ -45,6 +46,12 @@ import {
 /** Storage on `url` with a 1 second statement timeout. Fresh, so the shared test layer's instances are not reused. */
 const storageWithShortTimeout = (url: string) =>
 	Layer.fresh(storageOn(dbConfigOn(url, { DB_STATEMENT_TIMEOUT: "1 second" })))
+
+const persistAt = (source: string, when: Date, rows: ReadonlyArray<ReturnType<typeof row>>) =>
+	Effect.gen(function* () {
+		const runId = yield* startRun(source, "test")
+		return yield* (yield* writer).persist({ source, runId, capturedAt: when, rows })
+	})
 
 layer(TestStorage)("runs and the latest view", (it) => {
 	it.effect("latest shows the newest valuation date even when an older date was captured later", () =>
@@ -139,13 +146,11 @@ layer(TestStorage)("runs and the latest view", (it) => {
 	it.effect("downsampling keeps old live quotes only as each instrument's newest per UTC day", () =>
 		Effect.gen(function* () {
 			yield* reset
-			const [now] = yield* queryElsewhere<{ ms: number }>("select extract(epoch from now())::float8 * 1000 as ms")
-			const hoursAgo = (hours: number) => DateTime.toDateUtc(DateTime.makeUnsafe((now?.ms ?? 0) - hours * 3_600_000))
-			const persistAt = (source: string, at: Date, rows: ReadonlyArray<ReturnType<typeof row>>) =>
-				Effect.gen(function* () {
-					const runId = yield* startRun(source, "test")
-					yield* (yield* writer).persist({ source, runId, capturedAt: at, rows })
-				})
+			const { ms } = at(
+				yield* queryElsewhere<{ ms: number }>("select extract(epoch from now())::float8 * 1000 as ms"),
+				0,
+			)
+			const hoursAgo = (hours: number) => DateTime.toDateUtc(DateTime.makeUnsafe(ms - hours * 3_600_000))
 			// Old points: two UTC days around midnight, then recent ones inside the detail window.
 			const old = [
 				["2020-01-01T08:00:00Z", 1],
@@ -175,6 +180,76 @@ layer(TestStorage)("runs and the latest view", (it) => {
 				["a=2", "a=4", "a=5", "a=6", "a=7", "f=1", "f=2", "gone=2", "gone=4"],
 			)
 			assert.strictEqual(yield* (yield* RunStore).downsampleLiveSnapshots(7), 0, "a second pass deletes nothing")
+		}),
+	)
+
+	it.effect("downsampling works through a backlog larger than one batch", () =>
+		Effect.gen(function* () {
+			yield* reset
+			yield* persistAt("coingecko", capturedAt("2020-01-01T00:00:00Z"), [row("a", null, 0)])
+			// One quote a minute from 2020-01-01 00:01 to 2020-01-18 08:40 UTC: 18 UTC days.
+			yield* queryElsewhere(
+				`insert into snapshots (instrument_id, captured_at, value, metrics)
+				 select i.id, timestamptz '2020-01-01 00:00:00+00' + g * interval '1 minute', g, '{}'
+				 from instruments i, generate_series(1, 25000) g where i.external_id = 'a'`,
+			)
+			assert.strictEqual(yield* (yield* RunStore).downsampleLiveSnapshots(7), 25_001 - 18)
+			const days = yield* queryElsewhere<{ day: string; value: string }>(
+				`select (captured_at at time zone 'UTC')::date::text as day, value::text as value
+				 from snapshots order by captured_at`,
+			)
+			assert.strictEqual(days.length, 18)
+			assert.deepStrictEqual(at(days, 0), { day: "2020-01-01", value: "1439" })
+			assert.deepStrictEqual(at(days, 17), { day: "2020-01-18", value: "25000" })
+		}),
+	)
+
+	it.effect("live quotes with the same capture time: the higher id is the newest everywhere", () =>
+		Effect.gen(function* () {
+			yield* reset
+			const when = capturedAt("2020-01-01T08:00:00Z")
+			yield* persistAt("coingecko", when, [row("a", null, 1)])
+			yield* persistAt("coingecko", when, [row("a", null, 2)])
+			assert.strictEqual(at(yield* (yield* Store).latest("coingecko"), 0).value, 2)
+			// Equal to the newest (2), not to the older tie (1): not stored again.
+			const runId = yield* startRun("coingecko", "test")
+			const again = yield* (yield* writer).persist({
+				source: "coingecko",
+				runId,
+				capturedAt: when,
+				rows: [row("a", null, 2)],
+			})
+			assert.strictEqual(again.rowsWritten, 0)
+			assert.strictEqual(yield* (yield* RunStore).downsampleLiveSnapshots(7), 1)
+			const kept = yield* queryElsewhere<{ value: string }>("select value::text as value from snapshots")
+			assert.deepStrictEqual(kept, [{ value: "2" }])
+		}),
+	)
+
+	it.effect("the newest-snapshot lookup reads the index in order instead of sorting an instrument's history", () =>
+		Effect.gen(function* () {
+			yield* reset
+			yield* persistAt("coingecko", capturedAt("2020-01-01T00:00:00Z"), [row("a", null, 0)])
+			yield* queryElsewhere(
+				`insert into snapshots (instrument_id, captured_at, value, metrics)
+				 select i.id, timestamptz '2020-01-01 00:00:00+00' + g * interval '1 hour', g, '{}'
+				 from instruments i, generate_series(1, 5000) g where i.external_id = 'a'`,
+			)
+			yield* queryElsewhere("analyze snapshots")
+			const db = yield* Database
+			const plan = yield* db.execute<{ "QUERY PLAN": string }>(
+				sql`explain select value, metrics from ${snapshots} where instrument_id = 1 order by ${newestSnapshotFirst} limit 1`,
+			)
+			const lines = plan.rows.map((r) => r["QUERY PLAN"])
+			assert.isTrue(
+				lines.some((l) => l.includes("Index Scan using snapshots_instrument_captured_idx")),
+				lines.join("\n"),
+			)
+			// An Incremental Sort only orders the rows that tie on captured_at; a full Sort would order them all.
+			assert.isFalse(
+				lines.some((l) => /^\s*(->\s+)?Sort\s+\(cost/.test(l)),
+				lines.join("\n"),
+			)
 		}),
 	)
 
@@ -224,7 +299,7 @@ layer(TestStorage)("runs and the latest view", (it) => {
 			yield* reset
 			const runs = yield* RunStore
 			const runId = yield* startRun("coingecko", "cli")
-			yield* runs.failRun(runId, "Interrupted (app stopped during the run)")
+			yield* runs.failRun(runId, "Interrupted (app stopped during the run)", Option.none())
 			yield* (yield* writer).persist({
 				source: "coingecko",
 				runId,
@@ -246,7 +321,7 @@ layer(TestStorage)("runs and the latest view", (it) => {
 				capturedAt: capturedAt(),
 				rows: [row("a", null, 1)],
 			})
-			yield* (yield* RunStore).failRun(runId, "Interrupted")
+			yield* (yield* RunStore).failRun(runId, "Interrupted", Option.none())
 			assert.deepStrictEqual(yield* runStatus(runId), { status: "success", error: null })
 			assert.strictEqual((yield* store.latest("coingecko")).length, 1)
 		}),

@@ -104,6 +104,12 @@ export const snapshots = pgTable(
 )
 
 /**
+ * Newest snapshot first, in snapshots_instrument_captured_idx order (Postgres sorts DESC as NULLS FIRST unless
+ * told otherwise, and then cannot read the index in order). `id` breaks ties between equal capture times.
+ */
+export const newestSnapshotFirst = sql`captured_at desc nulls last, id desc`
+
+/**
  * How the collector schedules each source, written by the collector when it starts so the web app can
  * report intervals and staleness without sharing its config.
  */

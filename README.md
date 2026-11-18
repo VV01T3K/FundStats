@@ -167,9 +167,11 @@ is free, so a run still going in another process is left alone.
   - Crypto quotes have no `as_of`. A collection adds a row only when the quote changed since the instrument's newest
     row (an upstream that has not updated adds nothing).
   - **Downsampling:** once a day the collector thins crypto rows older than `LIVE_SNAPSHOT_DETAIL_DAYS` (7) to the
-    newest one per instrument and UTC day. Seven days at the collection interval (4 points a day at the default 6
-    hours) cover the 24h and 7d changes we compute ourselves; older history only needs daily points. Fund rows and
-    each instrument's newest row are never deleted.
+    newest one per instrument and UTC day. The displayed 24h and 7d changes come from the upstreams; seven days at
+    the collection interval (4 points a day at the default 6 hours) serve recent history charts and any short-period
+    change we compute ourselves later, and older history only needs daily points. Fund rows and each instrument's
+    newest row are never deleted. It walks each instrument's old rows in chunks of 10,000, one statement each, so
+    a backlog shrinks even if a pass is cut short.
 - `collection_runs`: every run with its trigger, status, counts and error. Postgres stamps `finished_at`.
 - `raw_payloads`: the upstream response of each run that failed after fetching it (decode or normalize error, no
   instruments, a duplicate id), CoinPaprika trimmed to the top 100, so a changed upstream shape can be inspected and

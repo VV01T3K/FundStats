@@ -3,9 +3,11 @@ import { and, eq, lt, sql } from "drizzle-orm"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
+import * as Option from "effect/Option"
+import * as Schema from "effect/Schema"
 
 import { Database, type DatabaseError, type Db } from "./Database.ts"
-import { collectionRuns, instruments, rawPayloads, snapshots, sourceSchedules } from "./schema.ts"
+import { collectionRuns, instruments, newestSnapshotFirst, rawPayloads, snapshots, sourceSchedules } from "./schema.ts"
 import { SourceLocks } from "./SourceLocks.ts"
 import type { SourceSchedule } from "./Store.ts"
 
@@ -37,6 +39,12 @@ export interface PersistResult {
 
 type E<A> = Effect.Effect<A, DatabaseError>
 
+// Payloads go to Postgres as JSON text: Drizzle sends a JSON `null` as SQL NULL.
+const encodePayload = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))
+
+/** Rows one downsampling statement deletes at most, so each finishes well inside DB_STATEMENT_TIMEOUT. */
+const DOWNSAMPLE_BATCH = 10_000
+
 /** The writes of one collection run. */
 export interface RunWriter {
 	/**
@@ -45,7 +53,6 @@ export interface RunWriter {
 	 */
 	readonly reserveRunId: E<number>
 	readonly startRun: (runId: number, source: string, trigger: string) => E<void>
-	readonly saveRawPayload: (runId: number, payload: unknown) => E<void>
 	/**
 	 * Writes instruments and snapshots and marks the run successful, in one transaction. The only status
 	 * change not from `running`: committed rows are shown, so their run must read as successful.
@@ -64,11 +71,11 @@ export class RunStore extends Context.Service<
 		 */
 		readonly writer: (lock: Db) => RunWriter
 		/**
-		 * Marks a run failed if it is still running. A run that committed
-		 * (success) or was already closed keeps its status, so recording a late
-		 * failure never hides committed data.
+		 * Marks a run failed if it is still running, and stores the upstream response it rejected, if any.
+		 * A run that committed (success) or was already closed keeps its status, so recording a late failure
+		 * never hides committed data. Uses the pool, so it works after the run's lock session is lost.
 		 */
-		readonly failRun: (runId: number, error: string) => E<void>
+		readonly failRun: (runId: number, error: string, rejectedPayload: Option.Option<unknown>) => E<void>
 		/**
 		 * Closes runs left `running` by a crash or restart. A run counts as
 		 * abandoned only when its source's collection lock is free; a run that
@@ -94,7 +101,6 @@ export class RunStore extends Context.Service<
 			const writer = (lock: Db): RunWriter => ({
 				reserveRunId: reserveRunId(lock),
 				startRun: (runId, source, trigger) => startRun(lock, runId, source, trigger),
-				saveRawPayload: (runId, payload) => saveRawPayload(lock, runId, payload),
 				persist: (input) => persist(lock, input),
 			})
 
@@ -106,15 +112,20 @@ export class RunStore extends Context.Service<
 			const startRun = (db: Db, runId: number, source: string, trigger: string) =>
 				db.insert(collectionRuns).values({ id: runId, source, trigger, status: "running" }).pipe(Effect.asVoid)
 
-			const failRun = (runId: number, error: string) =>
-				database
-					.update(collectionRuns)
-					.set({ status: "failed", finishedAt: sql`clock_timestamp()`, error: error.slice(0, 4000) })
-					.where(and(eq(collectionRuns.id, runId), eq(collectionRuns.status, "running")))
-					.pipe(Effect.asVoid)
-
-			const saveRawPayload = (db: Db, runId: number, payload: unknown) =>
-				db.insert(rawPayloads).values({ runId, payload }).pipe(Effect.asVoid)
+			const failRun = (runId: number, error: string, rejectedPayload: Option.Option<unknown>) =>
+				database.transaction((tx) =>
+					Effect.gen(function* () {
+						yield* tx
+							.update(collectionRuns)
+							.set({ status: "failed", finishedAt: sql`clock_timestamp()`, error: error.slice(0, 4000) })
+							.where(and(eq(collectionRuns.id, runId), eq(collectionRuns.status, "running")))
+						if (Option.isSome(rejectedPayload)) {
+							// Fetched payloads are parsed JSON, so encoding one back cannot fail.
+							const json = yield* encodePayload(rejectedPayload.value).pipe(Effect.orDie)
+							yield* tx.insert(rawPayloads).values({ runId, payload: sql`${json}::jsonb` })
+						}
+					}),
+				)
 
 			const persist = (db: Db, input: PersistInput) =>
 				db.transaction((tx) =>
@@ -195,7 +206,7 @@ export class RunStore extends Context.Service<
 										select 1 from (
 											select value, metrics from ${snapshots}
 											where instrument_id = r.instrument_id
-											order by captured_at desc
+											order by ${newestSnapshotFirst}
 											limit 1
 										) newest
 										where newest.value is not distinct from r.value and newest.metrics = r.metrics
@@ -257,22 +268,57 @@ export class RunStore extends Context.Service<
 					.returning({ id: rawPayloads.id })
 					.pipe(Effect.map((rows) => rows.length))
 
-			const downsampleLiveSnapshots = (detailDays: number) =>
-				database
-					.execute<{ id: number }>(sql`
-						delete from ${snapshots} s
-						using (
-							select id, row_number() over (
-								partition by instrument_id, (captured_at at time zone 'UTC')::date
-								order by captured_at desc, id desc
-							) as rank
-							from ${snapshots}
-							where as_of is null and captured_at < now() - make_interval(days => ${detailDays})
-						) old
-						where s.id = old.id and old.rank > 1
-						returning s.id
-					`)
-					.pipe(Effect.map((result) => result.rows.length))
+			// An old live quote goes when a newer one of its instrument and UTC day exists, so each instrument's
+			// newest per day stays. Each statement takes the next chunk of an instrument's old live quotes in
+			// index order, below the previous chunk, and commits on its own: a backlog shrinks by whole chunks.
+			const downsampleChunk = (instrumentId: number, below: { readonly at: string; readonly id: string }) =>
+				database.execute<{ deleted: number; scanned: number; last_at: string; last_id: string }>(sql`
+					with chunk as materialized (
+						select id, captured_at from ${snapshots}
+						where instrument_id = ${instrumentId} and as_of is null
+						  and captured_at <= ${below.at}::timestamptz
+						  and (captured_at, id) < (${below.at}::timestamptz, ${below.id}::bigint)
+						order by ${newestSnapshotFirst}
+						limit ${DOWNSAMPLE_BATCH}
+					), gone as (
+						delete from ${snapshots} where id = any(array(
+							select c.id from chunk c
+							where exists (
+								select 1 from ${snapshots} n
+								where n.instrument_id = ${instrumentId} and n.as_of is null
+								  and n.captured_at >= c.captured_at
+								  and n.captured_at < date_trunc('day', c.captured_at, 'UTC') + interval '24 hours'
+								  and (n.captured_at, n.id) > (c.captured_at, c.id)
+							)
+						))
+						returning 1
+					)
+					select (select count(*)::int from gone) as deleted, (select count(*)::int from chunk) as scanned,
+					       oldest.captured_at::text as last_at, oldest.id::text as last_id
+					from (select captured_at, id from chunk order by captured_at, id limit 1) oldest
+				`)
+
+			const downsampleLiveSnapshots = Effect.fn("RunStore.downsampleLiveSnapshots")(function* (detailDays: number) {
+				const cutoff = yield* database.execute<{ at: string }>(
+					sql`select (now() - make_interval(days => ${detailDays}))::text as at`,
+				)
+				const instrumentIds = yield* database.select({ id: instruments.id }).from(instruments)
+				let deleted = 0
+				for (const { id } of instrumentIds) {
+					// Ids are positive, so (cutoff, 0) bounds the first chunk to captured_at < cutoff.
+					let below = { at: cutoff.rows[0]!.at, id: "0" }
+					let more = true
+					while (more) {
+						// No row back: the chunk was empty, nothing older is left.
+						const [chunk] = (yield* downsampleChunk(id, below)).rows
+						if (chunk === undefined) break
+						deleted += chunk.deleted
+						more = chunk.scanned === DOWNSAMPLE_BATCH
+						below = { at: chunk.last_at, id: chunk.last_id }
+					}
+				}
+				return deleted
+			})
 
 			const publishSchedules = (schedules: ReadonlyArray<SourceSchedule>) =>
 				schedules.length === 0
