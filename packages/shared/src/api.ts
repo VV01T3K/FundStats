@@ -83,6 +83,22 @@ const InstrumentHistory = Schema.Struct({
 })
 type InstrumentHistory = typeof InstrumentHistory.Type
 
+/** How many recent points per instrument one sparkline request may ask for. */
+const SparklinePoints = Schema.Int.check(Schema.isBetween({ minimum: 2, maximum: 200 }))
+
+const Sparkline = Schema.Struct({
+	externalId: Schema.String,
+	/** The instrument's last values, oldest first, ordered like its history. */
+	values: Schema.Array(Schema.Number),
+})
+
+const SourceSparklines = Schema.Struct({
+	source: SourceIdSchema,
+	points: Schema.Int,
+	series: Schema.Array(Sparkline),
+})
+type SourceSparklines = typeof SourceSparklines.Type
+
 const Health = Schema.Struct({
 	status: Schema.Literal("ok"),
 	database: Schema.Literal("ok"),
@@ -123,6 +139,12 @@ class SourcesApi extends HttpApiGroup.make("sources")
 			query: { limit: Schema.optional(HistoryLimit) },
 			success: InstrumentHistory,
 			error: [SourceNotFound, InstrumentNotFound],
+		}),
+		HttpApiEndpoint.get("sparklines", "/sources/:source/sparklines", {
+			params: { source: Schema.String },
+			query: { points: Schema.optional(SparklinePoints) },
+			success: SourceSparklines,
+			error: SourceNotFound,
 		}),
 	)
 	.prefix("/v1")

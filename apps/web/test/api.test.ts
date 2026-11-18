@@ -14,7 +14,12 @@ import { ApiRoutesLayer } from "#/server/runtime.ts"
 
 const ApiTest = Layer.mergeAll(TestStorage, HttpServer.layerServices)
 
-const instrument = (externalId: string, asOf: string | null, metrics: Record<string, number>): NormalizedRow => ({
+const instrument = (
+	externalId: string,
+	asOf: string | null,
+	metrics: Record<string, number>,
+	value: number | null = 1,
+): NormalizedRow => ({
 	externalId,
 	name: externalId,
 	symbol: null,
@@ -22,15 +27,15 @@ const instrument = (externalId: string, asOf: string | null, metrics: Record<str
 	currency: "PLN",
 	metadata: {},
 	asOf,
-	value: 1,
+	value,
 	metrics,
 })
 
 /** Records one successful run of `source` with `rows`, the way the collector does. */
-const collected = (source: string, rows: ReadonlyArray<NormalizedRow>) =>
+const collected = (source: string, rows: ReadonlyArray<NormalizedRow>, at?: string) =>
 	Effect.gen(function* () {
 		const runId = yield* startRun(source, "test")
-		yield* (yield* writer).persist({ source, runId, capturedAt: capturedAt(), rows })
+		yield* (yield* writer).persist({ source, runId, capturedAt: capturedAt(at), rows })
 	})
 
 layer(ApiTest)("HTTP API", (it) => {
@@ -132,6 +137,47 @@ layer(ApiTest)("HTTP API", (it) => {
 				coinmarketcap: 6 * 3600,
 			})
 			assert.isTrue((yield* call("/api/health")).json.collectorEnabled)
+		}),
+	)
+
+	it.effect("serves the last points of every listed instrument in one sparkline response", () =>
+		Effect.gen(function* () {
+			yield* reset
+			// Funds by valuation date: a date captured later but older stays in date order.
+			yield* collected("mbank", [instrument("f", "2026-11-12", {}, 10), instrument("gone", "2026-11-12", {}, 5)])
+			yield* collected("mbank", [instrument("f", "2026-11-14", {}, 12)], "2026-11-16T13:00:00Z")
+			yield* collected("mbank", [instrument("f", "2026-11-13", {}, 11)], "2026-11-16T14:00:00Z")
+			// Live quotes by capture time; a missing value is no point.
+			for (const [hour, value] of [
+				[0, 100],
+				[6, null],
+				[12, 102],
+				[18, 103],
+			] as const) {
+				yield* collected(
+					"coingecko",
+					[instrument("btc", null, {}, value)],
+					`2026-11-16T${String(hour).padStart(2, "0")}:00:00Z`,
+				)
+			}
+
+			const funds = yield* call("/api/v1/sources/mbank/sparklines")
+			assert.strictEqual(funds.status, 200)
+			assert.deepStrictEqual(funds.json, {
+				source: "mbank",
+				points: 24,
+				// "gone" left the ranking with the last run, so it has no sparkline either.
+				series: [{ externalId: "f", values: [10, 11, 12] }],
+			})
+
+			const coins = yield* call("/api/v1/sources/coingecko/sparklines?points=2")
+			assert.deepStrictEqual(coins.json.series, [{ externalId: "btc", values: [102, 103] }])
+
+			for (const points of ["1", "201", "x"]) {
+				assert.strictEqual((yield* call(`/api/v1/sources/mbank/sparklines?points=${points}`)).status, 400, points)
+			}
+			assert.strictEqual((yield* call("/api/v1/sources/nope/sparklines")).status, 404)
+			assert.deepStrictEqual((yield* call("/api/v1/sources/coinpaprika/sparklines")).json.series, [])
 		}),
 	)
 })

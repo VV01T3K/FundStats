@@ -24,6 +24,11 @@ export interface HistoryResult {
 	}>
 }
 
+export interface SparklineResult {
+	readonly externalId: string
+	readonly values: ReadonlyArray<number>
+}
+
 /** How the collector last said it schedules a source. */
 export interface SourceSchedule {
 	readonly source: string
@@ -43,6 +48,8 @@ export class Store extends Context.Service<
 		readonly runSummary: (source: string) => E<RunSummary>
 		readonly latest: (source: string) => E<ReadonlyArray<SnapshotRow>>
 		readonly history: (source: string, externalId: string, limit: number) => E<HistoryResult | null>
+		/** The last `points` values of every instrument `latest` lists, oldest first. */
+		readonly sparklines: (source: string, points: number) => E<ReadonlyArray<SparklineResult>>
 		readonly schedules: E<ReadonlyArray<SourceSchedule>>
 	}
 >()("@fundstats/db/Store") {
@@ -169,6 +176,32 @@ export class Store extends Context.Service<
 				}
 			})
 
+			const sparklines = Effect.fn("Store.sparklines")(function* (source: string, points: number) {
+				const result = yield* database.execute<{ external_id: string; values: ReadonlyArray<number> }>(sql`
+					select i.external_id, array(
+						select value from (
+							-- The newest points in history order, then turned oldest first.
+							select value::float8 as value, as_of, captured_at, id
+							from ${snapshots}
+							where instrument_id = i.id and value is not null
+							order by as_of desc nulls last, ${newestSnapshotFirst}
+							limit ${points}
+						) recent
+						order by as_of asc nulls first, captured_at asc, id asc
+					) as values
+					from ${instruments} i
+					where i.source = ${source}
+					  and i.last_seen_run_id = (
+						select id from ${collectionRuns}
+						where source = ${source} and status = 'success'
+						order by id desc
+						limit 1
+					  )
+					order by i.id
+				`)
+				return result.rows.map((r): SparklineResult => ({ externalId: r.external_id, values: r.values }))
+			})
+
 			const schedules = database
 				.select({
 					source: sourceSchedules.source,
@@ -177,7 +210,7 @@ export class Store extends Context.Service<
 				})
 				.from(sourceSchedules)
 
-			return Store.of({ runSummary, latest, history, schedules })
+			return Store.of({ runSummary, latest, history, sparklines, schedules })
 		}),
 	)
 }

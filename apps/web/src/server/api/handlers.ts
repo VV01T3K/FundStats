@@ -8,6 +8,7 @@ import { HttpApiBuilder, HttpApiError } from "effect/http-api"
 import * as Layer from "effect/Layer"
 
 const DEFAULT_HISTORY_LIMIT = 500
+const DEFAULT_SPARKLINE_POINTS = 24
 
 /** A source is stale when its last run failed or its last success is more than two intervals old. */
 export const isStale = (summary: RunSummary, interval: Duration.Duration, now: number) => {
@@ -104,6 +105,14 @@ const SourcesHandlers = HttpApiBuilder.group(
 						return yield* new InstrumentNotFound({ source: id, externalId: params.externalId })
 					}
 					return { source: id, externalId: params.externalId, name: result.name, points: result.points }
+				}),
+			)
+			.handle("sparklines", ({ params, query }) =>
+				Effect.gen(function* () {
+					const id = yield* requireSource(params.source)
+					const points = query.points ?? DEFAULT_SPARKLINE_POINTS
+					const series = yield* store.sparklines(id, points).pipe(Effect.orDie)
+					return { source: id, points, series }
 				}),
 			)
 	}),
