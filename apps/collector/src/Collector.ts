@@ -138,16 +138,32 @@ export class Collector extends Context.Service<
 						.pipe(
 							// failRun only touches a run that is still `running`, so a run whose
 							// persist committed keeps its success even if the fiber was interrupted.
-							Effect.onError((cause) =>
-								openRun === undefined
-									? Effect.void
-									: store.failRun(openRun, describe(cause), rejectedPayload).pipe(
-											// The run's own error is what the caller gets; this one is only logged.
-											Effect.catchCause((recording) =>
-												Effect.logError(`Could not record run ${openRun} as failed: ${describe(recording)}`),
-											),
+							// The run's own error is what the caller gets; failures to record it are only logged.
+							Effect.onError((cause) => {
+								const runId = openRun
+								if (runId === undefined) return Effect.void
+								const recordFailure = store
+									.failRun(runId, describe(cause))
+									.pipe(
+										Effect.catchCause((recording) =>
+											Effect.logError(`Could not record run ${runId} as failed: ${describe(recording)}`),
 										),
-							),
+									)
+								// Archived after, and apart from, the failure: a payload that cannot be stored must not
+								// leave the run `running`.
+								const archive = Option.match(rejectedPayload, {
+									onNone: () => Effect.void,
+									onSome: (payload) =>
+										store
+											.archiveRejectedPayload(runId, payload)
+											.pipe(
+												Effect.catchCause((archiving) =>
+													Effect.logError(`Could not store the response run ${runId} rejected: ${describe(archiving)}`),
+												),
+											),
+								})
+								return Effect.andThen(recordFailure, archive)
+							}),
 						)
 				},
 				Effect.provideService(HttpClient.HttpClient, httpClient),

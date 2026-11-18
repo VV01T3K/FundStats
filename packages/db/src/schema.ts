@@ -36,8 +36,8 @@ export const collectionRuns = pgTable(
 )
 
 /**
- * The upstream response of a run that rejected it (decode, normalize or validation failure), kept to
- * inspect and replay after a fix. Successful runs store none. Pruned after RAW_PAYLOAD_RETENTION_DAYS.
+ * The upstream response of a run that rejected it (decode, normalize or validation failure), as JSON text,
+ * kept to inspect and replay after a fix. Successful runs store none. Pruned after RAW_PAYLOAD_RETENTION_DAYS.
  */
 export const rawPayloads = pgTable(
 	"raw_payloads",
@@ -47,7 +47,8 @@ export const rawPayloads = pgTable(
 			.notNull()
 			.references(() => collectionRuns.id, { onDelete: "cascade" }),
 		fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
-		payload: jsonb("payload").notNull(),
+		// JSON text, not jsonb: jsonb rejects \u0000 and deep nesting, and the archive is only read back whole.
+		payload: text("payload").notNull(),
 	},
 	(t) => [uniqueIndex("raw_payloads_run_idx").on(t.runId), index("raw_payloads_fetched_idx").on(t.fetchedAt)],
 )

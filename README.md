@@ -148,9 +148,12 @@ Default intervals: every source every 6 hours (mBank's feed changes once per bus
 After a failed run, the next attempt comes within 10 minutes.
 
 One source is collected by one run at a time, in one process or across several: a run holds a Postgres advisory lock for its source until its
-data is stored. The lock lives on a session of its own, and every write of the run goes through that session, so if
-the session is lost (and the lock with it), the run's next write fails, nothing more of it is written, and it is
-recorded as failed. An interrupted run rolls back its unfinished transaction, and a run that committed keeps its
+data is stored. The lock lives on a session of its own, and every write of the run's data (its run row and the
+persist of instruments and snapshots) goes through that session, so if the session is lost (and the lock with it),
+the run's next write fails and nothing more of its data is written. Recording the outcome of a failed run does not
+need the lock: marking the run failed, and then storing a response it rejected, go through the pool by the run's id,
+so both happen even after the lock session is gone, and a response that cannot be stored never leaves its run
+`running`. An interrupted run rolls back its unfinished transaction, and a run that committed keeps its
 success. A `bun run collect` while the collector is collecting that source (or the other way round) skips it and
 says so (`SKIPPED`, exit status 1). At start the collector closes runs left `running` only when their source's lock
 is free, so a run still going in another process is left alone.
@@ -175,7 +178,8 @@ is free, so a run still going in another process is left alone.
 - `collection_runs`: every run with its trigger, status, counts and error. Postgres stamps `finished_at`.
 - `raw_payloads`: the upstream response of each run that failed after fetching it (decode or normalize error, no
   instruments, a duplicate id), CoinPaprika trimmed to the top 100, so a changed upstream shape can be inspected and
-  replayed after a fix. Successful runs store none.
+  replayed after a fix. Successful runs store none. Stored as JSON text, not jsonb: jsonb rejects `\u0000` escapes and
+  very deep nesting, and the archive is only ever read back whole.
 - `source_schedules`: each source's interval and whether collection is enabled, as the collector last started.
 
 Derived values are computed when the data is read, not stored. Weighted momentum,

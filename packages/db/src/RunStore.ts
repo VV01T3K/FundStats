@@ -3,7 +3,6 @@ import { and, eq, lt, sql } from "drizzle-orm"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
-import * as Option from "effect/Option"
 import * as Schema from "effect/Schema"
 
 import { Database, type DatabaseError, type Db } from "./Database.ts"
@@ -39,7 +38,6 @@ export interface PersistResult {
 
 type E<A> = Effect.Effect<A, DatabaseError>
 
-// Payloads go to Postgres as JSON text: Drizzle sends a JSON `null` as SQL NULL.
 const encodePayload = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))
 
 /** Rows one downsampling statement deletes at most, so each finishes well inside DB_STATEMENT_TIMEOUT. */
@@ -71,11 +69,19 @@ export class RunStore extends Context.Service<
 		 */
 		readonly writer: (lock: Db) => RunWriter
 		/**
-		 * Marks a run failed if it is still running, and stores the upstream response it rejected, if any.
-		 * A run that committed (success) or was already closed keeps its status, so recording a late failure
-		 * never hides committed data. Uses the pool, so it works after the run's lock session is lost.
+		 * Marks a run failed if it is still running. A run that committed (success) or was already closed
+		 * keeps its status, so recording a late failure never hides committed data. Uses the pool, so it
+		 * works after the run's lock session is lost.
 		 */
-		readonly failRun: (runId: number, error: string, rejectedPayload: Option.Option<unknown>) => E<void>
+		readonly failRun: (runId: number, error: string) => E<void>
+		/**
+		 * Stores the upstream response a failed run rejected, as JSON text, through the pool. Fails with a
+		 * SchemaError for a value that has no JSON text (e.g. nested past the encoder's depth).
+		 */
+		readonly archiveRejectedPayload: (
+			runId: number,
+			payload: unknown,
+		) => Effect.Effect<void, DatabaseError | Schema.SchemaError>
 		/**
 		 * Closes runs left `running` by a crash or restart. A run counts as
 		 * abandoned only when its source's collection lock is free; a run that
@@ -112,20 +118,20 @@ export class RunStore extends Context.Service<
 			const startRun = (db: Db, runId: number, source: string, trigger: string) =>
 				db.insert(collectionRuns).values({ id: runId, source, trigger, status: "running" }).pipe(Effect.asVoid)
 
-			const failRun = (runId: number, error: string, rejectedPayload: Option.Option<unknown>) =>
-				database.transaction((tx) =>
-					Effect.gen(function* () {
-						yield* tx
-							.update(collectionRuns)
-							.set({ status: "failed", finishedAt: sql`clock_timestamp()`, error: error.slice(0, 4000) })
-							.where(and(eq(collectionRuns.id, runId), eq(collectionRuns.status, "running")))
-						if (Option.isSome(rejectedPayload)) {
-							// Fetched payloads are parsed JSON, so encoding one back cannot fail.
-							const json = yield* encodePayload(rejectedPayload.value).pipe(Effect.orDie)
-							yield* tx.insert(rawPayloads).values({ runId, payload: sql`${json}::jsonb` })
-						}
-					}),
-				)
+			const failRun = (runId: number, error: string) =>
+				database
+					.update(collectionRuns)
+					.set({ status: "failed", finishedAt: sql`clock_timestamp()`, error: error.slice(0, 4000) })
+					.where(and(eq(collectionRuns.id, runId), eq(collectionRuns.status, "running")))
+					.pipe(Effect.asVoid)
+
+			const archiveRejectedPayload = Effect.fn("RunStore.archiveRejectedPayload")(function* (
+				runId: number,
+				payload: unknown,
+			) {
+				const json = yield* encodePayload(payload)
+				yield* database.insert(rawPayloads).values({ runId, payload: json })
+			})
 
 			const persist = (db: Db, input: PersistInput) =>
 				db.transaction((tx) =>
@@ -338,6 +344,7 @@ export class RunStore extends Context.Service<
 			return RunStore.of({
 				writer,
 				failRun,
+				archiveRejectedPayload,
 				closeInterruptedRuns,
 				pruneRawPayloads,
 				downsampleLiveSnapshots,

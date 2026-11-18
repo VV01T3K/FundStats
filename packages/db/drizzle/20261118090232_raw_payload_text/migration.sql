@@ -1,0 +1,1 @@
+ALTER TABLE "raw_payloads" ALTER COLUMN "payload" SET DATA TYPE text USING "payload"::text;

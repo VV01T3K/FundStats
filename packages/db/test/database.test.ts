@@ -11,7 +11,6 @@ import * as Duration from "effect/Duration"
 import * as Effect from "effect/Effect"
 import * as Fiber from "effect/Fiber"
 import * as Layer from "effect/Layer"
-import * as Option from "effect/Option"
 
 import { Database } from "../src/Database.ts"
 import { RunStore } from "../src/RunStore.ts"
@@ -299,7 +298,7 @@ layer(TestStorage)("runs and the latest view", (it) => {
 			yield* reset
 			const runs = yield* RunStore
 			const runId = yield* startRun("coingecko", "cli")
-			yield* runs.failRun(runId, "Interrupted (app stopped during the run)", Option.none())
+			yield* runs.failRun(runId, "Interrupted (app stopped during the run)")
 			yield* (yield* writer).persist({
 				source: "coingecko",
 				runId,
@@ -321,7 +320,7 @@ layer(TestStorage)("runs and the latest view", (it) => {
 				capturedAt: capturedAt(),
 				rows: [row("a", null, 1)],
 			})
-			yield* (yield* RunStore).failRun(runId, "Interrupted", Option.none())
+			yield* (yield* RunStore).failRun(runId, "Interrupted")
 			assert.deepStrictEqual(yield* runStatus(runId), { status: "success", error: null })
 			assert.strictEqual((yield* store.latest("coingecko")).length, 1)
 		}),

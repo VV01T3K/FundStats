@@ -203,30 +203,55 @@ layer(TestServices)("collector and storage", (it) => {
 			assert.strictEqual(summary.lastRun?.status, "failed")
 			assert.match(summary.lastRun?.error ?? "", /decode/)
 			// The response that failed to decode is kept for diagnosis and replay.
-			const kept = yield* queryElsewhere<{ payload: unknown }>("select payload from raw_payloads where run_id = $1", [
+			const kept = yield* queryElsewhere<{ payload: string }>("select payload from raw_payloads where run_id = $1", [
 				summary.lastRun?.id,
 			])
-			assert.deepStrictEqual(kept[0]?.payload, { error: "maintenance" })
+			assert.deepStrictEqual(kept[0]?.payload, '{"error":"maintenance"}')
 			assert.strictEqual((yield* store.latest("coinpaprika")).length, 4, "last good data is still served")
 		}),
 	)
 
-	it.effect("a rejected JSON null response is kept as jsonb null", () =>
-		Effect.gen(function* () {
-			yield* reset
-			const collector = yield* Collector
-			const original = upstream["api.coinpaprika.com"]
-			upstream["api.coinpaprika.com"] = () => null
-			try {
-				assert.strictEqual((yield* collector.runOnce("coinpaprika", "test").pipe(Effect.flip))._tag, "SourceError")
-			} finally {
-				upstream["api.coinpaprika.com"] = original
-			}
-			const kept = yield* queryElsewhere<{ type: string | null }>(
-				"select jsonb_typeof(payload) as type from raw_payloads",
-			)
-			assert.deepStrictEqual(kept, [{ type: "null" }])
-		}),
+	const deeplyNested = 50_000
+	/** [what the response holds, the upstream answer, the archived JSON text or null for none] */
+	const rejectedResponses: ReadonlyArray<readonly [string, () => unknown, string | null]> = [
+		["JSON null", () => null, "null"],
+		// jsonb would reject this escape; the archive is text.
+		["a \\u0000 escape", () => ({ error: "bad\u0000shape" }), '{"error":"bad\\u0000shape"}'],
+		// Parses, but is nested too deep to encode back: not archived, and the run is still recorded.
+		[
+			"nesting too deep to re-encode",
+			() =>
+				new Response("[".repeat(deeplyNested) + "]".repeat(deeplyNested), {
+					headers: { "content-type": "application/json" },
+				}),
+			null,
+		],
+	]
+	it.effect.each(rejectedResponses)(
+		"a rejected response with %s records the run as failed with its reason",
+		([, body, archived]) =>
+			Effect.gen(function* () {
+				yield* reset
+				const collector = yield* Collector
+				const original = upstream["api.coingecko.com"]
+				upstream["api.coingecko.com"] = body
+				try {
+					assert.strictEqual((yield* collector.runOnce("coingecko", "test").pipe(Effect.flip))._tag, "SourceError")
+				} finally {
+					upstream["api.coingecko.com"] = original
+				}
+				const runs = yield* queryElsewhere<{ status: string; error: string }>(
+					"select status, error from collection_runs",
+				)
+				assert.lengthOf(runs, 1)
+				assert.strictEqual(at(runs, 0).status, "failed")
+				assert.match(at(runs, 0).error, /^decode: /)
+				const kept = yield* queryElsewhere<{ payload: string }>("select payload from raw_payloads")
+				assert.deepStrictEqual(
+					kept.map((k) => k.payload),
+					archived === null ? [] : [archived],
+				)
+			}),
 	)
 
 	it.effect("an upstream that lists an instrument twice fails the run and keeps its response", () =>
@@ -432,13 +457,13 @@ layer(TestServices)("losing the lock or the fiber mid-run", (it) => {
 				upstreamGate.open()
 				const error = yield* Fiber.join(fiber)
 				assert.strictEqual(error._tag, "SourceError")
-				const runs = yield* queryElsewhere<{ status: string; error: string; payload: unknown }>(
+				const runs = yield* queryElsewhere<{ status: string; error: string; payload: string }>(
 					"select r.status, r.error, p.payload from collection_runs r join raw_payloads p on p.run_id = r.id",
 				)
 				assert.lengthOf(runs, 1)
 				assert.strictEqual(at(runs, 0).status, "failed")
 				assert.match(at(runs, 0).error, /^decode: /)
-				assert.deepStrictEqual(at(runs, 0).payload, { error: "maintenance" })
+				assert.deepStrictEqual(at(runs, 0).payload, '{"error":"maintenance"}')
 			} finally {
 				upstream["api.coingecko.com"] = original
 			}
