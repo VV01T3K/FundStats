@@ -9,7 +9,6 @@
 	"ignorePatterns": [
 		"apps/web/src/routeTree.gen.ts",
 		"packages/db/drizzle/**/snapshot.json",
-		"apps/web/src/components/ui/**",
 		".repos/**",
 		"apps/collector/test/fixtures/**",
 		"apps/web/public/**",

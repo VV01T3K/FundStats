@@ -1,95 +1,232 @@
 @import "tailwindcss";
-@import "tw-animate-css";
+@import "@fontsource-variable/jetbrains-mono";
 
-@custom-variant dark (&:is(.dark *));
-
-/* Plain shadcn/ui zinc theme. The final visual design replaces these tokens. */
+/*
+ * Trader Terminal: the owner's design (variants/v1-terminal.jsx). Dark only, as designed.
+ * --dim is the design's #6a727b lifted to #7d858e so 11px labels pass 4.5:1 on --bg.
+ */
 :root {
-	--radius: 0.625rem;
-	--background: oklch(1 0 0);
-	--foreground: oklch(0.141 0.005 285.823);
-	--card: oklch(1 0 0);
-	--card-foreground: oklch(0.141 0.005 285.823);
-	--popover: oklch(1 0 0);
-	--popover-foreground: oklch(0.141 0.005 285.823);
-	--primary: oklch(0.21 0.006 285.885);
-	--primary-foreground: oklch(0.985 0 0);
-	--secondary: oklch(0.967 0.001 286.375);
-	--secondary-foreground: oklch(0.21 0.006 285.885);
-	--muted: oklch(0.967 0.001 286.375);
-	--muted-foreground: oklch(0.552 0.016 285.938);
-	--accent: oklch(0.967 0.001 286.375);
-	--accent-foreground: oklch(0.21 0.006 285.885);
-	--destructive: oklch(0.577 0.245 27.325);
-	--border: oklch(0.92 0.004 286.32);
-	--input: oklch(0.92 0.004 286.32);
-	--ring: oklch(0.705 0.015 286.067);
-	/* Gains, losses and threshold highlight. */
-	--gain: oklch(0.6 0.15 150);
-	--loss: oklch(0.58 0.2 27);
-	--highlight: oklch(0.6 0.18 255 / 0.12);
-}
-
-.dark {
-	--background: oklch(0.141 0.005 285.823);
-	--foreground: oklch(0.985 0 0);
-	--card: oklch(0.21 0.006 285.885);
-	--card-foreground: oklch(0.985 0 0);
-	--popover: oklch(0.21 0.006 285.885);
-	--popover-foreground: oklch(0.985 0 0);
-	--primary: oklch(0.92 0.004 286.32);
-	--primary-foreground: oklch(0.21 0.006 285.885);
-	--secondary: oklch(0.274 0.006 286.033);
-	--secondary-foreground: oklch(0.985 0 0);
-	--muted: oklch(0.274 0.006 286.033);
-	--muted-foreground: oklch(0.705 0.015 286.067);
-	--accent: oklch(0.274 0.006 286.033);
-	--accent-foreground: oklch(0.985 0 0);
-	--destructive: oklch(0.704 0.191 22.216);
-	--border: oklch(1 0 0 / 10%);
-	--input: oklch(1 0 0 / 15%);
-	--ring: oklch(0.552 0.016 285.938);
-	--gain: oklch(0.79 0.17 150);
-	--loss: oklch(0.7 0.19 22);
-	--highlight: oklch(0.62 0.19 260 / 0.2);
+	color-scheme: dark;
+	--bg: #0a0b0c;
+	--outer: #050608;
+	--panel: #0e1012;
+	--panel-2: #11151a;
+	--rule: #1c1f23;
+	--rule-strong: #2a3038;
+	--ink: #d9dde2;
+	--ink-dim: #a8aeb6;
+	--dim: #7d858e;
+	--warm: #f7b955;
+	--cool: #54a0ff;
+	--up: #2ee07a;
+	--down: #ff5a5f;
+	--on-accent: #000;
 }
 
 @theme inline {
-	--radius-sm: calc(var(--radius) - 4px);
-	--radius-md: calc(var(--radius) - 2px);
-	--radius-lg: var(--radius);
-	--radius-xl: calc(var(--radius) + 4px);
-	--color-background: var(--background);
-	--color-foreground: var(--foreground);
-	--color-card: var(--card);
-	--color-card-foreground: var(--card-foreground);
-	--color-popover: var(--popover);
-	--color-popover-foreground: var(--popover-foreground);
-	--color-primary: var(--primary);
-	--color-primary-foreground: var(--primary-foreground);
-	--color-secondary: var(--secondary);
-	--color-secondary-foreground: var(--secondary-foreground);
-	--color-muted: var(--muted);
-	--color-muted-foreground: var(--muted-foreground);
-	--color-accent: var(--accent);
-	--color-accent-foreground: var(--accent-foreground);
-	--color-destructive: var(--destructive);
-	--color-border: var(--border);
-	--color-input: var(--input);
-	--color-ring: var(--ring);
-	--color-gain: var(--gain);
-	--color-loss: var(--loss);
-	--color-highlight: var(--highlight);
+	--font-mono: "JetBrains Mono Variable", ui-monospace, "IBM Plex Mono", Menlo, monospace;
+	--font-sans: var(--font-mono);
+	--color-bg: var(--bg);
+	--color-outer: var(--outer);
+	--color-panel: var(--panel);
+	--color-panel-2: var(--panel-2);
+	--color-rule: var(--rule);
+	--color-rule-strong: var(--rule-strong);
+	--color-ink: var(--ink);
+	--color-ink-dim: var(--ink-dim);
+	--color-dim: var(--dim);
+	--color-warm: var(--warm);
+	--color-cool: var(--cool);
+	--color-up: var(--up);
+	--color-down: var(--down);
+	--color-on-accent: var(--on-accent);
+	--radius-none: 0;
 }
 
 @layer base {
 	* {
-		@apply border-border outline-ring/50;
+		border-color: var(--rule);
+		scrollbar-width: thin;
+		scrollbar-color: var(--rule-strong) transparent;
 	}
 	html {
-		scroll-behavior: smooth;
+		background: var(--bg);
+		-webkit-text-size-adjust: 100%;
 	}
 	body {
-		@apply bg-background text-foreground antialiased;
+		margin: 0;
+		background: var(--bg);
+		color: var(--ink);
+		font-family: var(--font-mono);
+		font-size: 12px;
+		font-variant-numeric: tabular-nums;
+		-webkit-font-smoothing: antialiased;
+	}
+	::selection {
+		background: color-mix(in oklab, var(--warm) 35%, transparent);
+		color: var(--ink);
+	}
+	:focus-visible {
+		outline: 1px solid var(--warm);
+		outline-offset: 1px;
+	}
+	input {
+		caret-color: var(--warm);
+	}
+	input::placeholder {
+		color: var(--dim);
+	}
+	a {
+		text-underline-offset: 3px;
+	}
+}
+
+/* Square scrollbars in the panel colours, amber while dragged. */
+::-webkit-scrollbar {
+	width: 10px;
+	height: 10px;
+}
+::-webkit-scrollbar-track {
+	background: var(--bg);
+	border-left: 1px solid var(--rule);
+}
+::-webkit-scrollbar-thumb {
+	background: var(--rule-strong);
+	border: 2px solid var(--bg);
+}
+::-webkit-scrollbar-thumb:hover {
+	background: #3a4048;
+}
+::-webkit-scrollbar-thumb:active {
+	background: var(--warm);
+}
+::-webkit-scrollbar-corner {
+	background: var(--bg);
+}
+
+@keyframes live-pulse {
+	0% {
+		box-shadow: 0 0 0 0 currentColor;
+		opacity: 1;
+	}
+	70% {
+		box-shadow: 0 0 0 6px transparent;
+		opacity: 0.6;
+	}
+	100% {
+		box-shadow: 0 0 0 0 transparent;
+		opacity: 1;
+	}
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	.live-pulse {
+		animation: live-pulse 1.6s ease-out infinite;
+	}
+	::view-transition-old(source-panel),
+	::view-transition-new(source-panel) {
+		animation-duration: 160ms;
+		animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	::view-transition-group(*),
+	::view-transition-old(*),
+	::view-transition-new(*) {
+		animation: none;
+	}
+}
+
+/* The table's scroller: a size container so columns drop out by the space it has, not the viewport. */
+.market {
+	container: market / inline-size;
+	overscroll-behavior: contain;
+	scrollbar-gutter: stable;
+}
+
+/* A tablet-width table drops its descriptive columns first, a phone-width one everything but the figures. */
+@container market (width < 1100px) {
+	.market [data-secondary] {
+		display: none;
+	}
+}
+/* On a phone-width table only the identity, price and sorted columns stay. */
+@container market (width < 52rem) {
+	.market [data-wide] {
+		display: none;
+	}
+}
+
+/* The row whose link has keyboard focus carries the ring, not the link's own text box. */
+.market tr:has(> td a:focus-visible) {
+	outline: 1px solid var(--warm);
+	outline-offset: -1px;
+}
+.market td a:focus-visible {
+	outline: none;
+}
+
+/* Base UI popups enter from just above their final place. */
+.popup {
+	transition:
+		opacity 140ms cubic-bezier(0.22, 1, 0.36, 1),
+		translate 140ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.popup[data-starting-style],
+.popup[data-ending-style] {
+	opacity: 0;
+	translate: 0 -4px;
+}
+
+/* The menu: a native modal dialog that slides in from the left edge over the table. */
+dialog.drawer {
+	margin: 0;
+	inset-block: 0;
+	block-size: 100dvh;
+	max-block-size: 100dvh;
+	inline-size: min(340px, 88vw);
+	padding: 0;
+	border: 0;
+	border-right: 1px solid var(--rule);
+	background: var(--bg);
+	box-shadow: 8px 0 32px rgb(0 0 0 / 0.6);
+	color: var(--ink);
+	overscroll-behavior: contain;
+	transition:
+		translate 260ms cubic-bezier(0.22, 1, 0.36, 1),
+		overlay 260ms allow-discrete,
+		display 260ms allow-discrete;
+	translate: calc(-100% - 12px) 0;
+}
+dialog.drawer[open] {
+	translate: 0 0;
+}
+@starting-style {
+	dialog.drawer[open] {
+		translate: calc(-100% - 12px) 0;
+	}
+}
+dialog.drawer::backdrop {
+	background: rgb(0 0 0 / 0.55);
+	overflow: hidden;
+	overscroll-behavior: contain;
+	transition:
+		opacity 220ms ease,
+		overlay 220ms allow-discrete,
+		display 220ms allow-discrete;
+	opacity: 0;
+}
+dialog.drawer[open]::backdrop {
+	opacity: 1;
+}
+@starting-style {
+	dialog.drawer[open]::backdrop {
+		opacity: 0;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	dialog.drawer {
+		transition: none;
 	}
 }
