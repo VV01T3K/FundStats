@@ -41,6 +41,6 @@ export const latestQuery = (source: SourceId) =>
 		queryKey: ["latest", source],
 		queryFn: () => callApi((api) => api.sources.latest({ params: { source } })),
 		staleTime: 60_000,
-		// The collector updates crypto every 30 minutes; keep an open tab reasonably fresh.
+		// The collector updates crypto every 6 hours by default; keep an open tab reasonably fresh.
 		refetchInterval: 5 * 60_000,
 	})

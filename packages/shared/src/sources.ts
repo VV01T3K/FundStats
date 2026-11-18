@@ -39,7 +39,7 @@ export const SOURCES = {
 		homepage: "https://www.coingecko.com/",
 		description: "Top 100 coins by market cap from the official CoinGecko public API.",
 		icon: "/icons/coingecko.svg",
-		defaultInterval: "30 minutes",
+		defaultInterval: "6 hours",
 	},
 	coinpaprika: {
 		id: "coinpaprika",
@@ -49,7 +49,7 @@ export const SOURCES = {
 		homepage: "https://coinpaprika.com/",
 		description: "Top 100 coins by rank from the official CoinPaprika free API.",
 		icon: "/icons/coinpaprika.svg",
-		defaultInterval: "30 minutes",
+		defaultInterval: "6 hours",
 	},
 	coinmarketcap: {
 		id: "coinmarketcap",
@@ -59,7 +59,7 @@ export const SOURCES = {
 		homepage: "https://coinmarketcap.com/",
 		description: "Top 100 coins by CoinMarketCap rank, quoted in USD.",
 		icon: "/icons/coinmarketcap.svg",
-		defaultInterval: "30 minutes",
+		defaultInterval: "6 hours",
 	},
 } as const satisfies Record<string, SourceInfo>
 

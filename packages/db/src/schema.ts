@@ -36,8 +36,8 @@ export const collectionRuns = pgTable(
 )
 
 /**
- * The upstream response of a run, kept so data can be re-normalized after a
- * normalizer fix. Pruned after RAW_PAYLOAD_RETENTION_DAYS.
+ * The upstream response of a run that rejected it (decode, normalize or validation failure), kept to
+ * inspect and replay after a fix. Successful runs store none. Pruned after RAW_PAYLOAD_RETENTION_DAYS.
  */
 export const rawPayloads = pgTable(
 	"raw_payloads",
@@ -78,7 +78,8 @@ export const instruments = pgTable(
 /**
  * Values of one instrument at one point in time. Dedupe rule: dated values (`as_of`, e.g. mBank's
  * valuation date) keep one row per instrument and date, rewritten only when a value changed;
- * live quotes without a date (crypto) get one row per collection.
+ * live quotes without a date (crypto) get a row per collection that changed the quote, thinned to one
+ * per UTC day after LIVE_SNAPSHOT_DETAIL_DAYS.
  */
 export const snapshots = pgTable(
 	"snapshots",

@@ -5,6 +5,7 @@
 import { assert, layer } from "@effect/vitest"
 import { sql } from "drizzle-orm"
 import * as Clock from "effect/Clock"
+import * as DateTime from "effect/DateTime"
 import * as Deferred from "effect/Deferred"
 import * as Duration from "effect/Duration"
 import * as Effect from "effect/Effect"
@@ -67,6 +68,113 @@ layer(TestStorage)("runs and the latest view", (it) => {
 			const latest = at(yield* store.latest("mbank"), 0)
 			assert.strictEqual(latest.asOf, "2026-11-16")
 			assert.strictEqual(latest.value, 10)
+		}),
+	)
+
+	it.effect(
+		"history lists dated values by valuation date, newest first, even when an older date was written later",
+		() =>
+			Effect.gen(function* () {
+				yield* reset
+				const first = yield* startRun("mbank", "test")
+				yield* (yield* writer).persist({
+					source: "mbank",
+					runId: first,
+					capturedAt: capturedAt("2026-11-16T12:00:00Z"),
+					rows: [row("f", "2026-11-16", 10)],
+				})
+				const second = yield* startRun("mbank", "test")
+				yield* (yield* writer).persist({
+					source: "mbank",
+					runId: second,
+					capturedAt: capturedAt("2026-11-17T12:00:00Z"),
+					rows: [row("f", "2026-11-13", 9)],
+				})
+				const history = yield* (yield* Store).history("mbank", "f", 10)
+				assert.deepStrictEqual(
+					history?.points.map((p) => p.asOf),
+					["2026-11-16", "2026-11-13"],
+				)
+			}),
+	)
+
+	it.effect("a live quote equal to the instrument's newest snapshot is not stored again", () =>
+		Effect.gen(function* () {
+			yield* reset
+			const store = yield* Store
+			const first = yield* startRun("coingecko", "test")
+			yield* (yield* writer).persist({
+				source: "coingecko",
+				runId: first,
+				capturedAt: capturedAt("2026-11-16T12:00:00Z"),
+				rows: [row("a", null, 1), row("b", null, 2), { ...row("c", null, 3), metrics: { rank: 3 } }],
+			})
+			const second = yield* startRun("coingecko", "test")
+			const result = yield* (yield* writer).persist({
+				source: "coingecko",
+				runId: second,
+				capturedAt: capturedAt("2026-11-16T18:00:00Z"),
+				rows: [row("a", null, 1), row("b", null, 2.5), { ...row("c", null, 3), metrics: { rank: 4 } }],
+			})
+			assert.deepStrictEqual(result, { instrumentCount: 3, rowsWritten: 2 })
+			assert.strictEqual(yield* count("snapshots"), 5)
+			const [run] = yield* queryElsewhere<{ rows_written: number }>(
+				"select rows_written from collection_runs where id = $1",
+				[second],
+			)
+			assert.strictEqual(run?.rows_written, 2)
+			// The unchanged instrument is still listed, with the snapshot it last changed in.
+			const latest = yield* store.latest("coingecko")
+			assert.deepStrictEqual(
+				latest.map((r) => [r.externalId, r.value, r.capturedAt]),
+				[
+					["c", 3, "2026-11-16T18:00:00.000Z"],
+					["a", 1, "2026-11-16T12:00:00.000Z"],
+					["b", 2.5, "2026-11-16T18:00:00.000Z"],
+				],
+			)
+		}),
+	)
+
+	it.effect("downsampling keeps old live quotes only as each instrument's newest per UTC day", () =>
+		Effect.gen(function* () {
+			yield* reset
+			const [now] = yield* queryElsewhere<{ ms: number }>("select extract(epoch from now())::float8 * 1000 as ms")
+			const hoursAgo = (hours: number) => DateTime.toDateUtc(DateTime.makeUnsafe((now?.ms ?? 0) - hours * 3_600_000))
+			const persistAt = (source: string, at: Date, rows: ReadonlyArray<ReturnType<typeof row>>) =>
+				Effect.gen(function* () {
+					const runId = yield* startRun(source, "test")
+					yield* (yield* writer).persist({ source, runId, capturedAt: at, rows })
+				})
+			// Old points: two UTC days around midnight, then recent ones inside the detail window.
+			const old = [
+				["2020-01-01T08:00:00Z", 1],
+				["2020-01-01T23:30:00Z", 2],
+				["2020-01-02T00:30:00Z", 3],
+				["2020-01-02T12:00:00Z", 4],
+			] as const
+			for (const [iso, value] of old) {
+				yield* persistAt("coingecko", capturedAt(iso), [row("a", null, value), row("gone", null, value)])
+			}
+			yield* persistAt("coingecko", hoursAgo(30), [row("a", null, 5)])
+			yield* persistAt("coingecko", hoursAgo(2), [row("a", null, 6)])
+			yield* persistAt("coingecko", hoursAgo(1), [row("a", null, 7)])
+			// Dated rows captured on one old day are never thinned.
+			yield* persistAt("mbank", capturedAt("2020-01-01T08:00:00Z"), [row("f", "2019-12-30", 1)])
+			yield* persistAt("mbank", capturedAt("2020-01-01T09:00:00Z"), [row("f", "2019-12-31", 2)])
+
+			const deleted = yield* (yield* RunStore).downsampleLiveSnapshots(7)
+			assert.strictEqual(deleted, 4)
+			const kept = yield* queryElsewhere<{ external_id: string; value: string }>(
+				`select i.external_id, s.value::text as value from snapshots s join instruments i on i.id = s.instrument_id
+				 order by i.external_id, s.captured_at`,
+			)
+			assert.deepStrictEqual(
+				kept.map((k) => `${k.external_id}=${k.value}`),
+				// "gone" is no longer reported; its newest snapshot (4) is kept with one point per day.
+				["a=2", "a=4", "a=5", "a=6", "a=7", "f=1", "f=2", "gone=2", "gone=4"],
+			)
+			assert.strictEqual(yield* (yield* RunStore).downsampleLiveSnapshots(7), 0, "a second pass deletes nothing")
 		}),
 	)
 

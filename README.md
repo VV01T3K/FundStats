@@ -31,7 +31,7 @@ apps/
   collector/           the collector process
     src/main.ts          entry point (Bun runtime)
     src/cli.ts           commands: start, collect <source|all>, migrate
-    src/Collector.ts     runs one source: fetch, keep raw payload, decode, normalize, persist
+    src/Collector.ts     runs one source: fetch, decode, normalize, persist; keeps a rejected response
     src/Scheduler.ts     every source on its interval; records the schedule for the web app
     src/sources/         one file per upstream
 packages/
@@ -135,7 +135,8 @@ Dockerfile); an empty or unset value means the default.
 | `DB_STATEMENT_TIMEOUT`              | both      | `30 seconds`          | Postgres cancels a longer statement, lock waits included; at least 1 second (migrations are exempt) |
 | `COLLECTOR_ENABLED`                 | collector | `true`                | `false` = never call upstreams                                                                      |
 | `COLLECTOR_INTERVAL_<SOURCE>`       | collector | see below             | e.g. `COLLECTOR_INTERVAL_MBANK=6 hours`; at least 1 minute                                          |
-| `RAW_PAYLOAD_RETENTION_DAYS`        | collector | `30`                  | positive integer; stored upstream responses older than this are deleted daily                       |
+| `RAW_PAYLOAD_RETENTION_DAYS`        | collector | `30`                  | positive integer; stored responses of failed runs older than this are deleted daily                 |
+| `LIVE_SNAPSHOT_DETAIL_DAYS`         | collector | `7`                   | positive integer; crypto quotes older than this are thinned daily to one per instrument and UTC day |
 | `FETCH_TIMEOUT`                     | collector | `5 minutes`           | a run's whole fetch, retries and Retry-After waits included; 30 seconds to 1 hour                   |
 | `COINGECKO_API_KEY`                 | collector | unset                 | CoinGecko demo key; raises the rate limit                                                           |
 | `CMC_API_KEY`                       | collector | unset                 | official CoinMarketCap API; without it the unofficial web endpoint is used                          |
@@ -143,7 +144,7 @@ Dockerfile); an empty or unset value means the default.
 | `PORT` / `HOST`                     | web       | `3000`/all            | image; the port and address inside the container                                                    |
 | `FUNDSTATS_BIND` / `FUNDSTATS_PORT` | compose   | `127.0.0.1`/`3000`    | host address and port the web app is published on                                                   |
 
-Default intervals: mBank every 6 hours (its feed changes once per business day), crypto sources every 30 minutes.
+Default intervals: every source every 6 hours (mBank's feed changes once per business day).
 After a failed run, the next attempt comes within 10 minutes.
 
 One source is collected by one run at a time, in one process or across several: a run holds a Postgres advisory lock for its source until its
@@ -158,15 +159,21 @@ is free, so a run still going in another process is left alone.
 
 - `instruments`: one row per fund or coin per source, unique on `(source, external_id)`. `last_seen_run_id` marks
   the instruments in the source's latest successful run, and the "latest" views list only those. An upstream
-  response that lists one id twice fails its run (the response is still kept in `raw_payloads`).
+  response that lists one id twice fails its run (the response is kept in `raw_payloads`).
 - `snapshots`: values at a point in time. `value` holds the unit value or price. `metrics` is jsonb with named
   numbers (`change_1m`, `change_7d`, `rank`, …; see `packages/shared/src/metrics.ts`).
   - **Dedupe rule:** mBank values come with a valuation date (`as_of`). Each instrument has at most one row per
     date, and re-collecting the same date rewrites that row only if a value changed.
-  - Crypto quotes have no `as_of` and get one row per collection.
+  - Crypto quotes have no `as_of`. A collection adds a row only when the quote changed since the instrument's newest
+    row (an upstream that has not updated adds nothing).
+  - **Downsampling:** once a day the collector thins crypto rows older than `LIVE_SNAPSHOT_DETAIL_DAYS` (7) to the
+    newest one per instrument and UTC day. Seven days at the collection interval (4 points a day at the default 6
+    hours) cover the 24h and 7d changes we compute ourselves; older history only needs daily points. Fund rows and
+    each instrument's newest row are never deleted.
 - `collection_runs`: every run with its trigger, status, counts and error. Postgres stamps `finished_at`.
-- `raw_payloads`: the upstream response of each run (CoinPaprika trimmed to the top 100), so the data can be
-  re-normalized after a bug fix.
+- `raw_payloads`: the upstream response of each run that failed after fetching it (decode or normalize error, no
+  instruments, a duplicate id), CoinPaprika trimmed to the top 100, so a changed upstream shape can be inspected and
+  replayed after a fix. Successful runs store none.
 - `source_schedules`: each source's interval and whether collection is enabled, as the collector last started.
 
 Derived values are computed when the data is read, not stored. Weighted momentum,

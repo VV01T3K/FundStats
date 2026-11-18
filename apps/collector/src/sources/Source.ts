@@ -16,9 +16,9 @@ export class SourceError extends Schema.TaggedError<SourceError>()("SourceError"
 }) {}
 
 /**
- * A data source; README "Add a source" lists the files to touch. The collector stores what `fetch`
- * returns as the raw payload before decoding it with `payload` and calling `normalize`, so a changed
- * upstream shape fails the run but keeps the response to inspect and replay.
+ * A data source; README "Add a source" lists the files to touch. The collector decodes what `fetch`
+ * returns with `payload` and calls `normalize`; a response it rejects fails the run and is stored as
+ * the raw payload, so a changed upstream shape can be inspected and replayed.
  */
 export interface Source<Payload = unknown> {
 	readonly info: SourceInfo

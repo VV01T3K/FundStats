@@ -157,7 +157,8 @@ export class Store extends Context.Service<
 					})
 					.from(snapshots)
 					.where(eq(snapshots.instrumentId, instrument.id))
-					.orderBy(desc(snapshots.capturedAt))
+					// Funds by valuation date (an older date can be rewritten later), live quotes by capture time.
+					.orderBy(sql`${snapshots.asOf} desc nulls last`, desc(snapshots.capturedAt))
 					.limit(limit)
 				return {
 					name: instrument.name,

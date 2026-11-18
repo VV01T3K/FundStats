@@ -76,6 +76,11 @@ export class RunStore extends Context.Service<
 		 */
 		readonly closeInterruptedRuns: E<number>
 		readonly pruneRawPayloads: (olderThanDays: number) => E<number>
+		/**
+		 * Thins live quotes (no as_of) captured more than `detailDays` ago to the newest one per instrument
+		 * and UTC day. Dated rows are never touched, and an instrument's newest snapshot is always kept.
+		 */
+		readonly downsampleLiveSnapshots: (detailDays: number) => E<number>
 		/** Records how the collector schedules each source, for the web app to report. */
 		readonly publishSchedules: (schedules: ReadonlyArray<SourceSchedule>) => E<void>
 	}
@@ -174,8 +179,30 @@ export class RunStore extends Context.Service<
 								rowsWritten += written.length
 							}
 							if (live.length > 0) {
-								const written = yield* tx.insert(snapshots).values(live).returning({ id: snapshots.id })
-								rowsWritten += written.length
+								// A live quote equal to the instrument's newest snapshot is one the source has not updated; skip it.
+								const incoming = sql.join(
+									live.map(
+										(v) =>
+											sql`(${v.instrumentId}::int, ${sql.param(v.value, snapshots.value)}::numeric, ${sql.param(v.metrics, snapshots.metrics)}::jsonb)`,
+									),
+									sql`, `,
+								)
+								const written =
+									yield* tx.execute(sql`insert into ${snapshots} (instrument_id, run_id, captured_at, value, metrics)
+									select r.instrument_id, ${input.runId}, ${sql.param(input.capturedAt, snapshots.capturedAt)}, r.value, r.metrics
+									from (values ${incoming}) as r(instrument_id, value, metrics)
+									where not exists (
+										select 1 from (
+											select value, metrics from ${snapshots}
+											where instrument_id = r.instrument_id
+											order by captured_at desc
+											limit 1
+										) newest
+										where newest.value is not distinct from r.value and newest.metrics = r.metrics
+									)
+									returning id
+								`)
+								rowsWritten += written.rows.length
 							}
 						}
 						yield* tx
@@ -230,6 +257,23 @@ export class RunStore extends Context.Service<
 					.returning({ id: rawPayloads.id })
 					.pipe(Effect.map((rows) => rows.length))
 
+			const downsampleLiveSnapshots = (detailDays: number) =>
+				database
+					.execute<{ id: number }>(sql`
+						delete from ${snapshots} s
+						using (
+							select id, row_number() over (
+								partition by instrument_id, (captured_at at time zone 'UTC')::date
+								order by captured_at desc, id desc
+							) as rank
+							from ${snapshots}
+							where as_of is null and captured_at < now() - make_interval(days => ${detailDays})
+						) old
+						where s.id = old.id and old.rank > 1
+						returning s.id
+					`)
+					.pipe(Effect.map((result) => result.rows.length))
+
 			const publishSchedules = (schedules: ReadonlyArray<SourceSchedule>) =>
 				schedules.length === 0
 					? Effect.void
@@ -245,7 +289,14 @@ export class RunStore extends Context.Service<
 							})
 							.pipe(Effect.asVoid)
 
-			return RunStore.of({ writer, failRun, closeInterruptedRuns, pruneRawPayloads, publishSchedules })
+			return RunStore.of({
+				writer,
+				failRun,
+				closeInterruptedRuns,
+				pruneRawPayloads,
+				downsampleLiveSnapshots,
+				publishSchedules,
+			})
 		}),
 	)
 }
