@@ -15,6 +15,7 @@
 		"test": "bun --bun vitest run"
 	},
 	"dependencies": {
+		"@fontsource-variable/geist": "5.3.0",
 		"@fundstats/db": "workspace:*",
 		"@fundstats/shared": "workspace:*",
 		"@tanstack/react-query": "5.107.1",
@@ -22,7 +23,6 @@
 		"@tanstack/react-router-ssr-query": "1.167.3",
 		"@tanstack/react-start": "catalog:",
 		"@tanstack/react-table": "9.3.1",
-		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",
 		"effect": "catalog:",
 		"lucide-react": "^1.73.0",
