@@ -17,16 +17,10 @@ import { cn } from "#/lib/utils"
 
 import { formatCompact, formatDate, formatInteger, formatPercent, formatPrice } from "../format.ts"
 import { heatStep } from "../heat.ts"
+import type { RiskLevel } from "../risk.ts"
 import { MAX_PINS, type ResolvedView, type TableSearch } from "../search.ts"
-import {
-	categoryLabel,
-	type Column,
-	fundFamily,
-	fundRiskName,
-	NAME_COLUMN,
-	RANK_COLUMN,
-	type TableConfig,
-} from "../tables.ts"
+import { categoryLabel, type Column, fundFamily, NAME_COLUMN, RANK_COLUMN, type TableConfig } from "../tables.ts"
+import { RiskMeter } from "./RiskLevel.tsx"
 
 const features = tableFeatures({ rowSortingFeature, sortedRowModel: createSortedRowModel() })
 
@@ -75,6 +69,8 @@ export interface SheetProps {
 	readonly onTogglePin: (externalId: string) => void
 	readonly onOpen: (externalId: string) => void
 	readonly empty: ReactNode
+	/** mBank's risk levels as the whole table has them, so filtering never changes a fund's glyph. */
+	readonly risk: ReadonlyArray<RiskLevel>
 }
 
 /** Column widths from `sm` up (in rem), so the name column can take what the figures leave. */
@@ -83,14 +79,14 @@ const COLUMN_REM: Record<Column["format"], number> = {
 	momentum: 6.25,
 	price: 7.75,
 	compact: 6,
-	risk: 5.5,
+	risk: 7,
 	rank: 3,
 }
 
 const isInteractive = (target: EventTarget) => target instanceof Element && target.closest("a, button") !== null
 
 /** The ranked table shared by funds and crypto: native semantics, sticky header and identity column. */
-export function Sheet({ config, rows, view, search, asOf, onSort, onTogglePin, onOpen, empty }: SheetProps) {
+export function Sheet({ config, rows, view, search, asOf, onSort, onTogglePin, onOpen, empty, risk }: SheetProps) {
 	const defs = useMemo(() => buildDefs(view.columns), [view.columns])
 	const data = useMemo(() => [...rows], [rows])
 	const sorting = useMemo<SortingState>(() => [{ id: view.sort, desc: view.desc }], [view.sort, view.desc])
@@ -217,11 +213,11 @@ export function Sheet({ config, rows, view, search, asOf, onSort, onTogglePin, o
 							aria-sort={ariaSort(column.id)}
 							style={{ "--col-w": `${COLUMN_REM[column.format]}rem` } as CSSProperties}
 							className={cn(
-								"snap-start px-2 text-right sm:w-[var(--col-w)] sm:min-w-[var(--col-w)] sm:px-2.5",
-								column.format === "risk" && "pl-3 sm:pl-5",
+								"snap-start px-2 sm:w-[var(--col-w)] sm:min-w-[var(--col-w)] sm:px-2.5",
+								column.format === "risk" ? "pl-3 text-left sm:pl-5" : "text-right",
 							)}
 						>
-							{sortButton(column.id, column.label, column.title, "right")}
+							{sortButton(column.id, column.label, column.title, column.format === "risk" ? "left" : "right")}
 						</th>
 					))}
 					{/* Takes the spare width, so the rules run edge to edge while the figures stay near the names. */}
@@ -259,7 +255,7 @@ export function Sheet({ config, rows, view, search, asOf, onSort, onTogglePin, o
 								/>
 							</td>
 							{numeric.map((column) => (
-								<ValueCell key={column.id} column={column} row={row} />
+								<ValueCell key={column.id} column={column} row={row} risk={risk} />
 							))}
 							<td aria-hidden className="spacer" />
 						</tr>
@@ -366,34 +362,50 @@ function NameCell({
 	)
 }
 
-function ValueCell({ column, row }: { readonly column: Column; readonly row: SnapshotRow }) {
+function ValueCell({
+	column,
+	row,
+	risk,
+}: {
+	readonly column: Column
+	readonly row: SnapshotRow
+	readonly risk: ReadonlyArray<RiskLevel>
+}) {
 	const value = column.value(row)
 	const heat = column.heatCap === null ? 0 : heatStep(value, column.heatCap)
-	const riskName = column.format === "risk" && value !== null ? fundRiskName(row) : null
+	if (column.format === "risk") {
+		const level = risk.find((r) => r.level === value)
+		const label = level ? (
+			<span className="inline-flex items-center gap-1.5">
+				<RiskMeter level={level.level} max={risk.at(-1)!.level} />
+				{level.short}
+			</span>
+		) : null
+		return (
+			<td className="px-2 pl-3 whitespace-nowrap sm:px-2.5 sm:pl-5">
+				{!level ? (
+					<span className="text-muted">–</span>
+				) : level.short === level.name ? (
+					label
+				) : (
+					<Tooltip>
+						<TooltipTrigger asChild>{label}</TooltipTrigger>
+						<TooltipContent side="left">Ryzyko według mBanku: {level.name}</TooltipContent>
+					</Tooltip>
+				)}
+			</td>
+		)
+	}
 	return (
 		<td
 			data-heat={heat === 0 ? undefined : heat}
 			className={cn(
 				"num px-2 text-right sm:px-2.5",
-				column.format === "risk" && "pl-3 sm:pl-5",
 				column.format === "momentum" && "font-medium",
 				column.format === "compact" && "text-muted",
 			)}
 		>
-			{value === null ? (
-				<span className="text-muted">–</span>
-			) : riskName ? (
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<span>{formatCell(column, value)}</span>
-					</TooltipTrigger>
-					<TooltipContent side="left">
-						Ryzyko {value}/7 · {riskName}
-					</TooltipContent>
-				</Tooltip>
-			) : (
-				formatCell(column, value)
-			)}
+			{value === null ? <span className="text-muted">–</span> : formatCell(column, value)}
 		</td>
 	)
 }

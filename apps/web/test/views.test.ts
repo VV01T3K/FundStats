@@ -7,6 +7,7 @@ import { isStale } from "#/server/api/handlers.ts"
 import { countNoun, formatCompact, formatPercent, formatPrice } from "#/web/format.ts"
 import { heatCap, heatStep } from "#/web/heat.ts"
 import { coveredRanges, nearestWithin, pickRange, rebase, splitAtGaps, toPoints } from "#/web/history.ts"
+import { riskScale } from "#/web/risk.ts"
 import {
 	filterRows,
 	presetPatch,
@@ -90,12 +91,12 @@ describe("search params", () => {
 				q: "  akcji ",
 				dir: "sideways",
 				sort: "",
-				risk: "7,2,x,9,2",
+				risk: "7,2,x,9,2,0,100",
 				pin: "a,b,a,c,d,e,,f",
 				family: "x".repeat(200),
 				unknown: "kept out",
 			}),
-			{ q: "akcji", risk: "2,7", pin: "a,b,c,d,e,f" },
+			{ q: "akcji", risk: "2,7,9", pin: "a,b,c,d,e,f" },
 		)
 	})
 
@@ -190,6 +191,23 @@ describe("filters", () => {
 		assert.deepStrictEqual(names({ category: "akcyjny" }), ["2", "4"])
 		assert.deepStrictEqual(names({ risk: "2,5" }), ["3", "4"])
 		assert.deepStrictEqual(names({ family: "Skarbiec FIO", risk: "4" }), ["2"])
+	})
+
+	it("risk levels come from mBank's own scale in the rows, not from 1–7", () => {
+		const rows = [
+			fund("a", "A", "dłużny", { riskScale: 1, riskName: "bardzo niskie" }),
+			fund("b", "B", "akcyjny", { riskScale: 4, riskName: "wysokie" }),
+			fund("c", "C", "akcyjny", { riskScale: 4, riskName: "wysokie" }),
+			fund("d", "D", "mieszany", { riskScale: 3 }),
+			fund("e", "E", "mieszany", {}),
+		]
+		assert.deepStrictEqual(riskScale(rows), [
+			{ level: 1, name: "bardzo niskie", short: "b. niskie", count: 1 },
+			{ level: 3, name: "poziom 3", short: "poziom 3", count: 1 },
+			{ level: 4, name: "wysokie", short: "wysokie", count: 2 },
+		])
+		// A level the data does not have (2, 7) is dropped like an unknown family.
+		assert.deepStrictEqual([...resolveView(TABLES.mbank, validateTableSearch({ risk: "2,4,7" }), rows).risk], [4])
 	})
 
 	it("counts for one filter ignore that filter", () => {

@@ -6,6 +6,7 @@ import { type KeyboardEvent, type Ref, useMemo, useState } from "react"
 import { cn } from "#/lib/utils"
 
 import { countNoun } from "../format.ts"
+import { riskScale } from "../risk.ts"
 import {
 	CLEAR_FILTERS,
 	familiesOf,
@@ -16,8 +17,9 @@ import {
 	type TableSearch,
 	toggleRisk,
 } from "../search.ts"
-import { FUND_CATEGORIES, fundRisk, NAME_COLUMN, RANK_COLUMN, RISK_LEVELS, type TableConfig } from "../tables.ts"
+import { FUND_CATEGORIES, fundRisk, NAME_COLUMN, RANK_COLUMN, type TableConfig } from "../tables.ts"
 import { Count, IconButton, TextButton, Toggle } from "./controls.tsx"
+import { RiskMeter } from "./RiskLevel.tsx"
 
 type Update = (patch: Partial<TableSearch>) => void
 
@@ -98,6 +100,7 @@ const useFacets = (rows: ReadonlyArray<SnapshotRow>, view: ResolvedView) =>
 		return {
 			categoryTotal: byCategory.length,
 			categories,
+			scale: riskScale(rows),
 			risks,
 			families: familiesOf(filterRows(rows, view, "family")),
 		}
@@ -139,10 +142,12 @@ function RiskFilter({
 	readonly view: ResolvedView
 	readonly update: Update
 }) {
+	if (facets.scale.length === 0) return null
+	const max = facets.scale.at(-1)!.level
 	return (
-		<div role="group" aria-label="Ryzyko" className="flex items-center gap-1">
-			<span className="text-muted mr-1 text-xs">Ryzyko</span>
-			{RISK_LEVELS.map((level) => {
+		<div role="group" aria-label="Ryzyko (skala mBanku)" className="flex flex-wrap items-center gap-0.5">
+			<span className="text-muted mr-1.5 text-xs">Ryzyko</span>
+			{facets.scale.map(({ level, name, short }) => {
 				const count = facets.risks.get(level) ?? 0
 				const pressed = view.risk.has(level)
 				return (
@@ -151,10 +156,10 @@ function RiskFilter({
 						pressed={pressed}
 						disabled={count === 0 && !pressed}
 						onClick={() => update({ risk: toggleRisk(view.risk, level) })}
-						title={`Ryzyko ${level}/7: ${count} ${countNoun(count, { one: "fundusz", few: "fundusze", many: "funduszy" })}`}
-						className={cn("num w-11 px-0 sm:w-7", !pressed && "border-rule")}
 					>
-						{level}
+						<RiskMeter level={level} max={max} />
+						<span aria-hidden>{short}</span>
+						<span className="sr-only">{name}</span> <Count>{count}</Count>
 					</Toggle>
 				)
 			})}

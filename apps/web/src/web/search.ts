@@ -43,11 +43,12 @@ const splitList = (value: string | undefined) =>
 
 const joinList = (items: ReadonlyArray<string | number>) => (items.length > 0 ? items.join(",") : undefined)
 
+/** Levels of mBank's risk scale; which exist is known only from the rows (see `resolveView`). */
 const normalizeRisk = (value: string | undefined) => {
 	const levels = new Set(
 		splitList(value)
 			.map(Number)
-			.filter((level) => Number.isInteger(level) && level >= 1 && level <= 7),
+			.filter((level) => Number.isInteger(level) && level >= 1 && level < 100),
 	)
 	return joinList([...levels].sort((a, b) => a - b))
 }
@@ -141,7 +142,13 @@ export const resolveView = (
 		q: search.q ?? "",
 		category:
 			isFund && search.category && FUND_CATEGORIES.some((c) => c.value === search.category) ? search.category : null,
-		risk: new Set(isFund ? splitList(search.risk).map(Number) : []),
+		risk: new Set(
+			isFund
+				? splitList(search.risk)
+						.map(Number)
+						.filter((level) => rows.some((row) => fundRisk(row) === level))
+				: [],
+		),
 		family: isFund && search.family && familiesOf(rows).has(search.family) ? search.family : null,
 		pins: resolvePins(search.pin, rows),
 	}

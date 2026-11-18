@@ -3,12 +3,14 @@ import { SOURCES } from "@fundstats/shared/sources"
 import { useQueries, useSuspenseQuery } from "@tanstack/react-query"
 import { createFileRoute, Link, notFound } from "@tanstack/react-router"
 import { ArrowLeft, Pin, X } from "lucide-react"
+import type { ReactNode } from "react"
 
 import { cn } from "#/lib/utils"
 import { HISTORY_LIMIT, historyQuery, latestQuery } from "#/web/api.ts"
 import { Segmented } from "#/web/components/controls.tsx"
 import { Footer } from "#/web/components/Footer.tsx"
 import { type ChartSeries, PriceChart } from "#/web/components/PriceChart.tsx"
+import { RiskMeter } from "#/web/components/RiskLevel.tsx"
 import { formatCell } from "#/web/components/Sheet.tsx"
 import {
 	countNoun,
@@ -23,8 +25,9 @@ import {
 } from "#/web/format.ts"
 import { heatStep } from "#/web/heat.ts"
 import { coveredRanges, isRangeId, pickRange, rebase, type RangeId, sliceRange, toPoints } from "#/web/history.ts"
+import { type RiskLevel, riskScale } from "#/web/risk.ts"
 import { MAX_PINS, resolvePins, togglePin } from "#/web/search.ts"
-import { categoryLabel, fundFamily, fundRisk, fundRiskName, getTable, longName, marketRank } from "#/web/tables.ts"
+import { categoryLabel, fundFamily, fundRisk, getTable, longName, marketRank } from "#/web/tables.ts"
 
 export const Route = createFileRoute("/$kind/$source/$externalId")({
 	validateSearch: (raw: Record<string, unknown>): { range?: RangeId | undefined } =>
@@ -57,6 +60,13 @@ const fromHistory = (history: InstrumentHistory): SnapshotRow => {
 	}
 }
 
+const riskFact = (level: RiskLevel, max: number) => (
+	<span className="inline-flex items-center gap-1.5" title="Skala ryzyka mBanku">
+		<RiskMeter level={level.level} max={max} />
+		{level.name}
+	</span>
+)
+
 const SERIES_COLORS = ["var(--series-1)", "var(--series-2)", "var(--series-3)", "var(--series-4)", "var(--series-5)"]
 const NOTOWANIE = { one: "notowanie", few: "notowania", many: "notowań" }
 
@@ -88,6 +98,8 @@ function InstrumentPage() {
 	const row = listed ?? fromHistory(history)
 
 	const pins = resolvePins(search.pin, latest.rows)
+	const scale = riskScale(latest.rows)
+	const riskLevel = scale.find((r) => r.level === fundRisk(row))
 	const otherRows = pins.filter((id) => id !== externalId).map((id) => latest.rows.find((r) => r.externalId === id)!)
 	const otherHistories = useQueries({ queries: otherRows.map((r) => historyQuery(source, r.externalId)) })
 
@@ -123,13 +135,11 @@ function InstrumentPage() {
 	const setPins = (next: string | undefined) =>
 		navigate({ search: (prev) => ({ ...prev, pin: next }), replace: true, resetScroll: false })
 
-	const facts = fund
+	const facts: ReadonlyArray<readonly [string, ReactNode] | null> = fund
 		? [
 				fundFamily(row) ? ["Rodzina", fundFamily(row)] : null,
 				row.category ? ["Kategoria", categoryLabel(row.category)] : null,
-				fundRisk(row) !== null
-					? ["Ryzyko", `${fundRisk(row)}/7${fundRiskName(row) ? ` · ${fundRiskName(row)}` : ""}`]
-					: null,
+				riskLevel ? ["Ryzyko", riskFact(riskLevel, scale.at(-1)!.level)] : null,
 				row.asOf ? ["Wycena", formatDate(row.asOf)] : null,
 				row.symbol ? ["Kod mBank", row.symbol] : null,
 			]

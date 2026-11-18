@@ -179,7 +179,7 @@ export const TABLES = {
 			{
 				id: "risk",
 				label: "Ryzyko",
-				title: "Wskaźnik ryzyka w skali 1–7",
+				title: "Poziom ryzyka w skali mBanku",
 				format: "risk",
 				value: fundRisk,
 				firstDir: "desc",
@@ -232,5 +232,3 @@ export const FUND_CATEGORIES: ReadonlyArray<{
 ]
 
 export const categoryLabel = (value: string) => FUND_CATEGORIES.find((c) => c.value === value)?.singular ?? value
-
-export const RISK_LEVELS = [1, 2, 3, 4, 5, 6, 7] as const

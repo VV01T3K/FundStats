@@ -14,6 +14,7 @@ import { Sheet } from "#/web/components/Sheet.tsx"
 import { SheetScroller } from "#/web/components/SheetScroller.tsx"
 import { countNoun } from "#/web/format.ts"
 import { freshness, tableAsOf } from "#/web/freshness.ts"
+import { riskScale } from "#/web/risk.ts"
 import {
 	CLEAR_FILTERS,
 	filterRows,
@@ -43,6 +44,7 @@ function SourceTablePage() {
 	const view = useMemo(() => resolveView(config, search, data.rows), [config, search, data.rows])
 	const rows = useMemo(() => filterRows(data.rows, view), [data.rows, view])
 	const asOf = useMemo(() => tableAsOf(data.rows), [data.rows])
+	const risk = useMemo(() => riskScale(data.rows), [data.rows])
 	const fresh = freshness(data.source, asOf)
 	const otherDates = asOf ? data.rows.filter((row) => row.asOf !== null && row.asOf !== asOf).length : 0
 	const searchRef = useRef<HTMLInputElement>(null)
@@ -111,6 +113,11 @@ function SourceTablePage() {
 							? `${rows.length} z ${data.rows.length} ${countNoun(data.rows.length, noun)}`
 							: `${data.rows.length} ${countNoun(data.rows.length, noun)}`}
 					</span>
+					{hasFilters(view) ? (
+						<TextButton onClick={() => update(CLEAR_FILTERS)} className="-mx-1 h-auto px-1 max-sm:hidden sm:h-auto">
+							Wyczyść filtry
+						</TextButton>
+					) : null}
 					{noData ? null : (
 						<Tooltip>
 							<TooltipTrigger asChild>
@@ -139,7 +146,7 @@ function SourceTablePage() {
 						value={search.q ?? ""}
 						onChange={(q) => update({ q: q.trim() || undefined })}
 						placeholder={config.kind === "fund" ? "Szukaj: nazwa, kod" : "Szukaj: nazwa, symbol"}
-						className="min-w-0 flex-1 sm:w-72 sm:flex-none"
+						className="min-w-0 flex-1 sm:w-56 sm:flex-none"
 					/>
 					<div className="flex items-center gap-2 sm:hidden">
 						<FiltersSheet config={config} rows={data.rows} view={view} update={update} shown={rows.length} />
@@ -147,7 +154,6 @@ function SourceTablePage() {
 					</div>
 					<div className="hidden sm:contents">
 						<FilterRow config={config} rows={data.rows} view={view} update={update} />
-						{hasFilters(view) ? <TextButton onClick={() => update(CLEAR_FILTERS)}>Wyczyść filtry</TextButton> : null}
 					</div>
 				</div>
 
@@ -211,6 +217,7 @@ function SourceTablePage() {
 							onSort={(id) => update(sortPatch(view, id))}
 							onTogglePin={pin}
 							onOpen={open}
+							risk={risk}
 							empty={
 								<div className="space-y-2">
 									<p className="text-[13px]">Żaden wiersz nie pasuje do filtrów.</p>
