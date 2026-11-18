@@ -1,6 +1,6 @@
 /**
  * Metadata for every data source, shared by the collector, the API and the web UI. Fetch and normalize
- * logic lives in `apps/collector/src/sources/<id>.ts`; table columns in `apps/web/src/web/tables/index.ts`.
+ * logic lives in `apps/collector/src/sources/<id>.ts`; table columns in `apps/web/src/web/tables.ts`.
  */
 import type * as Duration from "effect/Duration"
 
@@ -14,8 +14,6 @@ export interface SourceInfo {
 	readonly currency: string
 	readonly homepage: string
 	readonly description: string
-	/** Path of the brand icon under `public/`. */
-	readonly icon: string
 	/** How often the collector runs it; override with COLLECTOR_INTERVAL_<ID>. */
 	readonly defaultInterval: Duration.Input
 }
@@ -28,7 +26,6 @@ export const SOURCES = {
 		currency: "PLN",
 		homepage: "https://www.mbank.pl/serwis-ekonomiczny/notowania-funduszy/",
 		description: "Investment funds sold through mBank (SFI), as published by mBank.",
-		icon: "/icons/mbank.svg",
 		defaultInterval: "6 hours",
 	},
 	coingecko: {
@@ -38,7 +35,6 @@ export const SOURCES = {
 		currency: "PLN",
 		homepage: "https://www.coingecko.com/",
 		description: "Top 100 coins by market cap from the official CoinGecko public API.",
-		icon: "/icons/coingecko.svg",
 		defaultInterval: "6 hours",
 	},
 	coinpaprika: {
@@ -48,7 +44,6 @@ export const SOURCES = {
 		currency: "PLN",
 		homepage: "https://coinpaprika.com/",
 		description: "Top 100 coins by rank from the official CoinPaprika free API.",
-		icon: "/icons/coinpaprika.svg",
 		defaultInterval: "6 hours",
 	},
 	coinmarketcap: {
@@ -58,7 +53,6 @@ export const SOURCES = {
 		currency: "USD",
 		homepage: "https://coinmarketcap.com/",
 		description: "Top 100 coins by CoinMarketCap rank, quoted in USD.",
-		icon: "/icons/coinmarketcap.svg",
 		defaultInterval: "6 hours",
 	},
 } as const satisfies Record<string, SourceInfo>
