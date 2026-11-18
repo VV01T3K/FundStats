@@ -176,8 +176,8 @@ is free, so a run still going in another process is left alone.
     newest row are never deleted. It walks each instrument's old rows in chunks of 10,000, one statement each, so
     a backlog shrinks even if a pass is cut short.
 - `collection_runs`: every run with its trigger, status, counts and error. Postgres stamps `finished_at`.
-- `raw_payloads`: the upstream response of each run that failed after fetching it (decode or normalize error, no
-  instruments, a duplicate id), CoinPaprika trimmed to the top 100, so a changed upstream shape can be inspected and
+- `raw_payloads`: the upstream response of each run that rejected it (decode or normalize error, no
+  instruments, a duplicate id; a database error while saving keeps none), CoinPaprika trimmed to the top 100, so a changed upstream shape can be inspected and
   replayed after a fix. Successful runs store none, and a response too deeply nested to encode back is not kept (the run is still recorded as failed). Stored as JSON text, not jsonb: jsonb rejects `\u0000` escapes and
   very deep nesting, and the archive is only ever read back whole.
 - `source_schedules`: each source's interval and whether collection is enabled, as the collector last started.
