@@ -4,12 +4,13 @@ import * as DateTime from "effect/DateTime"
 import * as Duration from "effect/Duration"
 
 import { isStale } from "#/server/api/handlers.ts"
-import { countNoun, formatCompact, formatPercent, formatPrice, formatSigned } from "#/web/format.ts"
+import { countNoun, formatCompact, formatPercent, formatPrice } from "#/web/format.ts"
 import { heatCap, heatStep } from "#/web/heat.ts"
-import { coveredRanges, pickRange, rebase, toPoints } from "#/web/history.ts"
+import { coveredRanges, nearestWithin, pickRange, rebase, splitAtGaps, toPoints } from "#/web/history.ts"
 import {
 	filterRows,
 	presetPatch,
+	resolvePins,
 	resolveView,
 	sortPatch,
 	togglePin,
@@ -90,11 +91,11 @@ describe("search params", () => {
 				dir: "sideways",
 				sort: "",
 				risk: "7,2,x,9,2",
-				pin: "a,b,a,c,d,e",
+				pin: "a,b,a,c,d,e,,f",
 				family: "x".repeat(200),
 				unknown: "kept out",
 			}),
-			{ q: "akcji", risk: "2,7", pin: "a,b,c,d" },
+			{ q: "akcji", risk: "2,7", pin: "a,b,c,d,e,f" },
 		)
 	})
 
@@ -196,6 +197,12 @@ describe("filters", () => {
 		assert.strictEqual(filterRows(FUNDS, view, "category").length, 4)
 	})
 
+	it("pins resolve against the source's rows before the cap of four", () => {
+		const view = resolveView(TABLES.mbank, validateTableSearch({ pin: "gone,old,1,2,3,4" }), FUNDS)
+		assert.deepStrictEqual(view.pins, ["1", "2", "3", "4"])
+		assert.deepStrictEqual(resolvePins("x,3", FUNDS), ["3"])
+	})
+
 	it("pins cap at four; risk toggles stay sorted", () => {
 		assert.strictEqual(togglePin(["a", "b", "c", "d"], "e"), "a,b,c,d")
 		assert.strictEqual(togglePin(["a", "b"], "a"), "b")
@@ -220,6 +227,16 @@ describe("heat", () => {
 		assert.strictEqual(heatStep(0.004, 8), 0)
 		assert.strictEqual(heatStep(null, 8), 0)
 	})
+
+	it("washes exactly the cells that do not print as zero", () => {
+		for (const value of [-0.005, 0.005, -0.0049, 0.0049, -0.125, 0.125, 1.005, -1.005]) {
+			const printedZero = formatPercent(value) === "0,00%"
+			assert.strictEqual(heatStep(value, 8) === 0, printedZero, String(value))
+		}
+		assert.strictEqual(formatPercent(-0.005), "\u22120,01%")
+		assert.strictEqual(formatPercent(-0.125), "\u22120,13%")
+		assert.strictEqual(heatStep(-0.005, 8), -1)
+	})
 })
 
 describe("pl-PL numbers", () => {
@@ -228,7 +245,7 @@ describe("pl-PL numbers", () => {
 		assert.strictEqual(formatPercent(-0.7311), "−0,73%")
 		assert.strictEqual(formatPercent(-0.001), "0,00%")
 		assert.strictEqual(formatPercent(1088.87), "+1 088,87%")
-		assert.strictEqual(formatSigned(3.2), "+3,20")
+		assert.strictEqual(formatPercent(3.2), "+3,20%")
 	})
 
 	it("prices: two decimals from 1, six significant digits below; narrow no-break grouping", () => {
@@ -236,6 +253,7 @@ describe("pl-PL numbers", () => {
 		assert.strictEqual(formatPrice(259340), "259 340,00")
 		assert.strictEqual(formatPrice(0.123456789), "0,123457")
 		assert.strictEqual(formatPrice(0.00000599), "0,00000599")
+		assert.strictEqual(formatPrice(0.9999996), "1,00")
 		assert.strictEqual(formatCompact(1_298_252_724_362), "1,3 bln")
 	})
 
@@ -264,14 +282,30 @@ describe("history", () => {
 		)
 	})
 
-	it("offers only ranges the data spans", () => {
-		const points = toPoints("fund", [day("2026-11-17", 1), day("2026-10-01", 1)])
+	it("offers only ranges the plotted points span with two points in the window", () => {
+		const points = toPoints("fund", [day("2026-11-17", 1), day("2026-11-03", 1), day("2026-10-01", 1)])
 		assert.deepStrictEqual(
 			coveredRanges(points).map((r) => r.id),
 			["1m", "max"],
 		)
 		assert.strictEqual(pickRange(points, "1y"), "max")
 		assert.strictEqual(pickRange(points, "1m"), "1m")
+		// Spans a month, but only the newest point falls inside it.
+		const sparse = toPoints("fund", [day("2026-11-17", 1), day("2026-10-01", 1)])
+		assert.deepStrictEqual(
+			coveredRanges(sparse).map((r) => r.id),
+			["max"],
+		)
+		// A row without a price does not extend the coverage.
+		const unpriced = toPoints("fund", [
+			day("2026-11-17", 1),
+			day("2026-11-03", 1),
+			{ ...day("2026-01-01", 1), value: null },
+		])
+		assert.deepStrictEqual(
+			coveredRanges(unpriced).map((r) => r.id),
+			["max"],
+		)
 		assert.deepStrictEqual(
 			coveredRanges(toPoints("fund", [day("2026-11-17", 1)])).map((r) => r.id),
 			["max"],
@@ -290,5 +324,34 @@ describe("history", () => {
 			],
 		)
 		assert.isNull(rebase([a, toPoints("fund", [day("2026-12-01", 1)])]))
+	})
+
+	it("rebases series that start on different days at an explicit, shared anchor", () => {
+		// Fund A is valued on 13.11 (Friday) and 17.11; fund B starts on 16.11 (Monday).
+		const a = toPoints("fund", [day("2026-11-17", 100), day("2026-11-13", 80)])
+		const b = toPoints("fund", [day("2026-11-17", 50), day("2026-11-16", 40)])
+		const result = rebase([a, b])!
+		const base = Date.parse("2026-11-16T00:00:00Z")
+		assert.strictEqual(result.base, base)
+		assert.deepStrictEqual(result.series[0], [
+			{ t: base, v: 100, observed: Date.parse("2026-11-13T00:00:00Z") },
+			{ t: Date.parse("2026-11-17T00:00:00Z"), v: 125 },
+		])
+		assert.deepStrictEqual(result.series[1], [
+			{ t: base, v: 100 },
+			{ t: Date.parse("2026-11-17T00:00:00Z"), v: 125 },
+		])
+	})
+
+	it("hover finds a value only within the gap bound; long silences split the line", () => {
+		const points = toPoints("fund", [day("2026-11-17", 3), day("2026-11-13", 2), day("2026-10-01", 1)])
+		const at = (date: string) => Date.parse(`${date}T00:00:00Z`)
+		const fourDays = 4 * 86_400_000
+		assert.strictEqual(nearestWithin(points, at("2026-11-16"), fourDays)?.v, 3)
+		assert.isUndefined(nearestWithin(points, at("2026-10-20"), fourDays))
+		assert.deepStrictEqual(
+			splitAtGaps(points, 6 * 86_400_000).map((run) => run.map((p) => p.v)),
+			[[1], [2, 3]],
+		)
 	})
 })

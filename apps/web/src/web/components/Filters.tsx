@@ -1,7 +1,7 @@
 import type { SnapshotRow } from "@fundstats/shared/api"
 import { ArrowDownWideNarrow, ArrowUpNarrowWide, Check, ChevronDown, Search, SlidersHorizontal, X } from "lucide-react"
 import { Dialog, Popover } from "radix-ui"
-import { type Ref, useMemo, useState } from "react"
+import { type KeyboardEvent, type Ref, useMemo, useState } from "react"
 
 import { cn } from "#/lib/utils"
 
@@ -16,7 +16,7 @@ import {
 	type TableSearch,
 	toggleRisk,
 } from "../search.ts"
-import { FUND_CATEGORIES, fundRisk, NAME_COLUMN, RISK_LEVELS, type TableConfig } from "../tables.ts"
+import { FUND_CATEGORIES, fundRisk, NAME_COLUMN, RANK_COLUMN, RISK_LEVELS, type TableConfig } from "../tables.ts"
 import { Count, IconButton, TextButton, Toggle } from "./controls.tsx"
 
 type Update = (patch: Partial<TableSearch>) => void
@@ -34,6 +34,18 @@ export function SearchBox({
 	readonly placeholder: string
 	readonly className?: string
 }) {
+	// The field edits a draft; the URL gets the trimmed text. A change from outside (clearing the
+	// filters, going back) replaces the draft unless it is the same search.
+	const [draft, setDraft] = useState(value)
+	const [seen, setSeen] = useState(value)
+	if (value !== seen) {
+		setSeen(value)
+		if (draft.trim() !== value) setDraft(value)
+	}
+	const change = (next: string) => {
+		setDraft(next)
+		onChange(next)
+	}
 	return (
 		<label className={cn("relative flex items-center", className)}>
 			<span className="sr-only">Szukaj</span>
@@ -41,11 +53,11 @@ export function SearchBox({
 			<input
 				ref={inputRef}
 				type="search"
-				value={value}
-				onChange={(event) => onChange(event.target.value)}
+				value={draft}
+				onChange={(event) => change(event.target.value)}
 				onKeyDown={(event) => {
 					if (event.key !== "Escape") return
-					if (value) onChange("")
+					if (draft) change("")
 					else event.currentTarget.blur()
 				}}
 				placeholder={placeholder}
@@ -53,12 +65,12 @@ export function SearchBox({
 				spellCheck={false}
 				className="bg-bg placeholder:text-muted focus:border-accent h-11 w-full rounded-md border pr-8 pl-8 text-[13px] outline-none sm:h-8 [&::-webkit-search-cancel-button]:hidden"
 			/>
-			{value ? (
+			{draft ? (
 				<button
 					type="button"
 					aria-label="Wyczyść wyszukiwanie"
-					onClick={() => onChange("")}
-					className="text-muted hover:text-fg absolute right-1 inline-flex size-9 items-center justify-center sm:size-6"
+					onClick={() => change("")}
+					className="text-muted hover:text-fg absolute right-0 inline-flex size-11 items-center justify-center sm:right-1 sm:size-6"
 				>
 					<X className="size-3.5" />
 				</button>
@@ -164,26 +176,41 @@ function FamilyList({
 		const needle = fold(query.trim())
 		return [...families].filter(([name]) => fold(name).includes(needle)).sort(([a], [b]) => a.localeCompare(b, "pl-PL"))
 	}, [families, query])
+	const onListKey = (event: KeyboardEvent<HTMLElement>) => {
+		const container = event.currentTarget.closest("[data-family-list]")
+		const items = [...(container?.querySelectorAll<HTMLElement>('input, [role="option"]') ?? [])]
+		const index = items.indexOf(event.target as HTMLElement)
+		const to = { ArrowDown: index + 1, ArrowUp: index - 1, Home: 1, End: items.length - 1 }[event.key]
+		if (to === undefined || index === -1) return
+		event.preventDefault()
+		items[Math.max(0, Math.min(items.length - 1, to))]?.focus()
+	}
 	const item = (active: boolean) =>
 		cn(
 			"flex h-11 w-full items-center gap-2 rounded px-2 text-left text-[13px] sm:h-8",
 			active ? "text-accent font-medium" : "hover:bg-hover",
 		)
 	return (
-		<div className="flex min-h-0 flex-col gap-1">
+		<div className="flex min-h-0 flex-col gap-1" data-family-list>
 			<input
 				type="search"
 				value={query}
 				onChange={(event) => setQuery(event.target.value)}
 				onKeyDown={(event) => {
 					if (event.key === "Enter" && options[0]) onSelect(options[0][0])
+					else if (event.key === "ArrowDown") onListKey(event)
 				}}
 				placeholder="Szukaj rodziny…"
 				aria-label="Szukaj rodziny funduszy"
 				autoComplete="off"
 				className="bg-bg placeholder:text-muted focus:border-accent h-11 w-full shrink-0 rounded-md border px-2.5 text-[13px] outline-none sm:h-8 [&::-webkit-search-cancel-button]:hidden"
 			/>
-			<div role="listbox" aria-label="Rodziny funduszy" className="min-h-0 overflow-y-auto overscroll-contain">
+			<div
+				role="listbox"
+				aria-label="Rodziny funduszy"
+				onKeyDown={onListKey}
+				className="min-h-0 overflow-y-auto overscroll-contain"
+			>
 				{query === "" ? (
 					<button
 						type="button"
@@ -386,7 +413,7 @@ export function SortMenu({
 }) {
 	const columns = [
 		{ id: NAME_COLUMN, label: "Nazwa", text: true },
-		...view.columns.map((c) => ({ id: c.id, label: c.label, text: false })),
+		...view.columns.map((c) => ({ id: c.id, label: c.id === RANK_COLUMN ? "Pozycja" : c.label, text: false })),
 	]
 	const label = (text: boolean, desc: boolean) =>
 		text ? (desc ? "Z–A" : "A–Z") : desc ? "od najwyższej" : "od najniższej"

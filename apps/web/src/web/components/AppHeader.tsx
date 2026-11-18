@@ -43,7 +43,10 @@ function Dot({ status }: { readonly status: SourceStatus | undefined }) {
 	return <StatusDot warn={freshness(status, null).warn} />
 }
 
-/** Wordmark, Fundusze | Kryptowaluty, the crypto provider switch (wide screens) and the theme toggle. */
+/**
+ * Wordmark, Fundusze | Kryptowaluty, the crypto provider switch and the theme toggle. Below `lg` the
+ * switch takes a second row; `--header-h` in styles.css follows it.
+ */
 export function AppHeader() {
 	const params = useParams({ strict: false })
 	const statuses = useStatuses()
@@ -55,7 +58,7 @@ export function AppHeader() {
 
 	const navLink = "inline-flex h-12 items-center gap-1.5 border-b-2 px-1 text-[13.5px] transition-colors duration-150"
 	return (
-		<header className="bg-bg sticky top-0 z-20 border-b">
+		<header className="bg-bg sticky top-0 z-20 border-b" data-providers={onCrypto || undefined}>
 			<div className="mx-auto flex h-12 max-w-[1600px] items-center gap-5 px-4">
 				<Link to="/" className="flex items-center gap-2 text-[15px] font-semibold tracking-[-0.01em]">
 					<Mark />
@@ -83,7 +86,7 @@ export function AppHeader() {
 					>
 						<span className="max-sm:hidden">Kryptowaluty</span>
 						<span className="sm:hidden">Krypto</span>
-						{cryptoWarn ? <StatusDot warn /> : null}
+						{statuses.size > 0 ? <StatusDot warn={cryptoWarn} /> : null}
 					</Link>
 				</nav>
 				{onCrypto ? <ProviderSwitch current={params.source as SourceId} className="max-lg:hidden" /> : null}
@@ -97,12 +100,17 @@ export function AppHeader() {
 					</IconButton>
 				</div>
 			</div>
+			{onCrypto ? (
+				<div className="mx-auto flex h-14 max-w-[1600px] items-center px-4 sm:h-11 lg:hidden">
+					<ProviderSwitch current={params.source as SourceId} className="w-full sm:w-auto" />
+				</div>
+			) : null}
 		</header>
 	)
 }
 
 /** CoinGecko PLN | CoinPaprika PLN | CoinMarketCap USD, each with its freshness dot. */
-export function ProviderSwitch({ current, className }: { readonly current: SourceId; readonly className?: string }) {
+function ProviderSwitch({ current, className }: { readonly current: SourceId; readonly className?: string }) {
 	const statuses = useStatuses()
 	return (
 		<div className={cn("flex min-w-0 items-center gap-2", className)}>
@@ -121,7 +129,7 @@ export function ProviderSwitch({ current, className }: { readonly current: Sourc
 									aria-current={active ? "page" : undefined}
 									aria-label={`${SOURCES[id].name}, ${SOURCES[id].currency}${fresh?.warn ? ", dane nieaktualne" : ""}`}
 									className={cn(
-										"inline-flex h-10 items-center gap-1.5 rounded-[5px] px-3 text-[13px] whitespace-nowrap transition-colors duration-150 max-sm:flex-1 max-sm:justify-center max-sm:px-1 sm:h-7 sm:px-2.5",
+										"inline-flex h-11 items-center gap-1.5 rounded-[5px] px-3 text-[13px] whitespace-nowrap transition-colors duration-150 max-sm:flex-1 max-sm:justify-center max-sm:px-1 sm:h-7 sm:px-2.5",
 										active
 											? "bg-bg text-fg ring-rule font-medium shadow-[0_1px_2px_oklch(0_0_0/0.12)] ring-1"
 											: "text-muted hover:text-fg",

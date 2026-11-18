@@ -1,11 +1,11 @@
-import type { SnapshotRow } from "@fundstats/shared/api"
+import type { InstrumentHistory, SnapshotRow } from "@fundstats/shared/api"
 import { SOURCES } from "@fundstats/shared/sources"
 import { useQueries, useSuspenseQuery } from "@tanstack/react-query"
 import { createFileRoute, Link, notFound } from "@tanstack/react-router"
 import { ArrowLeft, Pin, X } from "lucide-react"
 
 import { cn } from "#/lib/utils"
-import { historyQuery, latestQuery } from "#/web/api.ts"
+import { HISTORY_LIMIT, historyQuery, latestQuery } from "#/web/api.ts"
 import { Segmented } from "#/web/components/controls.tsx"
 import { Footer } from "#/web/components/Footer.tsx"
 import { type ChartSeries, PriceChart } from "#/web/components/PriceChart.tsx"
@@ -23,22 +23,39 @@ import {
 } from "#/web/format.ts"
 import { heatStep } from "#/web/heat.ts"
 import { coveredRanges, isRangeId, pickRange, rebase, type RangeId, sliceRange, toPoints } from "#/web/history.ts"
-import { MAX_PINS, splitList, togglePin } from "#/web/search.ts"
+import { MAX_PINS, resolvePins, togglePin } from "#/web/search.ts"
 import { categoryLabel, fundFamily, fundRisk, fundRiskName, getTable, longName, marketRank } from "#/web/tables.ts"
 
 export const Route = createFileRoute("/$kind/$source/$externalId")({
 	validateSearch: (raw: Record<string, unknown>): { range?: RangeId | undefined } =>
 		isRangeId(raw.range) ? { range: raw.range } : {},
+	// The instrument is known by its history, so a link still opens after it drops out of the latest ranking.
 	loader: async ({ context, params }) => {
-		const latest = await context.queryClient.ensureQueryData(latestQuery(params.source))
-		const row = latest.rows.find((r) => r.externalId === params.externalId)
-		if (!row) throw notFound()
-		await context.queryClient.ensureQueryData(historyQuery(params.source, params.externalId))
-		return { name: row.name }
+		const history = await context.queryClient.ensureQueryData(historyQuery(params.source, params.externalId))
+		if (history === null) throw notFound()
+		return { name: history.name }
 	},
 	head: ({ loaderData }) => ({ meta: [{ title: `${loaderData?.name ?? "Instrument"} · FundStats` }] }),
 	component: InstrumentPage,
 })
+
+/** The instrument as its newest stored point describes it, for when the latest ranking no longer lists it. */
+const fromHistory = (history: InstrumentHistory): SnapshotRow => {
+	const newest = history.points[0]
+	return {
+		instrumentId: 0,
+		externalId: history.externalId,
+		name: history.name,
+		symbol: null,
+		category: null,
+		currency: null,
+		metadata: {},
+		capturedAt: newest?.capturedAt ?? "",
+		asOf: newest?.asOf ?? null,
+		value: newest?.value ?? null,
+		metrics: newest?.metrics ?? {},
+	}
+}
 
 const SERIES_COLORS = ["var(--series-1)", "var(--series-2)", "var(--series-3)", "var(--series-4)", "var(--series-5)"]
 const NOTOWANIE = { one: "notowanie", few: "notowania", many: "notowań" }
@@ -64,14 +81,14 @@ function InstrumentPage() {
 	const fund = config.kind === "fund"
 	const currency = SOURCES[source].currency
 	const { data: latest } = useSuspenseQuery(latestQuery(source))
-	const { data: history } = useSuspenseQuery(historyQuery(source, externalId))
-	const row = latest.rows.find((r) => r.externalId === externalId)!
+	const { data } = useSuspenseQuery(historyQuery(source, externalId))
+	// The loader turns a missing history into a 404; a refetch keeps the stored instrument.
+	const history = data!
+	const listed = latest.rows.find((r) => r.externalId === externalId)
+	const row = listed ?? fromHistory(history)
 
-	const pins = splitList(search.pin)
-	const others = pins.filter((id) => id !== externalId)
-	const otherRows = others
-		.map((id) => latest.rows.find((r) => r.externalId === id))
-		.filter((r): r is SnapshotRow => r !== undefined)
+	const pins = resolvePins(search.pin, latest.rows)
+	const otherRows = pins.filter((id) => id !== externalId).map((id) => latest.rows.find((r) => r.externalId === id)!)
 	const otherHistories = useQueries({ queries: otherRows.map((r) => historyQuery(source, r.externalId)) })
 
 	const points = toPoints(config.kind, history.points)
@@ -91,8 +108,15 @@ function InstrumentPage() {
 		}),
 	)
 
-	const first = history.points.at(-1)
-	const since = first ? (fund && first.asOf ? formatDate(first.asOf) : formatCapturedDate(first.capturedAt)) : null
+	const first = points[0]
+	const since = first ? (fund ? formatEpochDay(first.t) : formatCapturedDate(epochToIso(first.t))) : null
+	const truncated = history.points.length >= HISTORY_LIMIT
+	const coverage =
+		since === null
+			? "brak notowań z ceną"
+			: truncated
+				? `ostatnie ${points.length} ${countNoun(points.length, NOTOWANIE)}, od ${since}`
+				: `dane od ${since} · ${points.length} ${countNoun(points.length, NOTOWANIE)}`
 	const backSearch = { ...search, range: undefined }
 	const isPinned = pins.includes(externalId)
 	const pinsFull = !isPinned && pins.length >= MAX_PINS
@@ -114,9 +138,11 @@ function InstrumentPage() {
 				typeof row.metadata.marketCap === "number"
 					? ["Kapitalizacja", `${formatCompact(row.metadata.marketCap)} ${currency}`]
 					: null,
-				["Pobrano", formatCaptured(row.capturedAt)],
+				row.capturedAt ? ["Pobrano", formatCaptured(row.capturedAt)] : null,
 			]
 	const returns = config.periods.filter((c) => c.value(row) !== null || fund)
+	// The tiles sit three to a row on phones; blank tiles complete the last row so every tile is one width.
+	const fillers = (3 - (returns.length % 3)) % 3
 
 	return (
 		<main className="mx-auto w-full max-w-[1600px] px-4 pt-3 pb-4">
@@ -133,12 +159,17 @@ function InstrumentPage() {
 			<header className="mt-1 flex flex-wrap items-end justify-between gap-x-8 gap-y-3">
 				<div className="max-w-3xl min-w-0">
 					<h1 className="text-[22px] leading-tight font-semibold tracking-[-0.015em] text-balance">
-						{row.name}
+						{history.name}
 						{!fund && row.symbol ? <span className="text-muted ml-2 text-[15px] font-normal">{row.symbol}</span> : null}
 					</h1>
 					{fund && longName(row) && longName(row) !== row.name ? (
 						<p className="text-muted mt-0.5 text-[13px]">{longName(row)}</p>
 					) : null}
+					{listed ? null : (
+						<p className="text-warn-fg mt-1 text-[13px]">
+							Nie ma go w ostatnim pobraniu z {SOURCES[source].name}; poniżej jego ostatnie zapisane dane.
+						</p>
+					)}
 					<dl className="mt-2.5 flex flex-wrap gap-x-5 gap-y-1 text-[13px]">
 						{facts
 							.filter((fact) => fact !== null)
@@ -160,7 +191,7 @@ function InstrumentPage() {
 					</div>
 					<button
 						type="button"
-						disabled={pinsFull}
+						disabled={pinsFull || !listed}
 						aria-pressed={isPinned}
 						onClick={() => setPins(togglePin(pins, externalId))}
 						title={pinsFull ? `Można przypiąć najwyżej ${MAX_PINS}` : undefined}
@@ -177,7 +208,7 @@ function InstrumentPage() {
 
 			<section
 				aria-label="Stopy zwrotu"
-				className="mt-5 flex flex-wrap gap-px overflow-hidden rounded-lg border bg-[var(--rule)] sm:inline-flex sm:max-w-full sm:flex-nowrap"
+				className="mt-5 grid grid-cols-3 gap-px overflow-hidden rounded-lg border bg-[var(--rule)] sm:inline-flex sm:max-w-full"
 			>
 				{returns.map((column) => {
 					const value = column.value(row)
@@ -187,10 +218,7 @@ function InstrumentPage() {
 							key={column.id}
 							data-heat={heat === 0 ? undefined : heat}
 							title={column.title}
-							className={cn(
-								"min-w-0 grow basis-[calc(33.333%-1px)] px-3 py-2 sm:w-32 sm:grow-0 sm:basis-auto",
-								heat === 0 && "bg-bg",
-							)}
+							className={cn("min-w-0 px-3 py-2 sm:w-32", heat === 0 && "bg-bg")}
 						>
 							<div className="text-muted truncate text-xs">{column.label}</div>
 							<div className={cn("num mt-0.5 text-[15px]", column.format === "momentum" && "font-semibold")}>
@@ -199,6 +227,9 @@ function InstrumentPage() {
 						</div>
 					)
 				})}
+				{Array.from({ length: fillers }, (_, i) => (
+					<div key={`filler-${i}`} aria-hidden className="bg-bg sm:hidden" />
+				))}
 			</section>
 
 			<section aria-label="Wykres" className="mt-6">
@@ -214,9 +245,7 @@ function InstrumentPage() {
 								options={ranges.map((r) => ({ value: r.id, label: r.label }))}
 							/>
 						) : null}
-						<span className="num text-muted text-[13px]">
-							{since ? `dane od ${since} · ${points.length} ${countNoun(points.length, NOTOWANIE)}` : "brak historii"}
-						</span>
+						<span className="num text-muted text-[13px]">{coverage}</span>
 					</div>
 					<Legend series={chart.series} onRemove={(id) => setPins(togglePin(pins, id))} mainId={externalId} />
 				</div>
@@ -242,14 +271,14 @@ function InstrumentPage() {
 									{chart.disjoint ? " · porównywane instrumenty nie mają wspólnych dat w tym zakresie" : ""}
 								</p>
 							)}
-							<PriceChart series={chart.series} mode={chart.mode} unit={currency} time={fund ? "date" : "instant"} />
+							<PriceChart series={chart.series} mode={chart.mode} unit={currency} kind={config.kind} />
 						</>
 					)}
 				</div>
-				{others.length === 0 ? (
+				{otherRows.length === 0 ? (
 					<p className="text-muted mt-3 text-xs">
-						Żeby porównać, przypnij do {MAX_PINS} {countNoun(MAX_PINS, config.noun)} w tabeli (ikona pinezki lub klawisz
-						p).
+						Porównanie: przypnij w tabeli maksymalnie {MAX_PINS} {countNoun(MAX_PINS, config.noun)} (pinezka przy nazwie
+						albo klawisz p), a pojawią się tu jako dodatkowe linie.
 					</p>
 				) : null}
 			</section>
@@ -279,7 +308,7 @@ function Legend({
 							type="button"
 							aria-label={`Usuń ${s.name} z porównania`}
 							onClick={() => onRemove(s.id)}
-							className="text-muted hover:text-fg inline-flex size-7 shrink-0 items-center justify-center rounded max-sm:size-9"
+							className="text-muted hover:text-fg inline-flex size-11 shrink-0 items-center justify-center rounded sm:size-7"
 						>
 							<X className="size-3" />
 						</button>

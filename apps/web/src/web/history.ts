@@ -12,9 +12,22 @@ export interface Point {
 	/** Epoch milliseconds: the valuation date (UTC midnight) for funds, the capture time for crypto. */
 	readonly t: number
 	readonly v: number
+	/** When the value was observed, if not at `t` (a rebase anchor carried from an earlier quote). */
+	readonly observed?: number
 }
 
 const DAY = 86_400_000
+const HOUR = 3_600_000
+
+/**
+ * How far apart points may be. `hover`: a series shows a value under the pointer only if it has one
+ * this close. `line`: a longer silence breaks the line. Funds skip weekends and holidays; crypto
+ * quotes are 6-hourly for a week, then thinned by the collector to one a day.
+ */
+export const GAPS = {
+	fund: { hover: 4 * DAY, line: 6 * DAY },
+	crypto: { hover: 27 * HOUR, line: 2 * DAY },
+} as const satisfies Record<InstrumentKind, { hover: number; line: number }>
 
 const epoch = (iso: string) => DateTime.toEpochMillis(DateTime.makeUnsafe(iso))
 
@@ -52,12 +65,17 @@ export type RangeId = (typeof RANGES)[number]["id"]
 
 export const isRangeId = (value: unknown): value is RangeId => RANGES.some((r) => r.id === value)
 
-/** The ranges the data actually spans (allowing two days of slack for weekends), plus max. */
+/**
+ * Ranges the plotted points span (two days of slack for weekends) with at least two points inside
+ * the window, plus max.
+ */
 export const coveredRanges = (points: ReadonlyArray<Point>) => {
 	const first = points[0]
 	const last = points.at(-1)
 	const span = first && last ? (last.t - first.t) / DAY : 0
-	return RANGES.filter((range) => range.id === "max" || span >= range.days - 2)
+	return RANGES.filter(
+		(range) => range.id === "max" || (span >= range.days - 2 && sliceRange(points, range.id, last?.t ?? 0).length >= 2),
+	)
 }
 
 export const pickRange = (points: ReadonlyArray<Point>, wanted: string | undefined): RangeId => {
@@ -73,19 +91,20 @@ export const sliceRange = (points: ReadonlyArray<Point>, range: RangeId, end: nu
 	return points.filter((p) => p.t >= start)
 }
 
-/** The value at or just before `t`; the first point when `t` precedes them all. */
-const valueAt = (points: ReadonlyArray<Point>, t: number) => {
-	let found = points[0]
+/** The last point at or before `t`. */
+const pointAt = (points: ReadonlyArray<Point>, t: number) => {
+	let found: Point | undefined
 	for (const point of points) {
 		if (point.t > t) break
 		found = point
 	}
-	return found?.v ?? null
+	return found
 }
 
 /**
- * Rebases every series to 100 at the first date all of them have data, dropping what comes before.
- * Returns null when the series share no dates.
+ * Rebases every series to 100 at `base`, the first time all of them have a value: the latest start.
+ * A series without a quote at `base` divides by its last earlier quote, and starts with an explicit
+ * 100 anchor at `base` that records when that quote was taken. Null when the series never overlap.
  */
 export const rebase = (series: ReadonlyArray<ReadonlyArray<Point>>) => {
 	const starts = series.map((points) => points[0]?.t ?? Infinity)
@@ -93,11 +112,40 @@ export const rebase = (series: ReadonlyArray<ReadonlyArray<Point>>) => {
 	const base = Math.max(...starts)
 	if (!Number.isFinite(base) || base > Math.min(...ends)) return null
 	const rebased = series.map((points) => {
-		const at = valueAt(points, base)
-		if (at === null || at === 0) return []
-		return points.filter((p) => p.t >= base).map((p) => ({ t: p.t, v: (p.v / at) * 100 }))
+		const anchor = pointAt(points, base)
+		if (!anchor || anchor.v === 0) return []
+		const scale = (v: number) => (v / anchor.v) * 100
+		const head: Point = anchor.t === base ? { t: base, v: 100 } : { t: base, v: 100, observed: anchor.t }
+		return [head, ...points.filter((p) => p.t > base).map((p) => ({ t: p.t, v: scale(p.v) }))]
 	})
 	return { base, series: rebased }
+}
+
+/** The point nearest to `t` in an oldest-first series, if one lies within `maxGap`. */
+export const nearestWithin = (points: ReadonlyArray<Point>, t: number, maxGap: number) => {
+	if (points.length === 0) return undefined
+	let lo = 0
+	let hi = points.length - 1
+	while (lo < hi) {
+		const mid = (lo + hi) >> 1
+		if (points[mid]!.t < t) lo = mid + 1
+		else hi = mid
+	}
+	const before = points[lo - 1]
+	const best = before && Math.abs(before.t - t) < Math.abs(points[lo]!.t - t) ? before : points[lo]!
+	return Math.abs(best.t - t) <= maxGap ? best : undefined
+}
+
+/** Runs of points with no silence longer than `maxGap`, drawn as separate lines. */
+export const splitAtGaps = (points: ReadonlyArray<Point>, maxGap: number) => {
+	const runs: Array<Array<Point>> = []
+	for (const point of points) {
+		const run = runs.at(-1)
+		const last = run?.at(-1)
+		if (run && last && point.t - last.t <= maxGap) run.push(point)
+		else runs.push([point])
+	}
+	return runs
 }
 
 /** Round tick values (1, 2, 2.5, 5 × 10ⁿ) covering [min, max]. */

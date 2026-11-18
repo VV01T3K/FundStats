@@ -16,6 +16,8 @@
 
 :root {
 	color-scheme: light;
+	/* The sticky header's height, border included; the table page fills the rest of the viewport. */
+	--header-h: calc(3rem + 1px);
 	--bg: oklch(0.992 0.002 250);
 	--panel: oklch(0.972 0.003 250);
 	--fg: oklch(0.23 0.012 255);
@@ -28,12 +30,12 @@
 	--warn: oklch(0.7 0.16 72);
 	--warn-fg: oklch(0.49 0.12 62);
 	--hover: oklch(0.45 0.03 255 / 0.055);
-	--gain-1: oklch(0.958 0.032 152);
-	--gain-2: oklch(0.918 0.062 152);
-	--gain-3: oklch(0.87 0.095 152);
-	--loss-1: oklch(0.958 0.027 22);
-	--loss-2: oklch(0.915 0.055 22);
-	--loss-3: oklch(0.865 0.088 22);
+	--gain-1: oklch(0.962 0.026 152);
+	--gain-2: oklch(0.934 0.045 152);
+	--gain-3: oklch(0.906 0.062 152);
+	--loss-1: oklch(0.962 0.024 22);
+	--loss-2: oklch(0.934 0.04 22);
+	--loss-3: oklch(0.906 0.055 22);
 	--series-1: #2a78d6;
 	--series-2: #eb6834;
 	--series-3: #1baf7a;
@@ -56,12 +58,12 @@
 		--warn: oklch(0.8 0.14 78);
 		--warn-fg: oklch(0.82 0.13 78);
 		--hover: oklch(0.9 0.01 255 / 0.06);
-		--gain-1: oklch(0.228 0.034 152);
-		--gain-2: oklch(0.27 0.056 152);
-		--gain-3: oklch(0.318 0.078 152);
-		--loss-1: oklch(0.228 0.032 22);
-		--loss-2: oklch(0.272 0.058 22);
-		--loss-3: oklch(0.322 0.085 22);
+		--gain-1: oklch(0.222 0.028 152);
+		--gain-2: oklch(0.25 0.042 152);
+		--gain-3: oklch(0.28 0.055 152);
+		--loss-1: oklch(0.222 0.028 22);
+		--loss-2: oklch(0.252 0.045 22);
+		--loss-3: oklch(0.282 0.06 22);
 		--series-1: #3987e5;
 		--series-2: #d95926;
 		--series-3: #199e70;
@@ -84,17 +86,29 @@
 	--warn: oklch(0.8 0.14 78);
 	--warn-fg: oklch(0.82 0.13 78);
 	--hover: oklch(0.9 0.01 255 / 0.06);
-	--gain-1: oklch(0.228 0.034 152);
-	--gain-2: oklch(0.27 0.056 152);
-	--gain-3: oklch(0.318 0.078 152);
-	--loss-1: oklch(0.228 0.032 22);
-	--loss-2: oklch(0.272 0.058 22);
-	--loss-3: oklch(0.322 0.085 22);
+	--gain-1: oklch(0.222 0.028 152);
+	--gain-2: oklch(0.25 0.042 152);
+	--gain-3: oklch(0.28 0.055 152);
+	--loss-1: oklch(0.222 0.028 22);
+	--loss-2: oklch(0.252 0.045 22);
+	--loss-3: oklch(0.282 0.06 22);
 	--series-1: #3987e5;
 	--series-2: #d95926;
 	--series-3: #199e70;
 	--series-4: #c98500;
 	--series-5: #d55181;
+}
+
+/* Crypto pages below lg put the provider switch on a second header row (AppHeader). */
+@media (width < 40rem) {
+	:root:has(header[data-providers]) {
+		--header-h: calc(6.5rem + 1px);
+	}
+}
+@media (40rem <= width < 64rem) {
+	:root:has(header[data-providers]) {
+		--header-h: calc(5.75rem + 1px);
+	}
 }
 
 @theme inline {
@@ -186,6 +200,8 @@
 	.sheet {
 		border-collapse: separate;
 		border-spacing: 0;
+		/* From sm up the name column takes what the figures (--fixed-w, set per preset) leave, 19–36rem. */
+		--name-w: clamp(19rem, calc(100cqw - var(--fixed-w)), 36rem);
 	}
 	.sheet th,
 	.sheet td {
@@ -210,8 +226,7 @@
 		box-shadow: inset -1px 0 0 var(--rule);
 	}
 	.sheet tbody tr:hover td,
-	.sheet tbody tr:focus-within td,
-	.sheet tbody tr[data-active] td {
+	.sheet tbody tr:focus-within td {
 		background-image: linear-gradient(var(--hover), var(--hover));
 	}
 	/* Table rows draw no outline in Chromium; ring the focused row with its cells' inset shadows. */
@@ -229,7 +244,10 @@
 			inset 0 2px 0 var(--accent),
 			inset 0 -2px 0 var(--accent);
 	}
-	.sheet tbody tr:focus-visible td:last-child {
+	.sheet tbody tr:focus-visible td.spacer {
+		box-shadow: none;
+	}
+	.sheet tbody tr:focus-visible td:nth-last-child(2) {
 		box-shadow:
 			inset -2px 0 0 var(--accent),
 			inset 0 2px 0 var(--accent),

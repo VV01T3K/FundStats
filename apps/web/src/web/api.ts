@@ -55,12 +55,17 @@ export const sourcesQuery = () =>
 	})
 
 /** The API's maximum: years of daily points for any source (older crypto quotes are thinned to one a day). */
-const HISTORY_LIMIT = 5000
+export const HISTORY_LIMIT = 5000
 
+/** An instrument's stored history, newest first; null when the source never reported it. */
 export const historyQuery = (source: SourceId, externalId: string) =>
 	queryOptions({
 		queryKey: ["history", source, externalId],
 		queryFn: () =>
-			callApi((api) => api.sources.history({ params: { source, externalId }, query: { limit: HISTORY_LIMIT } })),
+			callApi((api) =>
+				api.sources
+					.history({ params: { source, externalId }, query: { limit: HISTORY_LIMIT } })
+					.pipe(Effect.catchTags({ InstrumentNotFound: () => Effect.succeed(null) })),
+			),
 		staleTime: 5 * 60_000,
 	})

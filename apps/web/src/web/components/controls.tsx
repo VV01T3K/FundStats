@@ -32,7 +32,7 @@ export function Segmented<T extends string>({
 						title={option.title}
 						onClick={() => onChange(option.value)}
 						className={cn(
-							"inline-flex h-10 items-center gap-1.5 rounded-[5px] px-3 text-[13px] whitespace-nowrap transition-colors duration-150 sm:h-7 sm:px-2.5",
+							"inline-flex h-11 items-center gap-1.5 rounded-[5px] px-3 text-[13px] whitespace-nowrap transition-colors duration-150 sm:h-7 sm:px-2.5",
 							active
 								? "bg-bg text-fg font-medium shadow-[0_1px_2px_oklch(0_0_0/0.12)] ring-1 ring-rule"
 								: "text-muted hover:text-fg",

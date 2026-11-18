@@ -25,14 +25,18 @@ const small = new Intl.NumberFormat(LOCALE, { maximumSignificantDigits: 6, useGr
 const compact = new Intl.NumberFormat(LOCALE, { notation: "compact", maximumSignificantDigits: 3 })
 const integer = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 0, useGrouping: "always" })
 
+/**
+ * The value at two decimals, halves away from zero: the one rounding rule behind both the printed
+ * percent and its heat step, so a cell reading `0,00%` is never washed and `−0,01%` always is.
+ */
+export const roundForDisplay = (value: number) => Math.sign(value) * Number(Math.abs(value).toFixed(2))
+
 /** `+4,12%`, `−0,73%`, `0,00%`. */
-export const formatPercent = (value: number) => `${typeset(percentFormat.format(value))}%`
+export const formatPercent = (value: number) => `${typeset(percentFormat.format(roundForDisplay(value)))}%`
 
-/** Momentum is a weighted average of percentages, printed like one. */
-export const formatSigned = (value: number) => typeset(percentFormat.format(value))
-
-/** Two decimals from 1 up, up to six significant digits below. */
-export const formatPrice = (value: number) => typeset(Math.abs(value) >= 1 ? fixed2.format(value) : small.format(value))
+/** Two decimals from 1 up (including what rounds up to 1), up to six significant digits below. */
+export const formatPrice = (value: number) =>
+	typeset(Math.abs(Number(value.toPrecision(6))) >= 1 ? fixed2.format(value) : small.format(value))
 
 /** `1,3 bln`, `221 mld`, `64,5 mln` (Polish short scale words). */
 export const formatCompact = (value: number) => typeset(compact.format(value))
@@ -54,9 +58,6 @@ export const formatFixed = (value: number, decimals: number) => {
 }
 
 export const formatInteger = (value: number) => typeset(integer.format(value))
-
-/** The value rounded the way it is printed, so a cell reading `0,00%` is treated as zero. */
-export const roundForDisplay = (value: number) => Math.round(value * 100) / 100
 
 /** `2026-11-17` → `17.11.2026`. Valuation dates are calendar dates; no time zone applies. */
 export const formatDate = (isoDate: string) => {

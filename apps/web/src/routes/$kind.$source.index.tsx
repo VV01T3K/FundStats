@@ -7,11 +7,11 @@ import { useEffect, useMemo, useRef } from "react"
 import { Tooltip, TooltipContent, TooltipTrigger } from "#/components/ui/tooltip"
 import { cn } from "#/lib/utils"
 import { latestQuery } from "#/web/api.ts"
-import { ProviderSwitch } from "#/web/components/AppHeader.tsx"
 import { Segmented, StatusDot, TextButton } from "#/web/components/controls.tsx"
 import { FilterRow, FiltersSheet, SearchBox, SortMenu } from "#/web/components/Filters.tsx"
 import { Footer } from "#/web/components/Footer.tsx"
 import { Sheet } from "#/web/components/Sheet.tsx"
+import { SheetScroller } from "#/web/components/SheetScroller.tsx"
 import { countNoun } from "#/web/format.ts"
 import { freshness, tableAsOf } from "#/web/freshness.ts"
 import {
@@ -61,8 +61,10 @@ function SourceTablePage() {
 				searchRef.current?.focus()
 				searchRef.current?.select()
 			} else if (
-				(event.key === "j" || event.key === "k") &&
-				!(event.target instanceof Element && event.target.closest("[data-sheet]"))
+				// j/k from anywhere outside the sheet; arrows only from the page itself, so they still scroll and step controls.
+				((event.key === "j" || event.key === "k") &&
+					!(event.target instanceof Element && event.target.closest("[data-sheet]"))) ||
+				((event.key === "ArrowDown" || event.key === "ArrowUp") && event.target === document.body)
 			) {
 				const row = document.querySelector<HTMLElement>('[data-sheet] tbody tr[tabindex="0"]')
 				if (row) {
@@ -92,9 +94,8 @@ function SourceTablePage() {
 		) : null
 
 	return (
-		<main className="flex h-[calc(100dvh-3rem)] flex-col">
+		<main className="flex h-[calc(100dvh-var(--header-h))] flex-col">
 			<div className="mx-auto w-full max-w-[1600px] shrink-0 space-y-2.5 px-4 pt-3 pb-2.5">
-				{kind === "crypto" ? <ProviderSwitch current={source} className="lg:hidden" /> : null}
 				<div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
 					<h1 className="text-[17px] font-semibold tracking-[-0.01em]">
 						{kind === "crypto" ? (
@@ -132,40 +133,33 @@ function SourceTablePage() {
 					{presets ? <div className="ml-auto max-sm:hidden">{presets}</div> : null}
 				</div>
 
-				<div className="flex items-center gap-x-3 gap-y-2 max-sm:hidden sm:flex-wrap">
+				<div className="flex flex-wrap items-center gap-x-3 gap-y-2">
 					<SearchBox
 						inputRef={searchRef}
 						value={search.q ?? ""}
-						onChange={(q) => update({ q: q || undefined })}
-						placeholder={config.kind === "fund" ? "Szukaj funduszu, kodu, pełnej nazwy" : "Szukaj nazwy lub symbolu"}
-						className="w-72"
+						onChange={(q) => update({ q: q.trim() || undefined })}
+						placeholder={config.kind === "fund" ? "Szukaj: nazwa, kod" : "Szukaj: nazwa, symbol"}
+						className="min-w-0 flex-1 sm:w-72 sm:flex-none"
 					/>
-					<FilterRow config={config} rows={data.rows} view={view} update={update} />
-					{hasFilters(view) ? <TextButton onClick={() => update(CLEAR_FILTERS)}>Wyczyść filtry</TextButton> : null}
-				</div>
-
-				<div className="flex flex-col gap-2 sm:hidden">
-					<div className="flex items-center gap-2">
-						<SearchBox
-							inputRef={null}
-							value={search.q ?? ""}
-							onChange={(q) => update({ q: q || undefined })}
-							placeholder={config.kind === "fund" ? "Szukaj funduszu" : "Szukaj nazwy, symbolu"}
-							className="min-w-0 flex-1"
-						/>
+					<div className="flex items-center gap-2 sm:hidden">
 						<FiltersSheet config={config} rows={data.rows} view={view} update={update} shown={rows.length} />
 						<SortMenu view={view} onSort={(sort, desc) => update({ sort, dir: desc ? "desc" : "asc" })} />
 					</div>
-					{config.presets.length > 1 ? (
-						<Segmented
-							label="Zestaw kolumn"
-							value={view.preset.id}
-							onChange={(id) => update(presetPatch(config, view, id))}
-							options={config.presets.map((p) => ({ value: p.id, label: p.label }))}
-							className="flex w-full [&>button]:flex-1 [&>button]:justify-center [&>button]:px-1"
-						/>
-					) : null}
+					<div className="hidden sm:contents">
+						<FilterRow config={config} rows={data.rows} view={view} update={update} />
+						{hasFilters(view) ? <TextButton onClick={() => update(CLEAR_FILTERS)}>Wyczyść filtry</TextButton> : null}
+					</div>
 				</div>
+
+				{config.presets.length > 1 ? (
+					<Segmented
+						label="Zestaw kolumn"
+						value={view.preset.id}
+						onChange={(id) => update(presetPatch(config, view, id))}
+						options={config.presets.map((p) => ({ value: p.id, label: p.label }))}
+						className="flex w-full sm:hidden [&>button]:flex-1 [&>button]:justify-center [&>button]:px-1"
+					/>
+				) : null}
 
 				{pinnedRows.length > 0 ? (
 					<div className="flex flex-wrap items-center gap-1.5 text-[13px]">
@@ -175,7 +169,7 @@ function SourceTablePage() {
 						{pinnedRows.map((row) => (
 							<span
 								key={row.externalId}
-								className="bg-panel inline-flex h-7 max-w-60 items-center rounded-md border pl-2 max-sm:h-9"
+								className="bg-panel inline-flex h-11 max-w-60 items-center rounded-md border pl-2 sm:h-7"
 							>
 								<Link
 									to="/$kind/$source/$externalId"
@@ -189,7 +183,7 @@ function SourceTablePage() {
 									type="button"
 									aria-label={`Odepnij ${row.name}`}
 									onClick={() => pin(row.externalId)}
-									className="text-muted hover:text-fg inline-flex h-full w-7 shrink-0 items-center justify-center max-sm:w-9"
+									className="text-muted hover:text-fg inline-flex h-full w-11 shrink-0 items-center justify-center sm:w-7"
 								>
 									<X className="size-3" />
 								</button>
@@ -200,14 +194,14 @@ function SourceTablePage() {
 				) : null}
 			</div>
 
-			<div className="min-h-0 flex-1 overflow-auto border-t" data-scroll-restoration-id={`sheet-${source}`}>
+			<SheetScroller id={`sheet-${source}`}>
 				{noData ? (
 					<NoDataYet
 						source={source}
 						error={data.source.lastRun?.status === "failed" ? data.source.lastRun.error : null}
 					/>
 				) : (
-					<div className="mx-auto max-w-[1600px]">
+					<div className="@container mx-auto max-w-[1600px]">
 						<Sheet
 							config={config}
 							rows={rows}
@@ -229,7 +223,7 @@ function SourceTablePage() {
 						<Footer source={source} collected={data.source.lastSuccess?.finishedAt ?? null} className="px-4" />
 					</div>
 				)}
-			</div>
+			</SheetScroller>
 		</main>
 	)
 }

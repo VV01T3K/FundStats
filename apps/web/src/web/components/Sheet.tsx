@@ -10,12 +10,12 @@ import {
 	useTable,
 } from "@tanstack/react-table"
 import { ArrowDown, ArrowUp, Pin } from "lucide-react"
-import { type KeyboardEvent, type MouseEvent, type ReactNode, useMemo, useState } from "react"
+import { type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode, useMemo, useState } from "react"
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "#/components/ui/tooltip"
 import { cn } from "#/lib/utils"
 
-import { formatCompact, formatDate, formatInteger, formatPercent, formatPrice, formatSigned } from "../format.ts"
+import { formatCompact, formatDate, formatInteger, formatPercent, formatPrice } from "../format.ts"
 import { heatStep } from "../heat.ts"
 import { MAX_PINS, type ResolvedView, type TableSearch } from "../search.ts"
 import {
@@ -52,9 +52,8 @@ const buildDefs = (columns: ReadonlyArray<Column>): Array<Def> => [
 export const formatCell = (column: Column, value: number) => {
 	switch (column.format) {
 		case "percent":
-			return formatPercent(value)
 		case "momentum":
-			return formatSigned(value)
+			return formatPercent(value)
 		case "price":
 			return formatPrice(value)
 		case "compact":
@@ -76,6 +75,16 @@ export interface SheetProps {
 	readonly onTogglePin: (externalId: string) => void
 	readonly onOpen: (externalId: string) => void
 	readonly empty: ReactNode
+}
+
+/** Column widths from `sm` up (in rem), so the name column can take what the figures leave. */
+const COLUMN_REM: Record<Column["format"], number> = {
+	percent: 6,
+	momentum: 6.25,
+	price: 7.75,
+	compact: 6,
+	risk: 5.5,
+	rank: 3,
 }
 
 const isInteractive = (target: EventTarget) => target instanceof Element && target.closest("a, button") !== null
@@ -167,9 +176,16 @@ export function Sheet({ config, rows, view, search, asOf, onSort, onTogglePin, o
 
 	const ariaSort = (id: string) => (view.sort === id ? (view.desc ? "descending" : "ascending") : undefined)
 	const nameLeft = crypto ? "left-12" : "left-0"
+	// Everything but the name text: figures, the rank column, the name cell's padding and a sliver of spacer.
+	const fixedRem = numeric.reduce((sum, column) => sum + COLUMN_REM[column.format], 0) + (crypto ? 3 + 1.25 : 1.75) + 1
 
 	return (
-		<table className="sheet w-full text-[13px]" data-sheet>
+		<table
+			className="sheet w-full text-[13px]"
+			data-sheet
+			data-kind={config.kind}
+			style={{ "--fixed-w": `${fixedRem}rem` } as CSSProperties}
+		>
 			<thead>
 				<tr className="text-xs font-medium">
 					{crypto ? (
@@ -185,11 +201,11 @@ export function Sheet({ config, rows, view, search, asOf, onSort, onTogglePin, o
 						scope="col"
 						aria-sort={ariaSort(NAME_COLUMN)}
 						className={cn(
-							"sticky-col edge pr-3 text-left",
+							"sticky-col edge pr-2 text-left sm:pr-3",
 							nameLeft,
 							crypto
-								? "min-w-[11rem] pl-2 sm:min-w-[20.25rem] sm:pl-[2.125rem] lg:min-w-[25.25rem]"
-								: "min-w-[11.5rem] pl-4 sm:min-w-[20.75rem] sm:pl-[2.625rem] lg:min-w-[25.75rem]",
+								? "min-w-[9.75rem] pl-[2.125rem] sm:min-w-[calc(var(--name-w)+1.25rem)]"
+								: "min-w-[12.75rem] pl-[2.625rem] sm:min-w-[calc(var(--name-w)+1.75rem)]",
 						)}
 					>
 						{sortButton(NAME_COLUMN, "Nazwa", null, "left")}
@@ -199,13 +215,17 @@ export function Sheet({ config, rows, view, search, asOf, onSort, onTogglePin, o
 							key={column.id}
 							scope="col"
 							aria-sort={ariaSort(column.id)}
-							className={cn("min-w-[4.5rem] px-2.5 text-right", column.format === "risk" && "pl-5")}
+							style={{ "--col-w": `${COLUMN_REM[column.format]}rem` } as CSSProperties}
+							className={cn(
+								"snap-start px-2 text-right sm:w-[var(--col-w)] sm:min-w-[var(--col-w)] sm:px-2.5",
+								column.format === "risk" && "pl-3 sm:pl-5",
+							)}
 						>
 							{sortButton(column.id, column.label, column.title, "right")}
 						</th>
 					))}
 					{/* Takes the spare width, so the rules run edge to edge while the figures stay near the names. */}
-					<th aria-hidden className="w-full min-w-4" />
+					<th aria-hidden className="spacer w-full min-w-4" />
 				</tr>
 			</thead>
 			<tbody onKeyDown={onKeyDown}>
@@ -226,7 +246,7 @@ export function Sheet({ config, rows, view, search, asOf, onSort, onTogglePin, o
 									{row.metrics.rank === undefined ? "–" : formatInteger(row.metrics.rank)}
 								</td>
 							) : null}
-							<td className={cn("sticky-col edge py-1.5 pr-3 sm:py-[3px]", nameLeft, crypto ? "pl-2" : "pl-4")}>
+							<td className={cn("sticky-col edge py-1.5 pr-2 sm:py-[3px] sm:pr-3", nameLeft, crypto ? "pl-2" : "pl-4")}>
 								<NameCell
 									config={config}
 									row={row}
@@ -234,13 +254,14 @@ export function Sheet({ config, rows, view, search, asOf, onSort, onTogglePin, o
 									search={search}
 									pinned={pinned}
 									pinDisabled={!pinned && pinsFull}
+									focusable={index === activeIndex}
 									onTogglePin={() => onTogglePin(row.externalId)}
 								/>
 							</td>
 							{numeric.map((column) => (
 								<ValueCell key={column.id} column={column} row={row} />
 							))}
-							<td aria-hidden />
+							<td aria-hidden className="spacer" />
 						</tr>
 					)
 				})}
@@ -268,6 +289,7 @@ function NameCell({
 	search,
 	pinned,
 	pinDisabled,
+	focusable,
 	onTogglePin,
 }: {
 	readonly config: TableConfig
@@ -276,18 +298,16 @@ function NameCell({
 	readonly search: TableSearch
 	readonly pinned: boolean
 	readonly pinDisabled: boolean
+	/** The row holding the sheet's roving focus: its link and pin are in the Tab order. */
+	readonly focusable: boolean
 	readonly onTogglePin: () => void
 }) {
 	const fund = config.kind === "fund"
-	const sub = fund
-		? [
-				row.category ? categoryLabel(row.category) : null,
-				fundFamily(row),
-				row.asOf && asOf && row.asOf !== asOf ? `wycena ${formatDate(row.asOf)}` : null,
-			].filter((part) => part !== null)
-		: []
+	const ownDate = fund && row.asOf && asOf && row.asOf !== asOf ? `wycena ${formatDate(row.asOf)}` : null
+	const category = fund && row.category ? categoryLabel(row.category) : null
+	const family = fund ? fundFamily(row) : null
 	return (
-		<div className="flex w-[9.75rem] items-center gap-1.5 sm:w-[19rem] lg:w-[24rem]">
+		<div className={cn("flex items-center gap-1.5 sm:w-[var(--name-w)]", fund ? "w-[11.25rem]" : "w-[8.75rem]")}>
 			<button
 				type="button"
 				onClick={onTogglePin}
@@ -297,12 +317,13 @@ function NameCell({
 				title={
 					pinDisabled ? `Można przypiąć najwyżej ${MAX_PINS}` : pinned ? "Odepnij (p)" : "Przypnij do porównania (p)"
 				}
-				tabIndex={-1}
+				tabIndex={focusable ? 0 : -1}
 				className={cn(
-					"-ml-1 inline-flex size-6 shrink-0 items-center justify-center rounded transition-[opacity,color] duration-150 max-sm:hidden",
+					// The hit area reaches 44px on phones without widening the column.
+					"relative -ml-1 inline-flex size-6 shrink-0 items-center justify-center rounded transition-[opacity,color] duration-150 before:absolute before:-inset-2.5 before:content-['']",
 					pinned
 						? "text-accent"
-						: "text-muted hover:text-fg opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 disabled:opacity-0",
+						: "text-muted hover:text-fg opacity-50 disabled:opacity-20 sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100 sm:disabled:opacity-0",
 				)}
 			>
 				<Pin className={cn("size-3.5", pinned && "fill-current")} />
@@ -313,20 +334,31 @@ function NameCell({
 						to="/$kind/$source/$externalId"
 						params={{ kind: fund ? "funds" : "crypto", source: config.source as SourceId, externalId: row.externalId }}
 						search={search}
-						tabIndex={-1}
+						tabIndex={focusable ? 0 : -1}
 						className="truncate font-medium hover:underline"
 						title={row.name}
 					>
 						{row.name}
 					</Link>
 					{!fund && row.symbol ? <span className="text-muted shrink-0 text-[11px]">{row.symbol}</span> : null}
-					{pinned ? (
-						<Pin aria-label="przypięty" className="text-accent size-3 shrink-0 fill-current sm:hidden" />
-					) : null}
 				</div>
-				{sub.length > 0 ? (
-					<div className="text-muted truncate text-[11px]" title={sub.join(" · ")}>
-						{sub.join(" · ")}
+				{fund ? (
+					<div
+						className="text-muted flex min-w-0 text-[11px]"
+						title={[ownDate, category, family].filter(Boolean).join(" · ")}
+					>
+						{/* An exception to the table's valuation date is never truncated. */}
+						{ownDate ? <span className="text-fg/75 shrink-0 font-medium">{ownDate}</span> : null}
+						<span className="truncate">
+							{ownDate && category ? "\u00A0· " : null}
+							{category}
+							{family ? (
+								<span className="max-sm:hidden">
+									{category ? " · " : null}
+									{family}
+								</span>
+							) : null}
+						</span>
 					</div>
 				) : null}
 			</div>
@@ -337,21 +369,31 @@ function NameCell({
 function ValueCell({ column, row }: { readonly column: Column; readonly row: SnapshotRow }) {
 	const value = column.value(row)
 	const heat = column.heatCap === null ? 0 : heatStep(value, column.heatCap)
-	const risk = column.format === "risk"
+	const riskName = column.format === "risk" && value !== null ? fundRiskName(row) : null
 	return (
 		<td
 			data-heat={heat === 0 ? undefined : heat}
-			title={
-				risk && value !== null ? `Ryzyko ${value}/7${fundRiskName(row) ? ` — ${fundRiskName(row)}` : ""}` : undefined
-			}
 			className={cn(
-				"num px-2.5 text-right",
-				risk && "pl-5",
+				"num px-2 text-right sm:px-2.5",
+				column.format === "risk" && "pl-3 sm:pl-5",
 				column.format === "momentum" && "font-medium",
 				column.format === "compact" && "text-muted",
 			)}
 		>
-			{value === null ? <span className="text-muted">–</span> : formatCell(column, value)}
+			{value === null ? (
+				<span className="text-muted">–</span>
+			) : riskName ? (
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<span>{formatCell(column, value)}</span>
+					</TooltipTrigger>
+					<TooltipContent side="left">
+						Ryzyko {value}/7 · {riskName}
+					</TooltipContent>
+				</Tooltip>
+			) : (
+				formatCell(column, value)
+			)}
 		</td>
 	)
 }

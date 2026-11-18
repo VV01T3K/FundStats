@@ -81,7 +81,7 @@ const InstrumentHistory = Schema.Struct({
 	name: Schema.String,
 	points: Schema.Array(HistoryPoint),
 })
-type InstrumentHistory = typeof InstrumentHistory.Type
+export type InstrumentHistory = typeof InstrumentHistory.Type
 
 const Health = Schema.Struct({
 	status: Schema.Literal("ok"),

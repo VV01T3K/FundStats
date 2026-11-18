@@ -38,7 +38,7 @@ const text = (value: unknown, max: number) => {
 	return trimmed.length > 0 && trimmed.length <= max ? trimmed : undefined
 }
 
-export const splitList = (value: string | undefined) =>
+const splitList = (value: string | undefined) =>
 	value === undefined ? [] : value.split(",").filter((item) => item.length > 0)
 
 const joinList = (items: ReadonlyArray<string | number>) => (items.length > 0 ? items.join(",") : undefined)
@@ -52,8 +52,9 @@ const normalizeRisk = (value: string | undefined) => {
 	return joinList([...levels].sort((a, b) => a - b))
 }
 
+/** Ids are resolved against the source's rows (and capped) in `resolvePins`; here only bounded. */
 const normalizePins = (value: string | undefined) =>
-	joinList([...new Set(splitList(value).filter((id) => id.length <= 64))].slice(0, MAX_PINS))
+	joinList([...new Set(splitList(value).filter((id) => id.length <= 64))].slice(0, 16))
 
 export const validateTableSearch = (raw: Record<string, unknown>): TableSearch => {
 	const out: { -readonly [K in keyof TableSearch]: TableSearch[K] } = {}
@@ -98,6 +99,14 @@ const visibleColumns = (config: TableConfig, preset: Preset): ReadonlyArray<Colu
 	...config.fixed,
 ]
 
+/** Pinned ids that name a row of this source, first four; stale or foreign ids take no slot. */
+export const resolvePins = (pin: string | undefined, rows: ReadonlyArray<SnapshotRow>) => {
+	const known = new Set(rows.map((row) => row.externalId))
+	return splitList(pin)
+		.filter((id) => known.has(id))
+		.slice(0, MAX_PINS)
+}
+
 /** Families present in the data, with their row counts. */
 export const familiesOf = (rows: ReadonlyArray<SnapshotRow>) => {
 	const counts = new Map<string, number>()
@@ -134,7 +143,7 @@ export const resolveView = (
 			isFund && search.category && FUND_CATEGORIES.some((c) => c.value === search.category) ? search.category : null,
 		risk: new Set(isFund ? splitList(search.risk).map(Number) : []),
 		family: isFund && search.family && familiesOf(rows).has(search.family) ? search.family : null,
-		pins: splitList(search.pin),
+		pins: resolvePins(search.pin, rows),
 	}
 }
 
