@@ -88,9 +88,10 @@ const PIN_STATUS = {
 	error: "błąd wczytywania",
 	missing: "brak historii",
 	empty: "brak notowań w tym okresie",
+	unpriced: "brak wyceny powyżej zera",
 } as const
 
-type PinPoints = ReadonlyArray<Point> | Exclude<keyof typeof PIN_STATUS, "empty">
+type PinPoints = ReadonlyArray<Point> | Exclude<keyof typeof PIN_STATUS, "empty" | "unpriced">
 
 interface LegendEntry {
 	readonly id: string
@@ -117,16 +118,12 @@ const buildChart = (
 	}
 	const lines = series.map(({ id, name, points: raw }, i) => {
 		const color = SERIES_COLORS[i]!
-		const points = typeof raw === "string" ? null : changeWithin(raw, frame)
-		const first = points?.[0]
-		const note =
-			typeof raw === "string"
-				? PIN_STATUS[raw]
-				: first
-					? `od ${formatStart(first.t)}${points.length === 1 ? " · 1 notowanie" : ""}`
-					: PIN_STATUS.empty
-		const entry: LegendEntry = { id, name, color, drawn: first !== undefined, note }
-		return { entry, line: first ? { id, name, color, points } : null }
+		const points = typeof raw === "string" ? raw : changeWithin(raw, frame)
+		if (typeof points === "string") {
+			return { entry: { id, name, color, drawn: false, note: PIN_STATUS[points] }, line: null }
+		}
+		const note = `od ${formatStart(points[0]!.t)}${points.length === 1 ? " · 1 notowanie" : ""}`
+		return { entry: { id, name, color, drawn: true, note }, line: { id, name, color, points } }
 	})
 	return {
 		mode: "change" as const,
@@ -338,7 +335,7 @@ function InstrumentPage() {
 									? "Zmiana od pierwszego notowania każdej linii w zakresie, %"
 									: `${fund ? "Wartość j.u." : "Cena"}, ${currency}`}
 							</p>
-							<PriceChart series={chart.series} mode={chart.mode} unit={currency} kind={config.kind} />
+							<PriceChart series={chart.series} mode={chart.mode} unit={currency} kind={config.kind} domain={frame} />
 						</>
 					)}
 				</div>
@@ -366,15 +363,15 @@ function Legend({
 }) {
 	if (entries.length < 2) return null
 	return (
-		<ul className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]" aria-label="Legenda">
+		<ul className="flex max-w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[13px]" aria-label="Legenda">
 			{entries.map((entry) => (
-				<li key={entry.id} className="flex max-w-96 min-w-0 items-center gap-1.5">
+				<li key={entry.id} className="flex max-w-full min-w-0 items-center gap-1.5 sm:max-w-96">
 					<span
 						aria-hidden
 						className={cn("h-0.5 w-3.5 shrink-0 rounded-full", !entry.drawn && "opacity-30")}
 						style={{ background: entry.color }}
 					/>
-					<span className={cn("truncate", !entry.drawn && "text-muted")}>{entry.name}</span>
+					<span className={cn("min-w-0 truncate", !entry.drawn && "text-muted")}>{entry.name}</span>
 					<span className="text-muted shrink-0 text-xs">{entry.drawn ? entry.note : `(${entry.note})`}</span>
 					{entry.id === mainId ? null : (
 						<button

@@ -96,12 +96,29 @@ export const rangeWindow = (range: RangeId, points: ReadonlyArray<Point>) => {
 export const clip = (points: ReadonlyArray<Point>, frame: { readonly start: number; readonly end: number }) =>
 	points.filter((p) => p.t >= frame.start && p.t <= frame.end)
 
-/** A series inside the window as percent change from its own first quote there (0 at that quote). */
-export const changeWithin = (points: ReadonlyArray<Point>, frame: { readonly start: number; readonly end: number }) => {
+/**
+ * A series inside the window as percent change from its own first positive quote there (0 at that
+ * quote; change from 0 is undefined). `empty`: no quote in the window; `unpriced`: none above 0.
+ */
+export const changeWithin = (
+	points: ReadonlyArray<Point>,
+	frame: { readonly start: number; readonly end: number },
+): ReadonlyArray<Point> | "empty" | "unpriced" => {
 	const inside = clip(points, frame)
-	const first = inside[0]
-	return first ? inside.map((p) => ({ t: p.t, v: (p.v / first.v - 1) * 100 })) : []
+	if (inside.length === 0) return "empty"
+	const from = inside.findIndex((p) => p.v > 0)
+	if (from === -1) return "unpriced"
+	const base = inside[from]!.v
+	return inside.slice(from).map((p) => ({ t: p.t, v: (p.v / base - 1) * 100 }))
 }
+
+/** Every time any series has a quote, oldest first: where the crosshair can stop. */
+export const plottedTimes = (series: ReadonlyArray<ReadonlyArray<Point>>) =>
+	[...new Set(series.flatMap((points) => points.map((p) => p.t)))].sort((a, b) => a - b)
+
+/** Each series' own nearest quote to `t` within `maxGap`, looked up independently of the others. */
+export const valuesAt = (series: ReadonlyArray<ReadonlyArray<Point>>, t: number, maxGap: number) =>
+	series.map((points) => nearestWithin(points, t, maxGap))
 
 /** The point nearest to `t` in an oldest-first series, if one lies within `maxGap`. */
 export const nearestWithin = (points: ReadonlyArray<Point>, t: number, maxGap: number) => {

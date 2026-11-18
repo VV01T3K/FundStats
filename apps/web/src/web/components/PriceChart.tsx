@@ -13,7 +13,17 @@ import {
 	formatPercent,
 	formatPrice,
 } from "../format.ts"
-import { GAPS, nearestWithin, niceTicks, type Point, splitAtGaps, timeTicks, type TimeUnit } from "../history.ts"
+import {
+	GAPS,
+	nearestWithin,
+	niceTicks,
+	plottedTimes,
+	type Point,
+	splitAtGaps,
+	timeTicks,
+	type TimeUnit,
+	valuesAt,
+} from "../history.ts"
 
 export interface ChartSeries {
 	readonly id: string
@@ -55,6 +65,7 @@ export function PriceChart({
 	mode,
 	unit,
 	kind,
+	domain,
 	height = 300,
 }: {
 	readonly series: ReadonlyArray<ChartSeries>
@@ -64,6 +75,8 @@ export function PriceChart({
 	readonly unit: string
 	/** Funds are placed by valuation date, live quotes by capture time. */
 	readonly kind: InstrumentKind
+	/** The selected window: the x axis spans it, so adding a series never moves another. */
+	readonly domain: { readonly start: number; readonly end: number }
 	readonly height?: number
 }) {
 	const wrapper = useRef<HTMLDivElement>(null)
@@ -93,8 +106,8 @@ export function PriceChart({
 
 	const scales = useMemo(() => {
 		const all = series.flatMap((s) => s.points)
-		const t0 = Math.min(...all.map((p) => p.t))
-		const t1 = Math.max(...all.map((p) => p.t))
+		const t0 = domain.start
+		const t1 = domain.end
 		const v0 = Math.min(...all.map((p) => p.v))
 		const v1 = Math.max(...all.map((p) => p.v))
 		const pad = (v1 - v0) * 0.06 || Math.abs(v0) * 0.01 || 1
@@ -107,26 +120,31 @@ export function PriceChart({
 		const yOf = (v: number) => MARGIN.top + (1 - (v - lo) / (hi - lo || 1)) * plotH
 		const xTicks = timeTicks(t0, t1, Math.max(2, Math.floor(plotW / 90)))
 		return { t0, t1, span, x, y: yOf, yTicks, yStep: y.step, xTicks, xLabels: tickLabels(xTicks.ticks, xTicks.unit) }
-	}, [series, plotW, plotH])
+	}, [series, domain.start, domain.end, plotW, plotH])
 
 	const tickDecimals = scales.yStep >= 1 ? 0 : Math.min(8, Math.ceil(-Math.log10(scales.yStep)))
 	const formatWhen = (t: number) => (kind === "fund" ? formatEpochDay(t) : formatCapturedFull(epochToIso(t)))
 	const formatShort = (t: number) => (kind === "fund" ? formatEpochDay(t) : formatCaptured(epochToIso(t)))
 
 	const main = series[0]
-	const mainPoints = main?.points ?? []
-	const hovered = active === null ? undefined : mainPoints[Math.min(active, mainPoints.length - 1)]
+	// The crosshair stops at any series' quote; each series then reads its own nearest quote there.
+	const times = useMemo(() => plottedTimes(series.map((s) => s.points)), [series])
+	const at = active === null ? undefined : times[Math.min(active, times.length - 1)]
 
 	const onPointer = (event: PointerEvent<SVGRectElement>) => {
 		const rect = event.currentTarget.getBoundingClientRect()
 		const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width))
 		const t = scales.t0 + ratio * scales.span
-		const point = nearestWithin(mainPoints, t, Infinity)
-		setActive(point ? mainPoints.indexOf(point) : null)
+		const nearest = nearestWithin(
+			times.map((time) => ({ t: time, v: 0 })),
+			t,
+			Infinity,
+		)
+		setActive(nearest ? times.indexOf(nearest.t) : null)
 	}
 
 	const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-		const last = mainPoints.length - 1
+		const last = times.length - 1
 		const current = active ?? last
 		const moves: Record<string, number> = {
 			ArrowLeft: current - 1,
@@ -146,7 +164,7 @@ export function PriceChart({
 	const path = (points: ReadonlyArray<Point>) =>
 		points.map((p, i) => `${i === 0 ? "M" : "L"}${scales.x(p.t).toFixed(1)},${scales.y(p.v).toFixed(1)}`).join("")
 
-	const crosshairX = hovered ? scales.x(hovered.t) : 0
+	const crosshairX = at === undefined ? 0 : scales.x(at)
 	const tooltipLeft = Math.max(
 		0,
 		Math.min(
@@ -155,16 +173,25 @@ export function PriceChart({
 		),
 	)
 
-	const rows = hovered
-		? series.map((s) => {
-				const point = s === main ? hovered : nearestWithin(s.points, hovered.t, gaps.hover)
-				return {
-					series: s,
-					point,
-					ownDate: point && formatShort(point.t) !== formatShort(hovered.t) ? formatShort(point.t) : null,
-				}
-			})
-		: []
+	const values =
+		at === undefined
+			? []
+			: valuesAt(
+					series.map((s) => s.points),
+					at,
+					gaps.hover,
+				)
+	const rows =
+		at === undefined
+			? []
+			: series.map((s, i) => {
+					const point = values[i]
+					return {
+						series: s,
+						point,
+						ownDate: point && formatShort(point.t) !== formatShort(at) ? formatShort(point.t) : null,
+					}
+				})
 
 	return (
 		<div
@@ -173,12 +200,12 @@ export function PriceChart({
 			role="group"
 			aria-roledescription="wykres"
 			aria-label={
-				mainPoints.length > 0
+				times.length > 0
 					? `Wykres ${mode === "change" ? "zmiany w procentach" : "ceny"} od ${formatWhen(scales.t0)} do ${formatWhen(scales.t1)}. Strzałki w lewo i w prawo przechodzą między notowaniami.`
 					: "Wykres"
 			}
 			onKeyDown={onKeyDown}
-			onFocus={() => setActive((current) => current ?? mainPoints.length - 1)}
+			onFocus={() => setActive((current) => current ?? times.length - 1)}
 			onBlur={() => setActive(null)}
 			className="relative w-full rounded-sm select-none"
 			style={{ height }}
@@ -267,7 +294,7 @@ export function PriceChart({
 						)}
 					</g>
 				))}
-				{hovered ? (
+				{at !== undefined ? (
 					<g pointerEvents="none">
 						<line
 							x1={crosshairX}
@@ -308,8 +335,8 @@ export function PriceChart({
 				/>
 			</svg>
 			<div aria-live="polite" className="sr-only">
-				{hovered
-					? `${formatWhen(hovered.t)}: ${rows
+				{at !== undefined
+					? `${formatWhen(at)}: ${rows
 							.map(
 								({ series: s, point, ownDate }) =>
 									`${s.name} ${point ? `${valueText(point, mode, unit)}${ownDate ? ` z ${ownDate}` : ""}` : "brak notowania"}`,
@@ -317,14 +344,14 @@ export function PriceChart({
 							.join(", ")}`
 					: ""}
 			</div>
-			{hovered ? (
+			{at !== undefined ? (
 				<div
 					ref={tooltip}
 					aria-hidden
 					className="bg-bg pointer-events-none absolute top-1 z-10 max-w-[min(20rem,100%)] min-w-44 rounded-md border px-2.5 py-1.5 text-xs shadow-[0_6px_16px_-6px_oklch(0_0_0/0.3)]"
 					style={{ left: tooltipLeft }}
 				>
-					<div className="num text-muted mb-1">{formatWhen(hovered.t)}</div>
+					<div className="num text-muted mb-1">{formatWhen(at)}</div>
 					{rows.map(({ series: s, point, ownDate }) => (
 						<div key={s.id} className="flex items-center gap-2 py-px">
 							<span aria-hidden className="h-0.5 w-3 shrink-0 rounded-full" style={{ background: s.color }} />

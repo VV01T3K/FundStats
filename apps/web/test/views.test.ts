@@ -11,9 +11,11 @@ import {
 	coveredRanges,
 	nearestWithin,
 	pickRange,
+	plottedTimes,
 	rangeWindow,
 	splitAtGaps,
 	toPoints,
+	valuesAt,
 } from "#/web/history.ts"
 import { riskScale } from "#/web/risk.ts"
 import {
@@ -355,7 +357,12 @@ describe("history", () => {
 		["03", "04", "05", "06", "07", "10", "11", "12", "13"].map((d, i) => day(`2026-11-${d}`, 100 + i)),
 	)
 	const frame = rangeWindow("1m", main)
-	const percents = (points: ReadonlyArray<{ readonly v: number }>) => points.map((p) => Math.round(p.v * 100) / 100)
+	/** The drawn line of a series, failing the test when it has none. */
+	const line = (points: ReturnType<typeof changeWithin>) => {
+		if (typeof points === "string") return assert.fail(`no line: ${points}`)
+		return points
+	}
+	const percents = (points: ReturnType<typeof changeWithin>) => line(points).map((p) => Math.round(p.v * 100) / 100)
 
 	it("the window ends at the main series' last quote and never starts before its first", () => {
 		assert.deepStrictEqual(frame, { start: at("2026-11-03"), end: at("2026-11-13") })
@@ -370,13 +377,13 @@ describe("history", () => {
 		// Starts after it: 0% at its own later first quote.
 		const after = toPoints("fund", [day("2026-11-13", 44), day("2026-11-10", 40)])
 		const later = changeWithin(after, frame)
-		assert.strictEqual(later[0]?.t, at("2026-11-10"))
+		assert.strictEqual(line(later)[0]?.t, at("2026-11-10"))
 		assert.deepStrictEqual(percents(later), [0, 10])
 	})
 
 	it("a pin ending mid-window stops there; one past the main series' end is cut", () => {
 		const early = toPoints("fund", [day("2026-11-06", 55), day("2026-11-04", 50)])
-		assert.strictEqual(changeWithin(early, frame).at(-1)?.t, at("2026-11-06"))
+		assert.strictEqual(line(changeWithin(early, frame)).at(-1)?.t, at("2026-11-06"))
 		const late = toPoints("fund", [day("2026-12-31", 99), day("2026-11-13", 2), day("2026-11-05", 1)])
 		assert.deepStrictEqual(percents(changeWithin(late, frame)), [0, 100])
 	})
@@ -385,7 +392,25 @@ describe("history", () => {
 		assert.deepStrictEqual(changeWithin(toPoints("fund", [day("2026-11-07", 7)]), frame), [
 			{ t: at("2026-11-07"), v: 0 },
 		])
-		assert.deepStrictEqual(changeWithin(toPoints("fund", [day("2026-09-01", 7)]), frame), [])
+		assert.strictEqual(changeWithin(toPoints("fund", [day("2026-09-01", 7)]), frame), "empty")
+	})
+
+	it("change starts at the first quote above zero; a series with none has no line", () => {
+		const zeroFirst = toPoints("fund", [day("2026-11-10", 6), day("2026-11-06", 5), day("2026-11-04", 0)])
+		const points = line(changeWithin(zeroFirst, frame))
+		assert.deepStrictEqual(percents(points), [0, 20])
+		assert.isTrue(points.every((p) => Number.isFinite(p.v)))
+		assert.strictEqual(changeWithin(toPoints("fund", [day("2026-11-06", 0)]), frame), "unpriced")
+	})
+
+	it("hover reads each series at the crosshair's time on its own, and the crosshair stops at every series' quotes", () => {
+		// The main series is quoted on 01.11 and 11.11; the pin on 06.11, between them.
+		const sparse = toPoints("fund", [day("2026-11-11", 2), day("2026-11-01", 1)])
+		const pin = toPoints("fund", [day("2026-11-06", 7)])
+		assert.deepStrictEqual(plottedTimes([sparse, pin]), [at("2026-11-01"), at("2026-11-06"), at("2026-11-11")])
+		const [mainValue, pinValue] = valuesAt([sparse, pin], at("2026-11-06"), FOUR_DAYS)
+		assert.isUndefined(mainValue)
+		assert.strictEqual(pinValue?.v, 7)
 	})
 
 	it("hover finds a value only within the gap bound; long silences split the line", () => {

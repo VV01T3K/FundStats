@@ -147,7 +147,11 @@ function RiskFilter({
 	if (facets.scale.length === 0) return null
 	const max = facets.scale.at(-1)!.level
 	return (
-		<div role="group" aria-label="Ryzyko (skala mBanku)" className="flex shrink-0 flex-wrap items-center gap-0.5">
+		<div
+			role="group"
+			aria-label="Ryzyko (skala mBanku)"
+			className="flex shrink-0 flex-wrap items-center gap-0.5 sm:flex-nowrap"
+		>
 			<span className="text-muted mr-1 text-xs">Ryzyko</span>
 			{facets.scale.map(({ level, name, short }) => {
 				const count = facets.risks.get(level) ?? 0
@@ -269,7 +273,7 @@ function FamilySelect({
 }) {
 	const [open, setOpen] = useState(false)
 	return (
-		<div className="flex min-w-0 items-center">
+		<div className="flex items-center">
 			<Popover.Root open={open} onOpenChange={setOpen}>
 				<Popover.Trigger asChild>
 					<button
@@ -278,7 +282,9 @@ function FamilySelect({
 						title={view.family ?? undefined}
 						className={cn(
 							"inline-flex h-7 max-w-64 min-w-0 items-center gap-1.5 rounded-md border px-2.5 text-[13px] transition-colors duration-150",
-							view.family ? "border-accent/25 bg-accent-soft text-accent" : "text-muted hover:text-fg hover:bg-hover",
+							view.family
+								? "border-accent/25 bg-accent-soft text-accent min-w-32"
+								: "text-muted hover:text-fg hover:bg-hover",
 						)}
 					>
 						{/* The selected name replaces the label, so it truncates inside the toolbar's budget. */}
@@ -336,7 +342,8 @@ export function FilterRow({
 	return (
 		<>
 			<CategoryChips facets={facets} view={view} update={update} />
-			<div className="flex min-w-0 items-center gap-x-2 max-xl:basis-full xl:flex-1">
+			{/* No min-w-0: the unit's minimum (risk chips plus a readable family) decides when it wraps. */}
+			<div className="flex items-center gap-x-2 max-xl:basis-full xl:flex-1">
 				<RiskFilter facets={facets} view={view} update={update} />
 				<FamilySelect facets={facets} view={view} update={update} />
 			</div>
