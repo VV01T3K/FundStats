@@ -11,8 +11,6 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as KindSourceRouteImport } from './routes/$kind.$source'
-import { Route as KindSourceIndexRouteImport } from './routes/$kind.$source.index'
-import { Route as KindSourceExternalIdRouteImport } from './routes/$kind.$source.$externalId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -24,52 +22,31 @@ const KindSourceRoute = KindSourceRouteImport.update({
   path: '/$kind/$source',
   getParentRoute: () => rootRouteImport,
 } as any)
-const KindSourceIndexRoute = KindSourceIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => KindSourceRoute,
-} as any)
-const KindSourceExternalIdRoute = KindSourceExternalIdRouteImport.update({
-  id: '/$externalId',
-  path: '/$externalId',
-  getParentRoute: () => KindSourceRoute,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/$kind/$source': typeof KindSourceRouteWithChildren
-  '/$kind/$source/$externalId': typeof KindSourceExternalIdRoute
-  '/$kind/$source/': typeof KindSourceIndexRoute
+  '/$kind/$source': typeof KindSourceRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/$kind/$source/$externalId': typeof KindSourceExternalIdRoute
-  '/$kind/$source': typeof KindSourceIndexRoute
+  '/$kind/$source': typeof KindSourceRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/$kind/$source': typeof KindSourceRouteWithChildren
-  '/$kind/$source/$externalId': typeof KindSourceExternalIdRoute
-  '/$kind/$source/': typeof KindSourceIndexRoute
+  '/$kind/$source': typeof KindSourceRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths:
-    '/' | '/$kind/$source' | '/$kind/$source/$externalId' | '/$kind/$source/'
+  fullPaths: '/' | '/$kind/$source'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/$kind/$source/$externalId' | '/$kind/$source'
-  id:
-    | '__root__'
-    | '/'
-    | '/$kind/$source'
-    | '/$kind/$source/$externalId'
-    | '/$kind/$source/'
+  to: '/' | '/$kind/$source'
+  id: '__root__' | '/' | '/$kind/$source'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  KindSourceRoute: typeof KindSourceRouteWithChildren
+  KindSourceRoute: typeof KindSourceRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -88,40 +65,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof KindSourceRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/$kind/$source/': {
-      id: '/$kind/$source/'
-      path: '/'
-      fullPath: '/$kind/$source/'
-      preLoaderRoute: typeof KindSourceIndexRouteImport
-      parentRoute: typeof KindSourceRoute
-    }
-    '/$kind/$source/$externalId': {
-      id: '/$kind/$source/$externalId'
-      path: '/$externalId'
-      fullPath: '/$kind/$source/$externalId'
-      preLoaderRoute: typeof KindSourceExternalIdRouteImport
-      parentRoute: typeof KindSourceRoute
-    }
   }
 }
 
-interface KindSourceRouteChildren {
-  KindSourceExternalIdRoute: typeof KindSourceExternalIdRoute
-  KindSourceIndexRoute: typeof KindSourceIndexRoute
-}
-
-const KindSourceRouteChildren: KindSourceRouteChildren = {
-  KindSourceExternalIdRoute: KindSourceExternalIdRoute,
-  KindSourceIndexRoute: KindSourceIndexRoute,
-}
-
-const KindSourceRouteWithChildren = KindSourceRoute._addFileChildren(
-  KindSourceRouteChildren,
-)
-
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  KindSourceRoute: KindSourceRouteWithChildren,
+  KindSourceRoute: KindSourceRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
