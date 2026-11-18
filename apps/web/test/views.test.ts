@@ -7,8 +7,7 @@ import { isStale } from "#/server/api/handlers.ts"
 import { countNoun, formatCompact, formatPercent, formatPrice } from "#/web/format.ts"
 import { heatCap, heatStep } from "#/web/heat.ts"
 import {
-	clip,
-	compare,
+	changeWithin,
 	coveredRanges,
 	nearestWithin,
 	pickRange,
@@ -350,78 +349,43 @@ describe("history", () => {
 	const at = (date: string) => Date.parse(`${date}T00:00:00Z`)
 	const FOUR_DAYS = 4 * 86_400_000
 
-	it("rebases to 100 at the first date every series has", () => {
-		const a = toPoints("fund", [day("2026-11-03", 120), day("2026-11-02", 110), day("2026-11-01", 100)])
-		const b = toPoints("fund", [day("2026-11-03", 60), day("2026-11-02", 50)])
-		const result = compare(a, [b], FOUR_DAYS)
-		assert.strictEqual(result.base, at("2026-11-02"))
-		assert.deepStrictEqual(
-			[result.main, ...result.others.map((o) => o.points)].map((s) => s.map((p) => Math.round(p.v))),
-			[
-				[100, 109],
-				[100, 120],
-			],
-		)
-		const apart = compare(a, [toPoints("fund", [day("2026-12-01", 1)])], FOUR_DAYS)
-		assert.isNull(apart.base)
-		assert.strictEqual(apart.excluded.get(0), "disjoint")
+	// The main fund is valued every weekday from 03.11 to 13.11; its 1m window is 14.10–13.11.
+	const main = toPoints(
+		"fund",
+		["03", "04", "05", "06", "07", "10", "11", "12", "13"].map((d, i) => day(`2026-11-${d}`, 100 + i)),
+	)
+	const frame = rangeWindow("1m", main)
+	const percents = (points: ReadonlyArray<{ readonly v: number }>) => points.map((p) => Math.round(p.v * 100) / 100)
+
+	it("the window ends at the main series' last quote and never starts before its first", () => {
+		assert.deepStrictEqual(frame, { start: at("2026-11-03"), end: at("2026-11-13") })
+		assert.strictEqual(rangeWindow("max", main).start, at("2026-11-03"))
 	})
 
-	it("rebases series that start on different days at an explicit, shared anchor", () => {
-		// Fund A is valued on 13.11 (Friday) and 17.11; fund B starts on 16.11 (Monday).
-		const a = toPoints("fund", [day("2026-11-17", 100), day("2026-11-13", 80)])
-		const b = toPoints("fund", [day("2026-11-17", 50), day("2026-11-16", 40)])
-		const result = compare(a, [b], FOUR_DAYS)
-		assert.strictEqual(result.base, at("2026-11-16"))
-		assert.deepStrictEqual(result.main, [
-			{ t: at("2026-11-16"), v: 100, observed: at("2026-11-13") },
-			{ t: at("2026-11-17"), v: 125 },
+	it("each series is percent change from its own first quote in the window", () => {
+		assert.deepStrictEqual(percents(changeWithin(main, frame)).slice(0, 3), [0, 1, 2])
+		// Starts before the main series: cut to the window, 0% at its first quote inside it.
+		const before = toPoints("fund", [day("2026-11-13", 60), day("2026-11-03", 50), day("2026-10-01", 10)])
+		assert.deepStrictEqual(percents(changeWithin(before, frame)), [0, 20])
+		// Starts after it: 0% at its own later first quote.
+		const after = toPoints("fund", [day("2026-11-13", 44), day("2026-11-10", 40)])
+		const later = changeWithin(after, frame)
+		assert.strictEqual(later[0]?.t, at("2026-11-10"))
+		assert.deepStrictEqual(percents(later), [0, 10])
+	})
+
+	it("a pin ending mid-window stops there; one past the main series' end is cut", () => {
+		const early = toPoints("fund", [day("2026-11-06", 55), day("2026-11-04", 50)])
+		assert.strictEqual(changeWithin(early, frame).at(-1)?.t, at("2026-11-06"))
+		const late = toPoints("fund", [day("2026-12-31", 99), day("2026-11-13", 2), day("2026-11-05", 1)])
+		assert.deepStrictEqual(percents(changeWithin(late, frame)), [0, 100])
+	})
+
+	it("a one-quote pin is a single 0% point; a pin with none in the window is empty", () => {
+		assert.deepStrictEqual(changeWithin(toPoints("fund", [day("2026-11-07", 7)]), frame), [
+			{ t: at("2026-11-07"), v: 0 },
 		])
-		assert.deepStrictEqual(result.others[0]?.points, [
-			{ t: at("2026-11-16"), v: 100 },
-			{ t: at("2026-11-17"), v: 125 },
-		])
-	})
-
-	it("never anchors on a stale quote: the base moves to the first date with a recent one", () => {
-		// The pin was quoted on 1.08, then not again until 12.11.
-		const main = toPoints("fund", [day("2026-11-13", 104), day("2026-11-12", 102), day("2026-11-10", 100)])
-		const pin = toPoints("fund", [day("2026-11-13", 55), day("2026-11-12", 50), day("2026-08-01", 10)])
-		const result = compare(main, [pin], FOUR_DAYS)
-		assert.strictEqual(result.base, at("2026-11-12"))
-		assert.deepStrictEqual(
-			result.others[0]?.points.map((p) => Math.round(p.v)),
-			[100, 110],
-		)
-		// Hover reads a value by when it was observed, not where its anchor is drawn.
-		const anchored = [{ t: at("2026-11-12"), v: 100, observed: at("2026-08-01") }]
-		assert.isUndefined(nearestWithin(anchored, at("2026-11-12"), FOUR_DAYS))
-	})
-
-	it("cuts every series to the main series' window, so a pin cannot extend the range", () => {
-		const main = toPoints("fund", [day("2026-11-16", 2), day("2026-10-20", 1), day("2026-09-01", 1)])
-		const frame = rangeWindow("1m", main.at(-1)!.t)
-		const pin = toPoints("fund", [day("2026-12-31", 9), day("2026-11-16", 4), day("2026-10-20", 2)])
-		assert.deepStrictEqual(
-			clip(pin, frame).map((p) => p.v),
-			[2, 4],
-		)
-		assert.deepStrictEqual(
-			clip(main, frame).map((p) => p.v),
-			[1, 2],
-		)
-	})
-
-	it("a pin without points in the window is named, and the others still compare", () => {
-		const main = toPoints("fund", [day("2026-11-03", 120), day("2026-11-02", 110)])
-		const pin = toPoints("fund", [day("2026-11-03", 60), day("2026-11-02", 50)])
-		const result = compare(main, [[], pin], FOUR_DAYS)
-		assert.strictEqual(result.excluded.get(0), "empty")
-		assert.deepStrictEqual(
-			result.others.map((o) => o.index),
-			[1],
-		)
-		assert.strictEqual(result.base, at("2026-11-02"))
+		assert.deepStrictEqual(changeWithin(toPoints("fund", [day("2026-09-01", 7)]), frame), [])
 	})
 
 	it("hover finds a value only within the gap bound; long silences split the line", () => {

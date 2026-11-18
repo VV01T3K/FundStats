@@ -38,7 +38,8 @@ export function SheetScroller({ id, children }: { readonly id: string; readonly 
 					const element = event.currentTarget
 					setEdge((current) => readEdge(element, current))
 				}}
-				className="h-full overflow-auto max-sm:snap-x max-sm:snap-proximity max-sm:scroll-pl-[12.75rem]"
+				// Positioned, so absolutely placed content (screen-reader text) is clipped here, not by the page.
+				className="relative h-full overflow-auto max-sm:snap-x max-sm:snap-proximity max-sm:scroll-pl-[12.75rem]"
 				data-scroll-restoration-id={id}
 			>
 				{children}

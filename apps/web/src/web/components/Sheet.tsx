@@ -319,7 +319,7 @@ function NameCell({
 					"relative -ml-1 inline-flex size-6 shrink-0 items-center justify-center rounded transition-[opacity,color] duration-150 before:absolute before:-inset-2.5 before:content-['']",
 					pinned
 						? "text-accent"
-						: "text-muted hover:text-fg opacity-50 disabled:opacity-20 sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100 sm:disabled:opacity-0",
+						: "text-muted hover:text-fg disabled:opacity-30 sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100 sm:disabled:opacity-0",
 				)}
 			>
 				<Pin className={cn("size-3.5", pinned && "fill-current")} />

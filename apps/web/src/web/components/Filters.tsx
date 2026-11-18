@@ -66,6 +66,7 @@ export function SearchBox({
 				placeholder={placeholder}
 				autoComplete="off"
 				spellCheck={false}
+				maxLength={100}
 				className="bg-bg placeholder:text-muted focus:border-accent h-11 w-full rounded-md border pr-8 pl-8 text-[13px] outline-none sm:h-8 [&::-webkit-search-cancel-button]:hidden"
 			/>
 			{draft ? (
@@ -146,7 +147,7 @@ function RiskFilter({
 	if (facets.scale.length === 0) return null
 	const max = facets.scale.at(-1)!.level
 	return (
-		<div role="group" aria-label="Ryzyko (skala mBanku)" className="flex flex-wrap items-center gap-0.5">
+		<div role="group" aria-label="Ryzyko (skala mBanku)" className="flex shrink-0 flex-wrap items-center gap-0.5">
 			<span className="text-muted mr-1 text-xs">Ryzyko</span>
 			{facets.scale.map(({ level, name, short }) => {
 				const count = facets.risks.get(level) ?? 0
@@ -268,18 +269,20 @@ function FamilySelect({
 }) {
 	const [open, setOpen] = useState(false)
 	return (
-		<div className="flex items-center">
+		<div className="flex min-w-0 items-center">
 			<Popover.Root open={open} onOpenChange={setOpen}>
 				<Popover.Trigger asChild>
 					<button
 						type="button"
+						aria-label={view.family ? `Rodzina: ${view.family}` : undefined}
+						title={view.family ?? undefined}
 						className={cn(
-							"inline-flex h-7 max-w-64 items-center gap-1.5 rounded-md border px-2.5 text-[13px] transition-colors duration-150",
+							"inline-flex h-7 max-w-64 min-w-0 items-center gap-1.5 rounded-md border px-2.5 text-[13px] transition-colors duration-150",
 							view.family ? "border-accent/25 bg-accent-soft text-accent" : "text-muted hover:text-fg hover:bg-hover",
 						)}
 					>
-						<span className={view.family ? "text-accent/80" : undefined}>Rodzina</span>
-						{view.family ? <span className="truncate font-medium">{view.family}</span> : null}
+						{/* The selected name replaces the label, so it truncates inside the toolbar's budget. */}
+						<span className={cn("truncate", view.family && "font-medium")}>{view.family ?? "Rodzina"}</span>
 						<ChevronDown className="size-3.5 shrink-0" />
 					</button>
 				</Popover.Trigger>
@@ -333,7 +336,7 @@ export function FilterRow({
 	return (
 		<>
 			<CategoryChips facets={facets} view={view} update={update} />
-			<div className="flex items-center gap-x-3 max-xl:basis-full">
+			<div className="flex min-w-0 items-center gap-x-2 max-xl:basis-full xl:flex-1">
 				<RiskFilter facets={facets} view={view} update={update} />
 				<FamilySelect facets={facets} view={view} update={update} />
 			</div>

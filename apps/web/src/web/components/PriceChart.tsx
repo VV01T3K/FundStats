@@ -47,7 +47,7 @@ const tickLabels = (ticks: ReadonlyArray<number>, unit: TimeUnit) => {
 }
 
 /**
- * One price line, or several rebased to 100 for comparison. Hand-drawn SVG: hairline grid, labels on
+ * One price line, or several as percent change for comparison. Hand-drawn SVG: hairline grid, labels on
  * the right, a crosshair and tooltip that follow the pointer or the arrow keys.
  */
 export function PriceChart({
@@ -58,7 +58,8 @@ export function PriceChart({
 	height = 300,
 }: {
 	readonly series: ReadonlyArray<ChartSeries>
-	readonly mode: "price" | "index"
+	/** `change`: each series as percent change from its own first plotted quote. */
+	readonly mode: "price" | "change"
 	/** Currency of the price axis. */
 	readonly unit: string
 	/** Funds are placed by valuation date, live quotes by capture time. */
@@ -157,11 +158,10 @@ export function PriceChart({
 	const rows = hovered
 		? series.map((s) => {
 				const point = s === main ? hovered : nearestWithin(s.points, hovered.t, gaps.hover)
-				const observed = point ? (point.observed ?? point.t) : null
 				return {
 					series: s,
 					point,
-					ownDate: observed !== null && formatShort(observed) !== formatShort(hovered.t) ? formatShort(observed) : null,
+					ownDate: point && formatShort(point.t) !== formatShort(hovered.t) ? formatShort(point.t) : null,
 				}
 			})
 		: []
@@ -174,7 +174,7 @@ export function PriceChart({
 			aria-roledescription="wykres"
 			aria-label={
 				mainPoints.length > 0
-					? `Wykres ${mode === "index" ? "indeksu" : "ceny"} od ${formatWhen(scales.t0)} do ${formatWhen(scales.t1)}. Strzałki w lewo i w prawo przechodzą między notowaniami.`
+					? `Wykres ${mode === "change" ? "zmiany w procentach" : "ceny"} od ${formatWhen(scales.t0)} do ${formatWhen(scales.t1)}. Strzałki w lewo i w prawo przechodzą między notowaniami.`
 					: "Wykres"
 			}
 			onKeyDown={onKeyDown}
@@ -191,7 +191,7 @@ export function PriceChart({
 							x2={MARGIN.left + plotW}
 							y1={scales.y(tick)}
 							y2={scales.y(tick)}
-							stroke={mode === "index" && tick === 100 ? "var(--rule-strong)" : "var(--rule)"}
+							stroke={mode === "change" && tick === 0 ? "var(--rule-strong)" : "var(--rule)"}
 							strokeWidth={1}
 							shapeRendering="crispEdges"
 						/>
@@ -201,7 +201,9 @@ export function PriceChart({
 							dy="0.32em"
 							className="num fill-[var(--muted)] text-[11px]"
 						>
-							{formatFixed(tick, tickDecimals)}
+							{mode === "change"
+								? `${tick > 0 ? "+" : ""}${formatFixed(tick, tickDecimals)}%`
+								: formatFixed(tick, tickDecimals)}
 						</text>
 					</g>
 				))}
@@ -343,5 +345,5 @@ export function PriceChart({
 	)
 }
 
-const valueText = (point: Point, mode: "price" | "index", unit: string) =>
-	mode === "index" ? formatPercent(point.v - 100) : `${formatPrice(point.v)} ${unit}`
+const valueText = (point: Point, mode: "price" | "change", unit: string) =>
+	mode === "change" ? formatPercent(point.v) : `${formatPrice(point.v)} ${unit}`

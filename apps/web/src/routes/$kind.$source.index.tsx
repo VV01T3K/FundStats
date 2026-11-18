@@ -86,20 +86,11 @@ function SourceTablePage() {
 		.map((id) => data.rows.find((row) => row.externalId === id))
 		.filter((row) => row !== undefined)
 
-	const presets =
-		config.presets.length > 1 ? (
-			<Segmented
-				label="Zestaw kolumn"
-				value={view.preset.id}
-				onChange={(id) => update(presetPatch(config, view, id))}
-				options={config.presets.map((p) => ({ value: p.id, label: p.label }))}
-			/>
-		) : null
-
 	return (
 		<main className="flex h-[calc(100dvh-var(--header-h))] flex-col">
-			<div className="mx-auto w-full max-w-[1600px] shrink-0 space-y-2.5 px-4 pt-3 pb-2.5">
-				<div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+			{/* One grid: phones stack title, toolbar, presets, pins; wider screens put the presets beside the title. */}
+			<div className="mx-auto grid w-full max-w-[1600px] shrink-0 grid-cols-1 gap-y-2.5 px-4 pt-3 pb-2.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-x-3">
+				<div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 sm:col-start-1 sm:row-start-1 sm:self-center">
 					<h1 className="text-[17px] font-semibold tracking-[-0.01em]">
 						{kind === "crypto" ? (
 							<>
@@ -138,16 +129,15 @@ function SourceTablePage() {
 							</TooltipContent>
 						</Tooltip>
 					)}
-					{presets ? <div className="ml-auto max-sm:hidden">{presets}</div> : null}
 				</div>
 
-				<div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+				<div className="flex flex-wrap items-center gap-x-3 gap-y-2 sm:col-span-2 sm:row-start-2 sm:gap-x-2">
 					<SearchBox
 						inputRef={searchRef}
 						value={search.q ?? ""}
 						onChange={(q) => update({ q: q.trim() || undefined })}
 						placeholder={config.kind === "fund" ? "Nazwa lub kod" : "Nazwa lub symbol"}
-						className="min-w-0 flex-1 sm:w-44 sm:flex-none"
+						className="min-w-0 flex-1 sm:w-40 sm:flex-none"
 					/>
 					<div className="flex items-center gap-2 sm:hidden">
 						<FiltersSheet config={config} rows={data.rows} view={view} update={update} shown={rows.length} />
@@ -164,19 +154,19 @@ function SourceTablePage() {
 						value={view.preset.id}
 						onChange={(id) => update(presetPatch(config, view, id))}
 						options={config.presets.map((p) => ({ value: p.id, label: p.label }))}
-						className="flex w-full sm:hidden [&>button]:flex-1 [&>button]:justify-center [&>button]:px-1"
+						className="max-sm:flex max-sm:w-full sm:col-start-2 sm:row-start-1 max-sm:[&>button]:flex-1 max-sm:[&>button]:px-1"
 					/>
 				) : null}
 
 				{pinnedRows.length > 0 ? (
-					<div className="flex flex-wrap items-center gap-1.5 text-[13px]">
-						<span className="text-muted inline-flex items-center gap-1 text-xs">
+					<div className="flex items-center gap-1.5 text-[13px] max-sm:-mx-4 max-sm:overflow-x-auto max-sm:px-4 sm:col-span-2 sm:flex-wrap">
+						<span className="text-muted inline-flex shrink-0 items-center gap-1 text-xs">
 							<Pin className="size-3" /> Porównanie
 						</span>
 						{pinnedRows.map((row) => (
 							<span
 								key={row.externalId}
-								className="bg-panel inline-flex h-11 max-w-60 items-center rounded-md border pl-2 sm:h-7"
+								className="bg-panel inline-flex h-11 max-w-60 shrink-0 items-center rounded-md border pl-2 sm:h-7"
 							>
 								<Link
 									to="/$kind/$source/$externalId"

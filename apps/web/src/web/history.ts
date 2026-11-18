@@ -12,8 +12,6 @@ export interface Point {
 	/** Epoch milliseconds: the valuation date (UTC midnight) for funds, the capture time for crypto. */
 	readonly t: number
 	readonly v: number
-	/** When the value was observed, if not at `t` (a rebase anchor carried from an earlier quote). */
-	readonly observed?: number
 }
 
 const DAY = 86_400_000
@@ -75,7 +73,7 @@ export const coveredRanges = (points: ReadonlyArray<Point>) => {
 	const span = first && last ? (last.t - first.t) / DAY : 0
 	return RANGES.filter(
 		(range) =>
-			range.id === "max" || (span >= range.days - 2 && clip(points, rangeWindow(range.id, last?.t ?? 0)).length >= 2),
+			range.id === "max" || (span >= range.days - 2 && clip(points, rangeWindow(range.id, points)).length >= 2),
 	)
 }
 
@@ -85,80 +83,27 @@ export const pickRange = (points: ReadonlyArray<Point>, wanted: string | undefin
 	return covered.some((r) => r.id === "1y") ? "1y" : "max"
 }
 
-/** The time window a range shows, ending at `end` (the main series' newest point). */
-export const rangeWindow = (range: RangeId, end: number) => {
+/**
+ * The time window a range shows: up to `days` back from the main series' newest point, never before
+ * its first. Every series of a chart is cut to it, so a pin can neither widen nor extend the range.
+ */
+export const rangeWindow = (range: RangeId, points: ReadonlyArray<Point>) => {
 	const days = RANGES.find((r) => r.id === range)!.days
-	return { start: Number.isFinite(days) ? end - days * DAY : -Infinity, end }
+	const end = points.at(-1)?.t ?? 0
+	return { start: Math.max(end - days * DAY, points[0]?.t ?? end), end }
 }
 
-/** Points inside the window, both ends included; every series of a chart is cut to the same one. */
 export const clip = (points: ReadonlyArray<Point>, frame: { readonly start: number; readonly end: number }) =>
 	points.filter((p) => p.t >= frame.start && p.t <= frame.end)
 
-/** The last point at or before `t`. */
-const pointAt = (points: ReadonlyArray<Point>, t: number) => {
-	let found: Point | undefined
-	for (const point of points) {
-		if (point.t > t) break
-		found = point
-	}
-	return found
+/** A series inside the window as percent change from its own first quote there (0 at that quote). */
+export const changeWithin = (points: ReadonlyArray<Point>, frame: { readonly start: number; readonly end: number }) => {
+	const inside = clip(points, frame)
+	const first = inside[0]
+	return first ? inside.map((p) => ({ t: p.t, v: (p.v / first.v - 1) * 100 })) : []
 }
 
-/** Why a compared series is not drawn. */
-export type Exclusion = "empty" | "disjoint"
-
-/**
- * Rebases the main series and the compared ones to 100 at the first time from the latest start on
- * where every series has a quote no older than `maxGap`, so no line is anchored on a stale value.
- * Series with no points, or no such time, are left out and reported by index. Each kept series
- * starts with a 100 at `base` that records when its anchor quote was taken.
- */
-export const compare = (main: ReadonlyArray<Point>, others: ReadonlyArray<ReadonlyArray<Point>>, maxGap: number) => {
-	const excluded = new Map<number, Exclusion>()
-	others.forEach((points, i) => {
-		if (points.length === 0) excluded.set(i, "empty")
-	})
-	const recentAt = (points: ReadonlyArray<Point>, t: number) => {
-		const anchor = pointAt(points, t)
-		return anchor && t - anchor.t <= maxGap ? anchor : undefined
-	}
-	const sharedBase = (group: ReadonlyArray<ReadonlyArray<Point>>) => {
-		if (group.some((points) => points.length === 0)) return null
-		const start = Math.max(...group.map((points) => points[0]!.t))
-		const end = Math.min(...group.map((points) => points.at(-1)!.t))
-		const candidates = [start, ...main.filter((p) => p.t > start && p.t <= end).map((p) => p.t)]
-		return candidates.find((t) => t <= end && group.every((points) => recentAt(points, t))) ?? null
-	}
-	others.forEach((points, i) => {
-		if (!excluded.has(i) && sharedBase([main, points]) === null) excluded.set(i, "disjoint")
-	})
-	let active = others.map((_, i) => i).filter((i) => !excluded.has(i))
-	const groupBase = () => (active.length > 0 ? sharedBase([main, ...active.map((i) => others[i]!)]) : null)
-	let base = groupBase()
-	// Each pair overlaps but the group does not: leave out the latest starter until it does.
-	while (base === null && active.length > 0) {
-		const latest = active.reduce((a, b) => (others[b]![0]!.t > others[a]![0]!.t ? b : a))
-		excluded.set(latest, "disjoint")
-		active = active.filter((i) => i !== latest)
-		base = groupBase()
-	}
-	if (base === null) return { base: null, main, others: [], excluded }
-	const at = base
-	const anchored = (points: ReadonlyArray<Point>): ReadonlyArray<Point> => {
-		const anchor = recentAt(points, at)!
-		const head: Point = anchor.t === at ? { t: at, v: 100 } : { t: at, v: 100, observed: anchor.t }
-		return [head, ...points.filter((p) => p.t > at).map((p) => ({ t: p.t, v: (p.v / anchor.v) * 100 }))]
-	}
-	return {
-		base,
-		main: anchored(main),
-		others: active.map((index) => ({ index, points: anchored(others[index]!) })),
-		excluded,
-	}
-}
-
-/** The point nearest to `t` in an oldest-first series, if it was observed within `maxGap` of `t`. */
+/** The point nearest to `t` in an oldest-first series, if one lies within `maxGap`. */
 export const nearestWithin = (points: ReadonlyArray<Point>, t: number, maxGap: number) => {
 	if (points.length === 0) return undefined
 	let lo = 0
@@ -170,7 +115,7 @@ export const nearestWithin = (points: ReadonlyArray<Point>, t: number, maxGap: n
 	}
 	const before = points[lo - 1]
 	const best = before && Math.abs(before.t - t) < Math.abs(points[lo]!.t - t) ? before : points[lo]!
-	return Math.abs((best.observed ?? best.t) - t) <= maxGap ? best : undefined
+	return Math.abs(best.t - t) <= maxGap ? best : undefined
 }
 
 /** Runs of points with no silence longer than `maxGap`, drawn as separate lines. */

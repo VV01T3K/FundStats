@@ -18,11 +18,13 @@ import { createRoot, type Root } from "react-dom/client"
 import { TooltipProvider } from "#/components/ui/tooltip"
 import { Route as IndexRoute } from "#/routes/$kind.$source.index.tsx"
 import { Route as SourceRoute } from "#/routes/$kind.$source.tsx"
-import { latestQuery } from "#/web/api.ts"
+import { latestQuery, sourcesQuery } from "#/web/api.ts"
+import { AppHeader } from "#/web/components/AppHeader.tsx"
 import { Sheet } from "#/web/components/Sheet.tsx"
 import { riskScale } from "#/web/risk.ts"
 import { resolveView, validateTableSearch } from "#/web/search.ts"
 import { TABLES } from "#/web/tables.ts"
+import { parseSearch, stringifySearch } from "#/web/url.ts"
 
 declare global {
 	// React reads this to know act() wraps every update.
@@ -164,10 +166,12 @@ const STATUS: SourceStatus = {
 const renderPage = async (url: string) => {
 	const queryClient = new QueryClient()
 	queryClient.setQueryData(latestQuery("mbank").queryKey, { source: STATUS, rows: ROWS })
+	queryClient.setQueryData(sourcesQuery().queryKey, [STATUS])
 	const rootRoute = createRootRouteWithContext<{ queryClient: QueryClient }>()({
 		component: () => (
 			<QueryClientProvider client={queryClient}>
 				<TooltipProvider>
+					<AppHeader />
 					<Outlet />
 				</TooltipProvider>
 			</QueryClientProvider>
@@ -188,6 +192,8 @@ const renderPage = async (url: string) => {
 	const router = createRouter({
 		routeTree: rootRoute.addChildren([sourceRoute.addChildren([indexRoute])]),
 		context: { queryClient },
+		parseSearch,
+		stringifySearch,
 		history: createMemoryHistory({ initialEntries: [url] }),
 	})
 	await router.load()
@@ -206,7 +212,7 @@ describe("table page", () => {
 			(button) => button.textContent === "Długi",
 		)!
 		await act(async () => preset.click())
-		assert.deepStrictEqual(router.state.location.search, { category: "akcyjny", risk: "4", preset: "dlugi" })
+		assert.strictEqual(router.state.location.href, "/funds/mbank?category=akcyjny&risk=4&preset=dlugi")
 		const table = page.querySelector("table")!
 		const labels = [...table.querySelectorAll("thead th")].map((th) => th.textContent?.trim()).filter(Boolean)
 		assert.deepStrictEqual(labels, ["Nazwa", "1r", "3l", "5l", "Od startu", "Ryzyko", "Wartość j.u. PLN"])
@@ -215,9 +221,20 @@ describe("table page", () => {
 		assert.deepStrictEqual(names(table).toSorted(), ["Beta", "Delta", "Gamma"])
 	})
 
-	it.each(["/funds/unknown", "/crypto/mbank"])("%s is the router's 404", async (url) => {
+	it("lists and pins keep their commas in the URL", async () => {
+		const { page, router } = await renderPage("/funds/mbank?risk=4,1&pin=1")
+		const pin = page.querySelector<HTMLButtonElement>('button[aria-label="Przypnij Delta do porównania"]')!
+		await act(async () => pin.click())
+		assert.strictEqual(router.state.location.href, "/funds/mbank?risk=1,4&pin=1,4")
+	})
+
+	it.each(["/funds/unknown", "/crypto/unknown", "/crypto/mbank"])("%s is the router's 404", async (url) => {
 		const { page } = await renderPage(url)
 		assert.isNotNull(page.querySelector("[data-not-found]"))
 		assert.isNull(page.querySelector("table"))
+		// The header reads only a real source: no provider switch, and Kryptowaluty keeps its default.
+		assert.notInclude(page.querySelector("header")?.textContent ?? "", "Dostawca")
+		const crypto = [...page.querySelectorAll("header a")].find((a) => a.textContent?.includes("Krypto"))
+		assert.strictEqual(crypto?.getAttribute("href"), "/crypto/coingecko")
 	})
 })

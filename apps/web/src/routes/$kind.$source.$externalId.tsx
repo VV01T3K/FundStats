@@ -17,7 +17,6 @@ import {
 	epochToIso,
 	formatCaptured,
 	formatCapturedDate,
-	formatCapturedFull,
 	formatCompact,
 	formatDate,
 	formatEpochDay,
@@ -25,11 +24,9 @@ import {
 } from "#/web/format.ts"
 import { heatStep } from "#/web/heat.ts"
 import {
+	changeWithin,
 	clip,
-	compare,
 	coveredRanges,
-	type Exclusion,
-	GAPS,
 	isRangeId,
 	pickRange,
 	type Point,
@@ -86,57 +83,55 @@ const SERIES_COLORS = ["var(--series-1)", "var(--series-2)", "var(--series-3)", 
 const NOTOWANIE = { one: "notowanie", few: "notowania", many: "notowań" }
 
 /** Why a pinned instrument has no line; shown next to its name in the legend. */
-const PIN_STATUS: Record<Exclusion | "loading", string> = {
-	loading: "wczytywanie…",
+const PIN_STATUS = {
+	pending: "wczytywanie…",
+	error: "błąd wczytywania",
+	missing: "brak historii",
 	empty: "brak notowań w tym okresie",
-	disjoint: "brak wspólnych dat",
-}
+} as const
+
+type PinPoints = ReadonlyArray<Point> | Exclude<keyof typeof PIN_STATUS, "empty">
 
 interface LegendEntry {
 	readonly id: string
 	readonly name: string
 	readonly color: string
-	readonly status: string | null
+	readonly drawn: boolean
+	/** The series' own start in the window, or why it has no line. */
+	readonly note: string
 }
 
 /**
- * Price of one instrument, or the instrument and its pins rebased to 100 at a shared base. Every
- * series is first cut to the main series' window, so a pin can neither widen nor extend the range.
+ * Price of one instrument. With pins, every series as percent change from its own first quote
+ * inside the main series' window: no shared base, so no series can shift or hide another.
  */
 const buildChart = (
-	main: ChartSeries,
-	pinned: ReadonlyArray<{ readonly id: string; readonly name: string; readonly points: ReadonlyArray<Point> | null }>,
+	series: ReadonlyArray<{ readonly id: string; readonly name: string; readonly points: PinPoints }>,
 	frame: { readonly start: number; readonly end: number },
-	maxGap: number,
+	formatStart: (t: number) => string,
 ) => {
-	const clipped = pinned.map((p) => ({ ...p, points: p.points === null ? null : clip(p.points, frame) }))
-	const loaded = clipped.flatMap((p, i) => (p.points === null ? [] : [{ i, points: p.points }]))
-	const result = compare(
-		main.points,
-		loaded.map((p) => p.points),
-		maxGap,
-	)
-	const color = (i: number) => SERIES_COLORS[i + 1]!
-	const drawn = new Map(result.others.map((o) => [loaded[o.index]!.i, o.points]))
-	const legend: Array<LegendEntry> = clipped.map((p, i) => {
-		const position = loaded.findIndex((l) => l.i === i)
-		const exclusion = position === -1 ? "loading" : result.excluded.get(position)
-		return { id: p.id, name: p.name, color: color(i), status: exclusion ? PIN_STATUS[exclusion] : null }
-	})
-	if (result.base === null) {
-		return { mode: "price" as const, series: [main], base: null, legend }
+	const [main, ...pins] = series
+	if (pins.length === 0 || !main || typeof main.points === "string") {
+		const points = main && typeof main.points !== "string" ? clip(main.points, frame) : []
+		return { mode: "price" as const, series: main ? [{ ...main, color: SERIES_COLORS[0]!, points }] : [], legend: [] }
 	}
+	const lines = series.map(({ id, name, points: raw }, i) => {
+		const color = SERIES_COLORS[i]!
+		const points = typeof raw === "string" ? null : changeWithin(raw, frame)
+		const first = points?.[0]
+		const note =
+			typeof raw === "string"
+				? PIN_STATUS[raw]
+				: first
+					? `od ${formatStart(first.t)}${points.length === 1 ? " · 1 notowanie" : ""}`
+					: PIN_STATUS.empty
+		const entry: LegendEntry = { id, name, color, drawn: first !== undefined, note }
+		return { entry, line: first ? { id, name, color, points } : null }
+	})
 	return {
-		mode: "index" as const,
-		base: result.base,
-		series: [
-			{ ...main, points: result.main },
-			...clipped.flatMap((p, i): Array<ChartSeries> => {
-				const points = drawn.get(i)
-				return points ? [{ id: p.id, name: p.name, color: color(i), points }] : []
-			}),
-		],
-		legend,
+		mode: "change" as const,
+		series: lines.flatMap(({ line }): Array<ChartSeries> => (line ? [line] : [])),
+		legend: lines.map(({ entry }) => entry),
 	}
 }
 
@@ -163,16 +158,26 @@ function InstrumentPage() {
 	const points = toPoints(config.kind, history.points)
 	const range = pickRange(points, search.range)
 	const ranges = coveredRanges(points)
-	const frame = rangeWindow(range, points.at(-1)?.t ?? 0)
+	const frame = rangeWindow(range, points)
 
 	const chart = buildChart(
-		{ id: externalId, name: history.name, color: SERIES_COLORS[0]!, points: clip(points, frame) },
-		otherRows.map((r, i) => {
-			const data = otherHistories[i]?.data
-			return { id: r.externalId, name: r.name, points: data ? toPoints(config.kind, data.points) : null }
-		}),
+		[
+			{ id: externalId, name: history.name, points },
+			...otherRows.map((r, i) => {
+				const query = otherHistories[i]
+				const state: PinPoints =
+					query?.status === "success"
+						? query.data === null
+							? "missing"
+							: toPoints(config.kind, query.data.points)
+						: query?.status === "error"
+							? "error"
+							: "pending"
+				return { id: r.externalId, name: r.name, points: state }
+			}),
+		],
 		frame,
-		GAPS[config.kind].hover,
+		(t) => (fund ? formatEpochDay(t) : formatCapturedDate(epochToIso(t))),
 	)
 
 	const first = points[0]
@@ -304,6 +309,7 @@ function InstrumentPage() {
 						{ranges.length > 1 ? (
 							<Segmented
 								label="Zakres wykresu"
+								className="max-w-full flex-wrap"
 								value={range}
 								onChange={(next) =>
 									navigate({ search: (prev) => ({ ...prev, range: next }), replace: true, resetScroll: false })
@@ -313,11 +319,7 @@ function InstrumentPage() {
 						) : null}
 						<span className="num text-muted text-[13px]">{coverage}</span>
 					</div>
-					<Legend
-						main={{ id: externalId, name: history.name, color: SERIES_COLORS[0]!, status: null }}
-						pinned={chart.legend}
-						onRemove={(id) => setPins(togglePin(pins, id))}
-					/>
+					<Legend entries={chart.legend} mainId={externalId} onRemove={(id) => setPins(togglePin(pins, id))} />
 				</div>
 				<div className="mt-3">
 					{points.length < 2 ? (
@@ -331,18 +333,11 @@ function InstrumentPage() {
 						</div>
 					) : (
 						<>
-							{chart.mode === "index" && chart.base !== null ? (
-								<p className="text-muted mb-1 text-xs">
-									indeks 100 = {fund ? formatEpochDay(chart.base) : formatCapturedFull(epochToIso(chart.base))}
-								</p>
-							) : (
-								<p className="text-muted mb-1 text-xs">
-									{fund ? "Wartość j.u." : "Cena"}, {currency}
-									{chart.legend.length > 0 && chart.legend.every((entry) => entry.status !== PIN_STATUS.loading)
-										? " · żadnego przypiętego nie da się porównać w tym zakresie"
-										: ""}
-								</p>
-							)}
+							<p className="text-muted mb-1 text-xs">
+								{chart.mode === "change"
+									? "Zmiana od pierwszego notowania każdej linii w zakresie, %"
+									: `${fund ? "Wartość j.u." : "Cena"}, ${currency}`}
+							</p>
 							<PriceChart series={chart.series} mode={chart.mode} unit={currency} kind={config.kind} />
 						</>
 					)}
@@ -359,29 +354,29 @@ function InstrumentPage() {
 	)
 }
 
-/** The instrument and every pin, drawn or not, each removable; a pin without a line says why. */
+/** The instrument and every pin, drawn or not, each with its own start; pins are removable. */
 function Legend({
-	main,
-	pinned,
+	entries,
+	mainId,
 	onRemove,
 }: {
-	readonly main: LegendEntry
-	readonly pinned: ReadonlyArray<LegendEntry>
+	readonly entries: ReadonlyArray<LegendEntry>
+	readonly mainId: string
 	readonly onRemove: (id: string) => void
 }) {
-	if (pinned.length === 0) return null
+	if (entries.length < 2) return null
 	return (
 		<ul className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]" aria-label="Legenda">
-			{[main, ...pinned].map((entry) => (
-				<li key={entry.id} className="flex max-w-80 min-w-0 items-center gap-1.5">
+			{entries.map((entry) => (
+				<li key={entry.id} className="flex max-w-96 min-w-0 items-center gap-1.5">
 					<span
 						aria-hidden
-						className={cn("h-0.5 w-3.5 shrink-0 rounded-full", entry.status && "opacity-30")}
+						className={cn("h-0.5 w-3.5 shrink-0 rounded-full", !entry.drawn && "opacity-30")}
 						style={{ background: entry.color }}
 					/>
-					<span className={cn("truncate", entry.status && "text-muted")}>{entry.name}</span>
-					{entry.status ? <span className="text-muted shrink-0 text-xs">({entry.status})</span> : null}
-					{entry === main ? null : (
+					<span className={cn("truncate", !entry.drawn && "text-muted")}>{entry.name}</span>
+					<span className="text-muted shrink-0 text-xs">{entry.drawn ? entry.note : `(${entry.note})`}</span>
+					{entry.id === mainId ? null : (
 						<button
 							type="button"
 							aria-label={`Usuń ${entry.name} z porównania`}
