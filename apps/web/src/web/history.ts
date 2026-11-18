@@ -15,17 +15,15 @@ export interface Point {
 }
 
 const DAY = 86_400_000
-const HOUR = 3_600_000
 
 /**
- * How far apart points may be. `hover`: the crosshair shows a quote only if one is this close to the
- * pointer. `line`: a longer silence breaks the line. Funds skip weekends and holidays; crypto
- * quotes are 6-hourly for a week, then thinned by the collector to one a day.
+ * The longest silence a price line bridges; a longer one breaks it. Funds skip weekends and holidays;
+ * crypto quotes are 6-hourly for a week, then thinned by the collector to one a day.
  */
 export const GAPS = {
-	fund: { hover: 4 * DAY, line: 6 * DAY },
-	crypto: { hover: 27 * HOUR, line: 2 * DAY },
-} as const satisfies Record<InstrumentKind, { hover: number; line: number }>
+	fund: { line: 6 * DAY },
+	crypto: { line: 2 * DAY },
+} as const satisfies Record<InstrumentKind, { line: number }>
 
 const epoch = (iso: string) => DateTime.toEpochMillis(DateTime.makeUnsafe(iso))
 
@@ -94,82 +92,3 @@ export const rangeWindow = (range: RangeId, points: ReadonlyArray<Point>) => {
 
 export const clip = (points: ReadonlyArray<Point>, frame: { readonly start: number; readonly end: number }) =>
 	points.filter((p) => p.t >= frame.start && p.t <= frame.end)
-
-/** The point nearest to `t` in an oldest-first series, if one lies within `maxGap`. */
-export const nearestWithin = (points: ReadonlyArray<Point>, t: number, maxGap: number) => {
-	if (points.length === 0) return undefined
-	let lo = 0
-	let hi = points.length - 1
-	while (lo < hi) {
-		const mid = (lo + hi) >> 1
-		if (points[mid]!.t < t) lo = mid + 1
-		else hi = mid
-	}
-	const before = points[lo - 1]
-	const best = before && Math.abs(before.t - t) < Math.abs(points[lo]!.t - t) ? before : points[lo]!
-	return Math.abs(best.t - t) <= maxGap ? best : undefined
-}
-
-/** Runs of points with no silence longer than `maxGap`, drawn as separate lines. */
-export const splitAtGaps = (points: ReadonlyArray<Point>, maxGap: number) => {
-	const runs: Array<Array<Point>> = []
-	for (const point of points) {
-		const run = runs.at(-1)
-		const last = run?.at(-1)
-		if (run && last && point.t - last.t <= maxGap) run.push(point)
-		else runs.push([point])
-	}
-	return runs
-}
-
-/** Round tick values (1, 2, 2.5, 5 × 10ⁿ) covering [min, max]. */
-export const niceTicks = (min: number, max: number, count = 5): { ticks: Array<number>; step: number } => {
-	if (min === max) {
-		const pad = Math.abs(min) * 0.01 || 1
-		return niceTicks(min - pad, max + pad, count)
-	}
-	const raw = (max - min) / count
-	const magnitude = 10 ** Math.floor(Math.log10(raw))
-	const step = [1, 2, 2.5, 5, 10].map((m) => m * magnitude).find((s) => s >= raw) ?? 10 * magnitude
-	const ticks: Array<number> = []
-	for (let value = Math.floor(min / step) * step; value <= max + step * 0.5; value += step) {
-		ticks.push(Math.round(value / step) * step)
-	}
-	return { ticks, step }
-}
-
-export type TimeUnit = "hour" | "day" | "month" | "year"
-
-/** Tick times between `start` and `end` (ms), aligned to UTC hours, days, months or years. */
-export const timeTicks = (start: number, end: number, maxTicks: number): { unit: TimeUnit; ticks: Array<number> } => {
-	const spanDays = (end - start) / DAY
-	const candidates: Array<{ unit: TimeUnit; every: number }> = [
-		{ unit: "hour", every: 6 },
-		{ unit: "hour", every: 12 },
-		{ unit: "day", every: 1 },
-		{ unit: "day", every: 2 },
-		{ unit: "day", every: 7 },
-		{ unit: "day", every: 14 },
-		{ unit: "month", every: 1 },
-		{ unit: "month", every: 2 },
-		{ unit: "month", every: 3 },
-		{ unit: "month", every: 6 },
-		{ unit: "year", every: 1 },
-		{ unit: "year", every: 2 },
-		{ unit: "year", every: 5 },
-	]
-	const approxDays = { hour: 1 / 24, day: 1, month: 30.4, year: 365 }
-	const pick = candidates.find((c) => spanDays / (approxDays[c.unit] * c.every) <= maxTicks) ?? candidates.at(-1)!
-	const plural = { hour: "hours", day: "days", month: "months", year: "years" } as const
-	const next = (d: DateTime.Utc, by: number) => DateTime.add(d, { [plural[pick.unit]]: by })
-	let d = DateTime.startOf(DateTime.makeUnsafe(start), pick.unit)
-	while (DateTime.toEpochMillis(d) < start) d = next(d, 1)
-	const part = pick.unit === "hour" ? "hour" : pick.unit === "month" ? "month" : null
-	if (part) while ((DateTime.getPartUtc(d, part) - (part === "month" ? 1 : 0)) % pick.every !== 0) d = next(d, 1)
-	const ticks: Array<number> = []
-	while (DateTime.toEpochMillis(d) <= end) {
-		ticks.push(DateTime.toEpochMillis(d))
-		d = next(d, pick.every)
-	}
-	return { unit: pick.unit, ticks }
-}

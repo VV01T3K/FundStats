@@ -1,5 +1,6 @@
 import type { SnapshotRow } from "@fundstats/shared/api"
 import { KIND_SEGMENT, SOURCES } from "@fundstats/shared/sources"
+import { useHotkeys } from "@tanstack/react-hotkeys"
 import { Link, useNavigate } from "@tanstack/react-router"
 import {
 	type ColumnDef,
@@ -12,7 +13,7 @@ import {
 	useTable,
 } from "@tanstack/react-table"
 import { ArrowDown, ArrowUp } from "lucide-react"
-import { type KeyboardEvent, type ReactNode, useMemo, useState } from "react"
+import { type ReactNode, useMemo, useRef, useState } from "react"
 
 import { cn } from "#/lib/utils"
 
@@ -125,19 +126,24 @@ export function MarketTable({
 			search: (prev: Record<string, unknown>) => prev,
 		}) as const
 
-	const onKeyDown = (event: KeyboardEvent<HTMLTableSectionElement>) => {
-		const step =
-			event.key === "ArrowDown" || event.key === "j" ? 1 : event.key === "ArrowUp" || event.key === "k" ? -1 : 0
-		if (step === 0 || event.altKey || event.metaKey || event.ctrlKey) return
+	const body = useRef<HTMLTableSectionElement>(null)
+	const move = (step: 1 | -1) => {
 		const index = sorted.findIndex((r) => r.id === activeId)
 		const next = sorted[Math.max(0, Math.min(sorted.length - 1, index + step))]
 		if (!next) return
-		event.preventDefault()
 		setFocused(next.id)
-		;[...event.currentTarget.querySelectorAll<HTMLAnchorElement>("a[data-row]")]
+		;[...(body.current?.querySelectorAll<HTMLAnchorElement>("a[data-row]") ?? [])]
 			.find((link) => link.dataset.row === next.id)
 			?.focus()
 	}
+	// j/k reach the table from anywhere on the page; arrows only move while a row has focus, so they
+	// keep scrolling the page otherwise. Enter on the focused row is the link's own.
+	useHotkeys([
+		{ hotkey: "J", callback: () => move(1), options: { meta: { name: "Next row" } } },
+		{ hotkey: "K", callback: () => move(-1), options: { meta: { name: "Previous row" } } },
+		{ hotkey: "ArrowDown", callback: () => move(1), options: { target: body } },
+		{ hotkey: "ArrowUp", callback: () => move(-1), options: { target: body } },
+	])
 
 	const cellPad = compact ? "py-[5px]" : "py-2"
 	const columnOf = (id: string) => columns.find((c) => c.id === id)
@@ -193,7 +199,7 @@ export function MarketTable({
 					})}
 				</tr>
 			</thead>
-			<tbody onKeyDown={onKeyDown}>
+			<tbody ref={body}>
 				{sorted.map((row, index) => {
 					const highlighted = isHighlighted(view, row.original)
 					return (

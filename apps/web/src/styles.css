@@ -167,6 +167,23 @@
 	outline: none;
 }
 
+/* TanStack Charts: sparklines keep a 1px line at any size; the price chart's tooltip is a terminal panel. */
+.spark {
+	display: block;
+}
+.spark path {
+	vector-effect: non-scaling-stroke;
+}
+.price-chart {
+	--ts-chart-tooltip-background: var(--panel);
+	--ts-chart-tooltip-color: var(--ink);
+	--ts-chart-tooltip-border: 1px solid var(--rule-strong);
+	--ts-chart-tooltip-border-radius: 0;
+	--ts-chart-tooltip-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
+	--ts-chart-tooltip-font: 11px var(--font-mono);
+	--ts-chart-focus-fill: var(--bg);
+}
+
 /* Base UI popups enter from just above their final place. */
 .popup {
 	transition:

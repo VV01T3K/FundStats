@@ -60,22 +60,6 @@ export const formatCompact = (value: number) => {
 	return scale ? `${typeset(fixed2.format(value / scale[0]))}${scale[1]}` : typeset(integer.format(value))
 }
 
-const fixedFormats = new Map<number, Intl.NumberFormat>()
-
-/** A fixed number of decimals, for axis ticks. */
-export const formatFixed = (value: number, decimals: number) => {
-	let format = fixedFormats.get(decimals)
-	if (!format) {
-		format = new Intl.NumberFormat(LOCALE, {
-			minimumFractionDigits: decimals,
-			maximumFractionDigits: decimals,
-			useGrouping: "always",
-		})
-		fixedFormats.set(decimals, format)
-	}
-	return typeset(format.format(value))
-}
-
 export const formatInteger = (value: number) => typeset(integer.format(value))
 
 /** `2026-11-17` → `17.11.2026`. Valuation dates are calendar dates; no time zone applies. */
@@ -86,7 +70,6 @@ export const formatDate = (isoDate: string) => {
 
 const warsaw = (options: Intl.DateTimeFormatOptions) =>
 	new Intl.DateTimeFormat(LOCALE, { timeZone: TIME_ZONE, ...options })
-const dayMonthTime = warsaw({ day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
 const fullDate = warsaw({ day: "2-digit", month: "2-digit", year: "numeric" })
 const clock = warsaw({ hour: "2-digit", minute: "2-digit" })
 // pl-PL names the zone "CET" too, but en-GB is the locale that reliably gives the CET/CEST abbreviation.
@@ -98,15 +81,9 @@ const at = (iso: string) => DateTime.makeUnsafe(iso)
 const zoneOf = (iso: string) =>
 	zoneName.formatToParts(DateTime.toDateUtc(at(iso))).find((part) => part.type === "timeZoneName")?.value ?? ""
 
-/** `18.11, 06:02` in Warsaw time. */
-export const formatCaptured = (iso: string) => DateTime.formatIntl(at(iso), dayMonthTime).replace(/,\s*/, ", ")
-
 /** `18.11.2026 · 06:02 CET`, the header clock. */
 export const formatStamp = (iso: string) =>
 	`${DateTime.formatIntl(at(iso), fullDate)} · ${DateTime.formatIntl(at(iso), clock)} ${zoneOf(iso)}`.trim()
-
-/** `18.11.2026`, the Warsaw calendar day of a timestamp. */
-export const formatCapturedDate = (iso: string) => DateTime.formatIntl(at(iso), fullDate)
 
 /** A chart time as ISO, for the timestamp formatters above. */
 export const epochToIso = (t: number) => DateTime.formatIso(DateTime.makeUnsafe(t))

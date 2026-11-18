@@ -1,5 +1,6 @@
+import { useHotkey } from "@tanstack/react-hotkeys"
 import { Search, X } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useRef, useState } from "react"
 
 import { cn } from "#/lib/utils"
 
@@ -20,6 +21,15 @@ export function SearchField({
 }) {
 	const [draft, setDraft] = useState(query)
 	const [seen, setSeen] = useState(query)
+	const input = useRef<HTMLInputElement>(null)
+	useHotkey(
+		"Escape",
+		() => {
+			setDraft("")
+			onQuery("")
+		},
+		{ target: input, enabled: draft.length > 0, meta: { name: "Clear search" } },
+	)
 	if (seen !== query) {
 		setSeen(query)
 		if (draft.trim() !== query) setDraft(query)
@@ -38,13 +48,7 @@ export function SearchField({
 					setDraft(next)
 					onQuery(next.trim())
 				}}
-				onKeyDown={(event) => {
-					if (event.key === "Escape" && draft.length > 0) {
-						event.preventDefault()
-						setDraft("")
-						onQuery("")
-					}
-				}}
+				ref={input}
 				placeholder="Search coins, funds or tickers — e.g. BTC, ETH, Schroder"
 				aria-label="Search coins, funds or tickers"
 				autoComplete="off"
@@ -75,22 +79,17 @@ export function SearchField({
 	)
 }
 
-/** `/` focuses whichever search box is on screen, unless the visitor is typing somewhere. */
+/** `/` focuses whichever search box is on screen; typing in a field is left alone. */
 export function useSlashToSearch() {
-	useEffect(() => {
-		const onKey = (event: KeyboardEvent) => {
-			if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return
-			const target = event.target as HTMLElement | null
-			if (target?.closest("input, textarea, select, [contenteditable='true']")) return
+	useHotkey(
+		"/",
+		() => {
 			const field = [...document.querySelectorAll<HTMLInputElement>("input[data-search]")].find((input) =>
 				input.checkVisibility(),
 			)
-			if (!field) return
-			event.preventDefault()
-			field.focus()
-			field.select()
-		}
-		window.addEventListener("keydown", onKey)
-		return () => window.removeEventListener("keydown", onKey)
-	}, [])
+			field?.focus()
+			field?.select()
+		},
+		{ meta: { name: "Search" } },
+	)
 }

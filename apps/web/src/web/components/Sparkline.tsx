@@ -1,57 +1,53 @@
-/** A sparkline's path through `values`, scaled to fill `width` × `height` inside `pad`. */
-const sparkPath = (values: ReadonlyArray<number>, width: number, height: number, pad = 1) => {
-	const min = Math.min(...values)
-	const range = Math.max(...values) - min || 1
-	const dx = (width - pad * 2) / (values.length - 1)
-	return values
-		.map(
-			(v, i) =>
-				`${i === 0 ? "M" : "L"}${(pad + i * dx).toFixed(2)} ${(pad + (1 - (v - min) / range) * (height - pad * 2)).toFixed(2)}`,
-		)
-		.join(" ")
+import { createChartScene, defineChart, lineY } from "@tanstack/charts"
+import { scaleLinear } from "@tanstack/charts/scales/linear"
+import { renderChartSvg } from "@tanstack/charts/svg"
+import { useMemo } from "react"
+
+import { formatPercent } from "../format.ts"
+
+/**
+ * One row's sparkline: a TanStack Charts scene serialized to static SVG. A live `<Chart>` per row
+ * would mount a DOM host, a ResizeObserver and keyboard focus in each of up to 257 rows; a sparkline
+ * needs none of that.
+ */
+const sparklineSvg = (values: ReadonlyArray<number>) => {
+	const up = values.at(-1)! >= values[0]!
+	const rows = values.map((value, index) => ({ index, value }))
+	const scene = createChartScene(
+		defineChart({
+			marks: [lineY(rows, { x: "index", y: "value", stroke: up ? "var(--up)" : "var(--down)", strokeWidth: 1 })],
+			scales: { x: { scale: scaleLinear, axis: false }, y: { scale: scaleLinear, axis: false } },
+			margin: 1,
+		}),
+		{ width: 90, height: 18 },
+	)
+	return renderChartSvg(scene, {
+		ariaLabel: `Last ${values.length} prices: ${formatPercent((values.at(-1)! / values[0]! - 1) * 100)}`,
+		className: "spark",
+		tabIndex: -1,
+	})
 }
 
 /**
  * The last recorded values, green when the last is at or above the first, red below. Fewer than two
- * values draw a dim baseline, so a new instrument's cell says "not enough history" rather than "flat".
+ * values draw a dashed baseline, so a new instrument's cell says "not enough history" rather than "flat".
  */
 export function Sparkline({
 	values,
-	width = 90,
-	height = 18,
 	className,
 }: {
 	readonly values: ReadonlyArray<number> | undefined
-	readonly width?: number
-	readonly height?: number
-	/** CSS may resize it; the line stays 1px (non-scaling stroke). */
+	/** Sets the size; the SVG fills it and its line stays 1px wide. */
 	readonly className?: string
 }) {
-	if (!values || values.length < 2) {
+	const markup = useMemo(() => (values && values.length >= 2 ? sparklineSvg(values) : null), [values])
+	if (markup === null) {
 		return (
-			<svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden className={className}>
-				<line
-					x1={0}
-					x2={width}
-					y1={height / 2}
-					y2={height / 2}
-					stroke="var(--rule-strong)"
-					strokeDasharray="2 3"
-					vectorEffect="non-scaling-stroke"
-				/>
-			</svg>
+			<span role="img" aria-label="Not enough history" className={className}>
+				<span aria-hidden className="border-rule-strong block h-1/2 border-b border-dashed" />
+			</span>
 		)
 	}
-	const up = values.at(-1)! >= values[0]!
-	return (
-		<svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden className={className}>
-			<path
-				d={sparkPath(values, width, height)}
-				fill="none"
-				stroke={up ? "var(--up)" : "var(--down)"}
-				strokeWidth={1}
-				vectorEffect="non-scaling-stroke"
-			/>
-		</svg>
-	)
+	// renderChartSvg's own serialization of a scene built from numbers; it escapes all text.
+	return <span className={className} dangerouslySetInnerHTML={{ __html: markup }} />
 }

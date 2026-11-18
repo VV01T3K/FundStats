@@ -99,6 +99,10 @@ describe("market table", () => {
 		assert.strictEqual(sorted[0]!.getAttribute("aria-sort"), "descending")
 		assert.strictEqual(sorted[0]!.textContent?.trim(), "7D %")
 
+		const sparklines = [...table.querySelectorAll("tbody [role=img]")].map((el) => el.getAttribute("aria-label"))
+		assert.include(sparklines, "Last 3 prices: +200,00%", "TanStack Charts draws the row's history")
+		assert.include(sparklines, "Not enough history")
+
 		const ascending = await render({ sort: "7d", dir: "asc" })
 		assert.deepStrictEqual(ascending.tickers, ["DDD", "AAA", "CCC", "BBB"], "missing values stay last either way")
 	})
