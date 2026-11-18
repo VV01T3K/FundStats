@@ -308,7 +308,10 @@ export function PriceChart({
 			<div aria-live="polite" className="sr-only">
 				{hovered
 					? `${formatWhen(hovered.t)}: ${rows
-							.map(({ series: s, point }) => `${s.name} ${point ? valueText(point, mode, unit) : "brak notowania"}`)
+							.map(
+								({ series: s, point, ownDate }) =>
+									`${s.name} ${point ? `${valueText(point, mode, unit)}${ownDate ? ` z ${ownDate}` : ""}` : "brak notowania"}`,
+							)
 							.join(", ")}`
 					: ""}
 			</div>
@@ -323,7 +326,7 @@ export function PriceChart({
 					{rows.map(({ series: s, point, ownDate }) => (
 						<div key={s.id} className="flex items-center gap-2 py-px">
 							<span aria-hidden className="h-0.5 w-3 shrink-0 rounded-full" style={{ background: s.color }} />
-							<span className="max-w-36 min-w-0 flex-1 truncate">{s.name}</span>
+							<span className="max-w-36 min-w-0 flex-1 truncate sm:max-w-48">{s.name}</span>
 							{point ? (
 								<span className="num shrink-0 text-right">
 									<span className="font-medium">{valueText(point, mode, unit)}</span>

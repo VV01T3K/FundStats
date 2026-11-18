@@ -32,6 +32,8 @@ export const Route = createFileRoute("/$kind/$source/")({
 	component: SourceTablePage,
 })
 
+const ENTER_SHEET = new Set(["j", "k", "ArrowDown", "ArrowUp"])
+
 const isTyping = (target: EventTarget | null) =>
 	target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|SELECT|TEXTAREA)$/.test(target.tagName))
 
@@ -57,16 +59,15 @@ function SourceTablePage() {
 
 	useEffect(() => {
 		const onKey = (event: KeyboardEvent) => {
-			if (event.metaKey || event.ctrlKey || event.altKey || isTyping(event.target)) return
+			if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || isTyping(event.target)) return
 			if (event.key === "/") {
 				event.preventDefault()
 				searchRef.current?.focus()
 				searchRef.current?.select()
 			} else if (
-				// j/k from anywhere outside the sheet; arrows only from the page itself, so they still scroll and step controls.
-				((event.key === "j" || event.key === "k") &&
-					!(event.target instanceof Element && event.target.closest("[data-sheet]"))) ||
-				((event.key === "ArrowDown" || event.key === "ArrowUp") && event.target === document.body)
+				ENTER_SHEET.has(event.key) &&
+				// The sheet moves its own focus; lists and dialogs use the arrows themselves.
+				!(event.target instanceof Element && event.target.closest("[data-sheet], [role=listbox], [role=dialog]"))
 			) {
 				const row = document.querySelector<HTMLElement>('[data-sheet] tbody tr[tabindex="0"]')
 				if (row) {
@@ -145,8 +146,8 @@ function SourceTablePage() {
 						inputRef={searchRef}
 						value={search.q ?? ""}
 						onChange={(q) => update({ q: q.trim() || undefined })}
-						placeholder={config.kind === "fund" ? "Szukaj: nazwa, kod" : "Szukaj: nazwa, symbol"}
-						className="min-w-0 flex-1 sm:w-56 sm:flex-none"
+						placeholder={config.kind === "fund" ? "Nazwa lub kod" : "Nazwa lub symbol"}
+						className="min-w-0 flex-1 sm:w-44 sm:flex-none"
 					/>
 					<div className="flex items-center gap-2 sm:hidden">
 						<FiltersSheet config={config} rows={data.rows} view={view} update={update} shown={rows.length} />

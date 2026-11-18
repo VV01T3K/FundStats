@@ -24,7 +24,19 @@ import {
 	formatPrice,
 } from "#/web/format.ts"
 import { heatStep } from "#/web/heat.ts"
-import { coveredRanges, isRangeId, pickRange, rebase, type RangeId, sliceRange, toPoints } from "#/web/history.ts"
+import {
+	clip,
+	compare,
+	coveredRanges,
+	type Exclusion,
+	GAPS,
+	isRangeId,
+	pickRange,
+	type Point,
+	type RangeId,
+	rangeWindow,
+	toPoints,
+} from "#/web/history.ts"
 import { type RiskLevel, riskScale } from "#/web/risk.ts"
 import { MAX_PINS, resolvePins, togglePin } from "#/web/search.ts"
 import { categoryLabel, fundFamily, fundRisk, getTable, longName, marketRank } from "#/web/tables.ts"
@@ -70,16 +82,58 @@ const riskFact = (level: RiskLevel, max: number) => (
 const SERIES_COLORS = ["var(--series-1)", "var(--series-2)", "var(--series-3)", "var(--series-4)", "var(--series-5)"]
 const NOTOWANIE = { one: "notowanie", few: "notowania", many: "notowań" }
 
-/** Price of one instrument, or every series rebased to 100 at their first shared date. */
-const buildChart = (main: ChartSeries, compared: ReadonlyArray<ChartSeries>) => {
-	if (compared.length === 0) return { mode: "price" as const, series: [main], base: null, disjoint: false }
-	const rebased = rebase([main, ...compared].map((s) => s.points))
-	if (!rebased) return { mode: "price" as const, series: [main], base: null, disjoint: true }
+/** Why a pinned instrument has no line; shown next to its name in the legend. */
+const PIN_STATUS: Record<Exclusion | "loading", string> = {
+	loading: "wczytywanie…",
+	empty: "brak notowań w tym okresie",
+	disjoint: "brak wspólnych dat",
+}
+
+interface LegendEntry {
+	readonly id: string
+	readonly name: string
+	readonly color: string
+	readonly status: string | null
+}
+
+/**
+ * Price of one instrument, or the instrument and its pins rebased to 100 at a shared base. Every
+ * series is first cut to the main series' window, so a pin can neither widen nor extend the range.
+ */
+const buildChart = (
+	main: ChartSeries,
+	pinned: ReadonlyArray<{ readonly id: string; readonly name: string; readonly points: ReadonlyArray<Point> | null }>,
+	frame: { readonly start: number; readonly end: number },
+	maxGap: number,
+) => {
+	const clipped = pinned.map((p) => ({ ...p, points: p.points === null ? null : clip(p.points, frame) }))
+	const loaded = clipped.flatMap((p, i) => (p.points === null ? [] : [{ i, points: p.points }]))
+	const result = compare(
+		main.points,
+		loaded.map((p) => p.points),
+		maxGap,
+	)
+	const color = (i: number) => SERIES_COLORS[i + 1]!
+	const drawn = new Map(result.others.map((o) => [loaded[o.index]!.i, o.points]))
+	const legend: Array<LegendEntry> = clipped.map((p, i) => {
+		const position = loaded.findIndex((l) => l.i === i)
+		const exclusion = position === -1 ? "loading" : result.excluded.get(position)
+		return { id: p.id, name: p.name, color: color(i), status: exclusion ? PIN_STATUS[exclusion] : null }
+	})
+	if (result.base === null) {
+		return { mode: "price" as const, series: [main], base: null, legend }
+	}
 	return {
 		mode: "index" as const,
-		base: rebased.base,
-		series: [main, ...compared].map((s, i) => ({ ...s, points: rebased.series[i]! })),
-		disjoint: false,
+		base: result.base,
+		series: [
+			{ ...main, points: result.main },
+			...clipped.flatMap((p, i): Array<ChartSeries> => {
+				const points = drawn.get(i)
+				return points ? [{ id: p.id, name: p.name, color: color(i), points }] : []
+			}),
+		],
+		legend,
 	}
 }
 
@@ -106,18 +160,16 @@ function InstrumentPage() {
 	const points = toPoints(config.kind, history.points)
 	const range = pickRange(points, search.range)
 	const ranges = coveredRanges(points)
-	const end = points.at(-1)?.t ?? 0
+	const frame = rangeWindow(range, points.at(-1)?.t ?? 0)
 
 	const chart = buildChart(
-		{ id: externalId, name: row.name, color: SERIES_COLORS[0]!, points: sliceRange(points, range, end) },
-		otherRows.flatMap((r, i): Array<ChartSeries> => {
+		{ id: externalId, name: history.name, color: SERIES_COLORS[0]!, points: clip(points, frame) },
+		otherRows.map((r, i) => {
 			const data = otherHistories[i]?.data
-			if (!data) return []
-			const color = SERIES_COLORS[i + 1]!
-			return [
-				{ id: r.externalId, name: r.name, color, points: sliceRange(toPoints(config.kind, data.points), range, end) },
-			]
+			return { id: r.externalId, name: r.name, points: data ? toPoints(config.kind, data.points) : null }
 		}),
+		frame,
+		GAPS[config.kind].hover,
 	)
 
 	const first = points[0]
@@ -151,8 +203,6 @@ function InstrumentPage() {
 				row.capturedAt ? ["Pobrano", formatCaptured(row.capturedAt)] : null,
 			]
 	const returns = config.periods.filter((c) => c.value(row) !== null || fund)
-	// The tiles sit three to a row on phones; blank tiles complete the last row so every tile is one width.
-	const fillers = (3 - (returns.length % 3)) % 3
 
 	return (
 		<main className="mx-auto w-full max-w-[1600px] px-4 pt-3 pb-4">
@@ -176,8 +226,10 @@ function InstrumentPage() {
 						<p className="text-muted mt-0.5 text-[13px]">{longName(row)}</p>
 					) : null}
 					{listed ? null : (
-						<p className="text-warn-fg mt-1 text-[13px]">
-							Nie ma go w ostatnim pobraniu z {SOURCES[source].name}; poniżej jego ostatnie zapisane dane.
+						<p className="text-muted mt-1 max-w-prose text-[13px]">
+							Nie ma go w ostatnim pobraniu z {SOURCES[source].name}, więc{" "}
+							{fund ? "rodzina, kategoria i ryzyko są" : "pozycja i kapitalizacja są"} niedostępne. Wartość i stopy
+							zwrotu pochodzą z ostatniego zapisanego notowania.
 						</p>
 					)}
 					<dl className="mt-2.5 flex flex-wrap gap-x-5 gap-y-1 text-[13px]">
@@ -237,9 +289,6 @@ function InstrumentPage() {
 						</div>
 					)
 				})}
-				{Array.from({ length: fillers }, (_, i) => (
-					<div key={`filler-${i}`} aria-hidden className="bg-bg sm:hidden" />
-				))}
 			</section>
 
 			<section aria-label="Wykres" className="mt-6">
@@ -257,7 +306,11 @@ function InstrumentPage() {
 						) : null}
 						<span className="num text-muted text-[13px]">{coverage}</span>
 					</div>
-					<Legend series={chart.series} onRemove={(id) => setPins(togglePin(pins, id))} mainId={externalId} />
+					<Legend
+						main={{ id: externalId, name: history.name, color: SERIES_COLORS[0]!, status: null }}
+						pinned={chart.legend}
+						onRemove={(id) => setPins(togglePin(pins, id))}
+					/>
 				</div>
 				<div className="mt-3">
 					{points.length < 2 ? (
@@ -278,7 +331,9 @@ function InstrumentPage() {
 							) : (
 								<p className="text-muted mb-1 text-xs">
 									{fund ? "Wartość j.u." : "Cena"}, {currency}
-									{chart.disjoint ? " · porównywane instrumenty nie mają wspólnych dat w tym zakresie" : ""}
+									{chart.legend.length > 0 && chart.legend.every((entry) => entry.status !== PIN_STATUS.loading)
+										? " · żadnego przypiętego nie da się porównać w tym zakresie"
+										: ""}
 								</p>
 							)}
 							<PriceChart series={chart.series} mode={chart.mode} unit={currency} kind={config.kind} />
@@ -297,27 +352,33 @@ function InstrumentPage() {
 	)
 }
 
+/** The instrument and every pin, drawn or not, each removable; a pin without a line says why. */
 function Legend({
-	series,
-	mainId,
+	main,
+	pinned,
 	onRemove,
 }: {
-	readonly series: ReadonlyArray<ChartSeries>
-	readonly mainId: string
+	readonly main: LegendEntry
+	readonly pinned: ReadonlyArray<LegendEntry>
 	readonly onRemove: (id: string) => void
 }) {
-	if (series.length < 2) return null
+	if (pinned.length === 0) return null
 	return (
 		<ul className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]" aria-label="Legenda">
-			{series.map((s) => (
-				<li key={s.id} className="flex max-w-64 items-center gap-1.5">
-					<span aria-hidden className="h-0.5 w-3.5 shrink-0 rounded-full" style={{ background: s.color }} />
-					<span className="truncate">{s.name}</span>
-					{s.id === mainId ? null : (
+			{[main, ...pinned].map((entry) => (
+				<li key={entry.id} className="flex max-w-80 min-w-0 items-center gap-1.5">
+					<span
+						aria-hidden
+						className={cn("h-0.5 w-3.5 shrink-0 rounded-full", entry.status && "opacity-30")}
+						style={{ background: entry.color }}
+					/>
+					<span className={cn("truncate", entry.status && "text-muted")}>{entry.name}</span>
+					{entry.status ? <span className="text-muted shrink-0 text-xs">({entry.status})</span> : null}
+					{entry === main ? null : (
 						<button
 							type="button"
-							aria-label={`Usuń ${s.name} z porównania`}
-							onClick={() => onRemove(s.id)}
+							aria-label={`Usuń ${entry.name} z porównania`}
+							onClick={() => onRemove(entry.id)}
 							className="text-muted hover:text-fg inline-flex size-11 shrink-0 items-center justify-center rounded sm:size-7"
 						>
 							<X className="size-3" />

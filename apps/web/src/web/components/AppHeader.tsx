@@ -1,5 +1,5 @@
 import type { SourceStatus } from "@fundstats/shared/api"
-import { SOURCES, type SourceId } from "@fundstats/shared/sources"
+import { isSourceId, SOURCES, type SourceId } from "@fundstats/shared/sources"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useParams } from "@tanstack/react-router"
 import { Moon, Sun } from "lucide-react"
@@ -48,9 +48,11 @@ function Dot({ status }: { readonly status: SourceStatus | undefined }) {
  * switch takes a second row; `--header-h` in styles.css follows it.
  */
 export function AppHeader() {
-	const params = useParams({ strict: false })
+	// Any route's params, unparsed on a 404: read the source only when it names one.
+	const raw = useParams({ strict: false }).source
+	const source = raw !== undefined && isSourceId(raw) ? raw : null
 	const statuses = useStatuses()
-	const onCrypto = params.kind === "crypto"
+	const onCrypto = source !== null && SOURCES[source].kind === "crypto"
 	const cryptoWarn = CRYPTO_SOURCES.some((id) => {
 		const status = statuses.get(id)
 		return status ? freshness(status, null).warn : false
@@ -70,7 +72,7 @@ export function AppHeader() {
 						params={{ kind: "funds", source: "mbank" }}
 						className={cn(
 							navLink,
-							params.kind === "funds" ? "text-fg border-fg font-medium" : "text-muted hover:text-fg border-transparent",
+							source === "mbank" ? "text-fg border-fg font-medium" : "text-muted hover:text-fg border-transparent",
 						)}
 					>
 						Fundusze <span className="text-muted max-sm:hidden">mBank</span>
@@ -78,7 +80,7 @@ export function AppHeader() {
 					</Link>
 					<Link
 						to="/$kind/$source"
-						params={{ kind: "crypto", source: onCrypto && params.source ? (params.source as SourceId) : "coingecko" }}
+						params={{ kind: "crypto", source: onCrypto ? source : "coingecko" }}
 						className={cn(
 							navLink,
 							onCrypto ? "text-fg border-fg font-medium" : "text-muted hover:text-fg border-transparent",
@@ -89,7 +91,7 @@ export function AppHeader() {
 						{statuses.size > 0 ? <StatusDot warn={cryptoWarn} /> : null}
 					</Link>
 				</nav>
-				{onCrypto ? <ProviderSwitch current={params.source as SourceId} className="max-lg:hidden" /> : null}
+				{onCrypto ? <ProviderSwitch current={source} className="max-lg:hidden" /> : null}
 				<div className="ml-auto flex items-center gap-1">
 					<a href="/api/docs" className="text-muted hover:text-fg px-2 text-[13px] max-sm:hidden">
 						API
@@ -102,7 +104,7 @@ export function AppHeader() {
 			</div>
 			{onCrypto ? (
 				<div className="mx-auto flex h-14 max-w-[1600px] items-center px-4 sm:h-11 lg:hidden">
-					<ProviderSwitch current={params.source as SourceId} className="w-full sm:w-auto" />
+					<ProviderSwitch current={source} className="w-full sm:w-auto" />
 				</div>
 			) : null}
 		</header>

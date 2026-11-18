@@ -3,6 +3,7 @@ import { ArrowDownWideNarrow, ArrowUpNarrowWide, Check, ChevronDown, Search, Sli
 import { Dialog, Popover } from "radix-ui"
 import { type KeyboardEvent, type Ref, useMemo, useState } from "react"
 
+import { Tooltip, TooltipContent, TooltipTrigger } from "#/components/ui/tooltip"
 import { cn } from "#/lib/utils"
 
 import { countNoun } from "../format.ts"
@@ -146,11 +147,11 @@ function RiskFilter({
 	const max = facets.scale.at(-1)!.level
 	return (
 		<div role="group" aria-label="Ryzyko (skala mBanku)" className="flex flex-wrap items-center gap-0.5">
-			<span className="text-muted mr-1.5 text-xs">Ryzyko</span>
+			<span className="text-muted mr-1 text-xs">Ryzyko</span>
 			{facets.scale.map(({ level, name, short }) => {
 				const count = facets.risks.get(level) ?? 0
 				const pressed = view.risk.has(level)
-				return (
+				const chip = (
 					<Toggle
 						key={level}
 						pressed={pressed}
@@ -161,6 +162,14 @@ function RiskFilter({
 						<span aria-hidden>{short}</span>
 						<span className="sr-only">{name}</span> <Count>{count}</Count>
 					</Toggle>
+				)
+				return short === name ? (
+					chip
+				) : (
+					<Tooltip key={level}>
+						<TooltipTrigger asChild>{chip}</TooltipTrigger>
+						<TooltipContent side="bottom">Ryzyko według mBanku: {name}</TooltipContent>
+					</Tooltip>
 				)
 			})}
 		</div>
@@ -183,7 +192,7 @@ function FamilyList({
 	}, [families, query])
 	const onListKey = (event: KeyboardEvent<HTMLElement>) => {
 		const container = event.currentTarget.closest("[data-family-list]")
-		const items = [...(container?.querySelectorAll<HTMLElement>('input, [role="option"]') ?? [])]
+		const items = [...(container?.querySelectorAll<HTMLElement>("input, button[data-family]") ?? [])]
 		const index = items.indexOf(event.target as HTMLElement)
 		const to = { ArrowDown: index + 1, ArrowUp: index - 1, Home: 1, End: items.length - 1 }[event.key]
 		if (to === undefined || index === -1) return
@@ -211,7 +220,7 @@ function FamilyList({
 				className="bg-bg placeholder:text-muted focus:border-accent h-11 w-full shrink-0 rounded-md border px-2.5 text-[13px] outline-none sm:h-8 [&::-webkit-search-cancel-button]:hidden"
 			/>
 			<div
-				role="listbox"
+				role="group"
 				aria-label="Rodziny funduszy"
 				onKeyDown={onListKey}
 				className="min-h-0 overflow-y-auto overscroll-contain"
@@ -219,8 +228,8 @@ function FamilyList({
 				{query === "" ? (
 					<button
 						type="button"
-						role="option"
-						aria-selected={selected === null}
+						data-family
+						aria-pressed={selected === null}
 						onClick={() => onSelect(null)}
 						className={item(selected === null)}
 					>
@@ -232,8 +241,8 @@ function FamilyList({
 					<button
 						key={name}
 						type="button"
-						role="option"
-						aria-selected={selected === name}
+						data-family
+						aria-pressed={selected === name}
 						onClick={() => onSelect(name)}
 						className={item(selected === name)}
 					>
@@ -304,7 +313,10 @@ function FamilySelect({
 	)
 }
 
-/** One filter row on wide screens. */
+/**
+ * Wide screens: categories, then risk and family as one unit that shares the search row from `xl`
+ * and below it takes a row of its own, so the toolbar never breaks mid-group.
+ */
 export function FilterRow({
 	config,
 	rows,
@@ -321,8 +333,10 @@ export function FilterRow({
 	return (
 		<>
 			<CategoryChips facets={facets} view={view} update={update} />
-			<RiskFilter facets={facets} view={view} update={update} />
-			<FamilySelect facets={facets} view={view} update={update} />
+			<div className="flex items-center gap-x-3 max-xl:basis-full">
+				<RiskFilter facets={facets} view={view} update={update} />
+				<FamilySelect facets={facets} view={view} update={update} />
+			</div>
 		</>
 	)
 }

@@ -6,7 +6,16 @@ import * as Duration from "effect/Duration"
 import { isStale } from "#/server/api/handlers.ts"
 import { countNoun, formatCompact, formatPercent, formatPrice } from "#/web/format.ts"
 import { heatCap, heatStep } from "#/web/heat.ts"
-import { coveredRanges, nearestWithin, pickRange, rebase, splitAtGaps, toPoints } from "#/web/history.ts"
+import {
+	clip,
+	compare,
+	coveredRanges,
+	nearestWithin,
+	pickRange,
+	rangeWindow,
+	splitAtGaps,
+	toPoints,
+} from "#/web/history.ts"
 import { riskScale } from "#/web/risk.ts"
 import {
 	filterRows,
@@ -247,7 +256,7 @@ describe("heat", () => {
 	})
 
 	it("washes exactly the cells that do not print as zero", () => {
-		for (const value of [-0.005, 0.005, -0.0049, 0.0049, -0.125, 0.125, 1.005, -1.005]) {
+		for (const value of [-0.005, 0.005, -0.0049, 0.0049, -0.125, 0.125, 1.005, -1.005, 1e-7, -1e-7]) {
 			const printedZero = formatPercent(value) === "0,00%"
 			assert.strictEqual(heatStep(value, 8) === 0, printedZero, String(value))
 		}
@@ -264,6 +273,14 @@ describe("pl-PL numbers", () => {
 		assert.strictEqual(formatPercent(-0.001), "0,00%")
 		assert.strictEqual(formatPercent(1088.87), "+1 088,87%")
 		assert.strictEqual(formatPercent(3.2), "+3,20%")
+	})
+
+	it("ties round away from zero on the decimal the source printed, not its binary neighbour", () => {
+		assert.strictEqual(formatPercent(2.675), "+2,68%")
+		assert.strictEqual(formatPercent(-2.675), "\u22122,68%")
+		assert.strictEqual(formatPercent(1.005), "+1,01%")
+		assert.strictEqual(formatPercent(-1.005), "\u22121,01%")
+		assert.strictEqual(heatStep(-2.675, 8), -2)
 	})
 
 	it("prices: two decimals from 1, six significant digits below; narrow no-break grouping", () => {
@@ -330,43 +347,87 @@ describe("history", () => {
 		)
 	})
 
+	const at = (date: string) => Date.parse(`${date}T00:00:00Z`)
+	const FOUR_DAYS = 4 * 86_400_000
+
 	it("rebases to 100 at the first date every series has", () => {
 		const a = toPoints("fund", [day("2026-11-03", 120), day("2026-11-02", 110), day("2026-11-01", 100)])
 		const b = toPoints("fund", [day("2026-11-03", 60), day("2026-11-02", 50)])
-		const result = rebase([a, b])!
+		const result = compare(a, [b], FOUR_DAYS)
+		assert.strictEqual(result.base, at("2026-11-02"))
 		assert.deepStrictEqual(
-			result.series.map((s) => s.map((p) => Math.round(p.v))),
+			[result.main, ...result.others.map((o) => o.points)].map((s) => s.map((p) => Math.round(p.v))),
 			[
 				[100, 109],
 				[100, 120],
 			],
 		)
-		assert.isNull(rebase([a, toPoints("fund", [day("2026-12-01", 1)])]))
+		const apart = compare(a, [toPoints("fund", [day("2026-12-01", 1)])], FOUR_DAYS)
+		assert.isNull(apart.base)
+		assert.strictEqual(apart.excluded.get(0), "disjoint")
 	})
 
 	it("rebases series that start on different days at an explicit, shared anchor", () => {
 		// Fund A is valued on 13.11 (Friday) and 17.11; fund B starts on 16.11 (Monday).
 		const a = toPoints("fund", [day("2026-11-17", 100), day("2026-11-13", 80)])
 		const b = toPoints("fund", [day("2026-11-17", 50), day("2026-11-16", 40)])
-		const result = rebase([a, b])!
-		const base = Date.parse("2026-11-16T00:00:00Z")
-		assert.strictEqual(result.base, base)
-		assert.deepStrictEqual(result.series[0], [
-			{ t: base, v: 100, observed: Date.parse("2026-11-13T00:00:00Z") },
-			{ t: Date.parse("2026-11-17T00:00:00Z"), v: 125 },
+		const result = compare(a, [b], FOUR_DAYS)
+		assert.strictEqual(result.base, at("2026-11-16"))
+		assert.deepStrictEqual(result.main, [
+			{ t: at("2026-11-16"), v: 100, observed: at("2026-11-13") },
+			{ t: at("2026-11-17"), v: 125 },
 		])
-		assert.deepStrictEqual(result.series[1], [
-			{ t: base, v: 100 },
-			{ t: Date.parse("2026-11-17T00:00:00Z"), v: 125 },
+		assert.deepStrictEqual(result.others[0]?.points, [
+			{ t: at("2026-11-16"), v: 100 },
+			{ t: at("2026-11-17"), v: 125 },
 		])
+	})
+
+	it("never anchors on a stale quote: the base moves to the first date with a recent one", () => {
+		// The pin was quoted on 1.08, then not again until 12.11.
+		const main = toPoints("fund", [day("2026-11-13", 104), day("2026-11-12", 102), day("2026-11-10", 100)])
+		const pin = toPoints("fund", [day("2026-11-13", 55), day("2026-11-12", 50), day("2026-08-01", 10)])
+		const result = compare(main, [pin], FOUR_DAYS)
+		assert.strictEqual(result.base, at("2026-11-12"))
+		assert.deepStrictEqual(
+			result.others[0]?.points.map((p) => Math.round(p.v)),
+			[100, 110],
+		)
+		// Hover reads a value by when it was observed, not where its anchor is drawn.
+		const anchored = [{ t: at("2026-11-12"), v: 100, observed: at("2026-08-01") }]
+		assert.isUndefined(nearestWithin(anchored, at("2026-11-12"), FOUR_DAYS))
+	})
+
+	it("cuts every series to the main series' window, so a pin cannot extend the range", () => {
+		const main = toPoints("fund", [day("2026-11-16", 2), day("2026-10-20", 1), day("2026-09-01", 1)])
+		const frame = rangeWindow("1m", main.at(-1)!.t)
+		const pin = toPoints("fund", [day("2026-12-31", 9), day("2026-11-16", 4), day("2026-10-20", 2)])
+		assert.deepStrictEqual(
+			clip(pin, frame).map((p) => p.v),
+			[2, 4],
+		)
+		assert.deepStrictEqual(
+			clip(main, frame).map((p) => p.v),
+			[1, 2],
+		)
+	})
+
+	it("a pin without points in the window is named, and the others still compare", () => {
+		const main = toPoints("fund", [day("2026-11-03", 120), day("2026-11-02", 110)])
+		const pin = toPoints("fund", [day("2026-11-03", 60), day("2026-11-02", 50)])
+		const result = compare(main, [[], pin], FOUR_DAYS)
+		assert.strictEqual(result.excluded.get(0), "empty")
+		assert.deepStrictEqual(
+			result.others.map((o) => o.index),
+			[1],
+		)
+		assert.strictEqual(result.base, at("2026-11-02"))
 	})
 
 	it("hover finds a value only within the gap bound; long silences split the line", () => {
 		const points = toPoints("fund", [day("2026-11-17", 3), day("2026-11-13", 2), day("2026-10-01", 1)])
-		const at = (date: string) => Date.parse(`${date}T00:00:00Z`)
-		const fourDays = 4 * 86_400_000
-		assert.strictEqual(nearestWithin(points, at("2026-11-16"), fourDays)?.v, 3)
-		assert.isUndefined(nearestWithin(points, at("2026-10-20"), fourDays))
+		assert.strictEqual(nearestWithin(points, at("2026-11-16"), FOUR_DAYS)?.v, 3)
+		assert.isUndefined(nearestWithin(points, at("2026-10-20"), FOUR_DAYS))
 		assert.deepStrictEqual(
 			splitAtGaps(points, 6 * 86_400_000).map((run) => run.map((p) => p.v)),
 			[[1], [2, 3]],

@@ -151,7 +151,7 @@ export function Sheet({ config, rows, view, search, asOf, onSort, onTogglePin, o
 				type="button"
 				onClick={() => onSort(id)}
 				className={cn(
-					"inline-flex h-9 w-full items-center gap-1 whitespace-nowrap transition-colors duration-150",
+					"inline-flex h-11 w-full items-center gap-1 whitespace-nowrap transition-colors duration-150 sm:h-9",
 					align === "right" ? "justify-end" : "justify-start",
 					isSorted ? "text-fg" : "text-muted hover:text-fg",
 				)}
@@ -255,7 +255,7 @@ export function Sheet({ config, rows, view, search, asOf, onSort, onTogglePin, o
 								/>
 							</td>
 							{numeric.map((column) => (
-								<ValueCell key={column.id} column={column} row={row} risk={risk} />
+								<ValueCell key={column.id} column={column} row={row} risk={risk} focusable={index === activeIndex} />
 							))}
 							<td aria-hidden className="spacer" />
 						</tr>
@@ -344,7 +344,7 @@ function NameCell({
 						title={[ownDate, category, family].filter(Boolean).join(" · ")}
 					>
 						{/* An exception to the table's valuation date is never truncated. */}
-						{ownDate ? <span className="text-fg/75 shrink-0 font-medium">{ownDate}</span> : null}
+						{ownDate ? <span className="text-fg shrink-0 font-medium">{ownDate}</span> : null}
 						<span className="truncate">
 							{ownDate && category ? "\u00A0· " : null}
 							{category}
@@ -366,26 +366,34 @@ function ValueCell({
 	column,
 	row,
 	risk,
+	focusable,
 }: {
 	readonly column: Column
 	readonly row: SnapshotRow
 	readonly risk: ReadonlyArray<RiskLevel>
+	/** In the roving focus row, an abbreviated level is a Tab stop that shows its full name. */
+	readonly focusable: boolean
 }) {
 	const value = column.value(row)
 	const heat = column.heatCap === null ? 0 : heatStep(value, column.heatCap)
 	if (column.format === "risk") {
 		const level = risk.find((r) => r.level === value)
+		const abbreviated = level !== undefined && level.short !== level.name
 		const label = level ? (
-			<span className="inline-flex items-center gap-1.5">
+			<span
+				tabIndex={abbreviated && focusable ? 0 : abbreviated ? -1 : undefined}
+				className="inline-flex items-center gap-1.5 rounded-sm"
+			>
 				<RiskMeter level={level.level} max={risk.at(-1)!.level} />
-				{level.short}
+				<span aria-hidden={abbreviated || undefined}>{level.short}</span>
+				{abbreviated ? <span className="sr-only">{level.name}</span> : null}
 			</span>
 		) : null
 		return (
 			<td className="px-2 pl-3 whitespace-nowrap sm:px-2.5 sm:pl-5">
 				{!level ? (
 					<span className="text-muted">–</span>
-				) : level.short === level.name ? (
+				) : !abbreviated ? (
 					label
 				) : (
 					<Tooltip>

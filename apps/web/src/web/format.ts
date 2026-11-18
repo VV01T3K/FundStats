@@ -25,11 +25,18 @@ const small = new Intl.NumberFormat(LOCALE, { maximumSignificantDigits: 6, useGr
 const compact = new Intl.NumberFormat(LOCALE, { notation: "compact", maximumSignificantDigits: 3 })
 const integer = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 0, useGrouping: "always" })
 
+const twoDecimals = new Intl.NumberFormat("en-US", {
+	maximumFractionDigits: 2,
+	roundingMode: "halfExpand",
+	useGrouping: false,
+})
+
 /**
- * The value at two decimals, halves away from zero: the one rounding rule behind both the printed
- * percent and its heat step, so a cell reading `0,00%` is never washed and `−0,01%` always is.
+ * The value at two decimals, halves away from zero on its shortest decimal form (2.675 → 2.68, where
+ * `toFixed` sees the binary 2.67499…): the one rounding rule behind both the printed percent and its
+ * heat step, so a cell reading `0,00%` is never washed and `−0,01%` always is.
  */
-export const roundForDisplay = (value: number) => Math.sign(value) * Number(Math.abs(value).toFixed(2))
+export const roundForDisplay = (value: number) => Number(twoDecimals.format(value))
 
 /** `+4,12%`, `−0,73%`, `0,00%`. */
 export const formatPercent = (value: number) => `${typeset(percentFormat.format(roundForDisplay(value)))}%`
