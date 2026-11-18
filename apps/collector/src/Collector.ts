@@ -26,7 +26,8 @@ export type RunTrigger = "schedule" | "cli" | "test"
 const LOCK_IDLE_SLACK = Duration.minutes(1)
 
 /**
- * Runs sources: fetch → keep raw payload → decode → normalize → persist, recording every run.
+ * Runs sources: fetch → decode → normalize → persist, recording every run. A response the run rejects is kept
+ * as its raw payload.
  * A run holds its source's database lock for its whole lifetime, so two runs of one source (in this
  * process or another) never overlap; a run that finds the lock taken fails with SourceBusy and records nothing.
  */
@@ -61,9 +62,10 @@ export class Collector extends Context.Service<
 					}
 					const id = sourceId as SourceId
 					const source: AnySource = registry[id]
-					// The run row to close if the run fails. Failure is recorded outside
-					// the lock, so it is also recorded when the lock connection is lost.
+					// The run row to close if the run fails, and the response it rejected. Failure is recorded
+					// outside the lock, so it is also recorded when the lock connection is lost.
 					let openRun: number | undefined
+					let rejectedPayload = Option.none<unknown>()
 					return yield* sourceLocks
 						.withSourceLock(
 							id,
@@ -89,34 +91,42 @@ export class Collector extends Context.Service<
 												),
 										}),
 									)
-									// Stored before decoding, so a changed upstream shape can be inspected and replayed.
-									yield* writer.saveRawPayload(runId, raw)
-									const payload = yield* source.decode(raw)
-									const rows = yield* Effect.try({
-										try: () => source.normalize(payload),
-										catch: (cause) =>
-											new SourceError({
+									const rows = yield* Effect.gen(function* () {
+										const payload = yield* source.decode(raw)
+										const normalized = yield* Effect.try({
+											try: () => source.normalize(payload),
+											catch: (cause) =>
+												new SourceError({
+													source: id,
+													reason: "decode",
+													message: `normalize failed: ${String(cause)}`,
+													cause,
+												}),
+										})
+										if (normalized.length === 0) {
+											return yield* new SourceError({
 												source: id,
-												reason: "decode",
-												message: `normalize failed: ${String(cause)}`,
-												cause,
+												reason: "upstream",
+												message: "Upstream returned no instruments",
+											})
+										}
+										const duplicate = firstDuplicateId(normalized)
+										if (duplicate !== undefined) {
+											return yield* new SourceError({
+												source: id,
+												reason: "upstream",
+												message: `Upstream listed instrument ${duplicate} more than once`,
+											})
+										}
+										return normalized
+									}).pipe(
+										// Only a rejected response is kept, so a changed upstream shape can be inspected and replayed.
+										Effect.tapError(() =>
+											Effect.sync(() => {
+												rejectedPayload = Option.some(raw)
 											}),
-									})
-									if (rows.length === 0) {
-										return yield* new SourceError({
-											source: id,
-											reason: "upstream",
-											message: "Upstream returned no instruments",
-										})
-									}
-									const duplicate = firstDuplicateId(rows)
-									if (duplicate !== undefined) {
-										return yield* new SourceError({
-											source: id,
-											reason: "upstream",
-											message: `Upstream listed instrument ${duplicate} more than once`,
-										})
-									}
+										),
+									)
 									const result = yield* writer.persist({ source: id, runId, capturedAt, rows })
 									yield* Effect.logInfo(
 										`Collected ${id}: ${result.instrumentCount} instruments, ${result.rowsWritten} rows written`,
@@ -128,16 +138,32 @@ export class Collector extends Context.Service<
 						.pipe(
 							// failRun only touches a run that is still `running`, so a run whose
 							// persist committed keeps its success even if the fiber was interrupted.
-							Effect.onError((cause) =>
-								openRun === undefined
-									? Effect.void
-									: store.failRun(openRun, describe(cause)).pipe(
-											// The run's own error is what the caller gets; this one is only logged.
-											Effect.catchCause((recording) =>
-												Effect.logError(`Could not record run ${openRun} as failed: ${describe(recording)}`),
-											),
+							// The run's own error is what the caller gets; failures to record it are only logged.
+							Effect.onError((cause) => {
+								const runId = openRun
+								if (runId === undefined) return Effect.void
+								const recordFailure = store
+									.failRun(runId, describe(cause))
+									.pipe(
+										Effect.catchCause((recording) =>
+											Effect.logError(`Could not record run ${runId} as failed: ${describe(recording)}`),
 										),
-							),
+									)
+								// Archived after, and apart from, the failure: a payload that cannot be stored must not
+								// leave the run `running`.
+								const archive = Option.match(rejectedPayload, {
+									onNone: () => Effect.void,
+									onSome: (payload) =>
+										store
+											.archiveRejectedPayload(runId, payload)
+											.pipe(
+												Effect.catchCause((archiving) =>
+													Effect.logError(`Could not store the response run ${runId} rejected: ${describe(archiving)}`),
+												),
+											),
+								})
+								return Effect.andThen(recordFailure, archive)
+							}),
 						)
 				},
 				Effect.provideService(HttpClient.HttpClient, httpClient),

@@ -1,13 +1,13 @@
 import type { CollectionRun, SnapshotRow } from "@fundstats/shared/api"
 import type { Metrics } from "@fundstats/shared/metrics"
-import { and, desc, eq, sql } from "drizzle-orm"
+import { and, eq, sql } from "drizzle-orm"
 import * as Context from "effect/Context"
 import * as DateTime from "effect/DateTime"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 
 import { Database, type QueryError } from "./Database.ts"
-import { collectionRuns, instruments, snapshots, sourceSchedules } from "./schema.ts"
+import { collectionRuns, instruments, newestSnapshotFirst, snapshots, sourceSchedules } from "./schema.ts"
 
 export interface RunSummary {
 	readonly lastRun: CollectionRun | null
@@ -32,6 +32,9 @@ export interface SourceSchedule {
 }
 
 type E<A> = Effect.Effect<A, QueryError>
+
+/** In collection_runs_source_started_idx order: a bare DESC means NULLS FIRST and would sort instead. */
+const newestRunFirst = sql`${collectionRuns.startedAt} desc nulls last`
 
 /** Reads of collected data: everything the API serves. It never writes; RunStore does. */
 export class Store extends Context.Service<
@@ -64,13 +67,13 @@ export class Store extends Context.Service<
 					.select()
 					.from(collectionRuns)
 					.where(eq(collectionRuns.source, source))
-					.orderBy(desc(collectionRuns.startedAt))
+					.orderBy(newestRunFirst)
 					.limit(1)
 				const [lastSuccess] = yield* database
 					.select()
 					.from(collectionRuns)
 					.where(and(eq(collectionRuns.source, source), eq(collectionRuns.status, "success")))
-					.orderBy(desc(collectionRuns.startedAt))
+					.orderBy(newestRunFirst)
 					.limit(1)
 				return {
 					lastRun: lastRun ? toRun(lastRun) : null,
@@ -110,7 +113,7 @@ export class Store extends Context.Service<
 								(select 1 as priority, captured_at, as_of, value, metrics
 								 from ${snapshots}
 								 where instrument_id = i.id
-								 order by captured_at desc
+								 order by ${newestSnapshotFirst}
 								 limit 1)
 							) candidates
 							order by priority
@@ -157,7 +160,8 @@ export class Store extends Context.Service<
 					})
 					.from(snapshots)
 					.where(eq(snapshots.instrumentId, instrument.id))
-					.orderBy(desc(snapshots.capturedAt))
+					// Funds by valuation date (an older date can be rewritten later), live quotes by capture time.
+					.orderBy(sql`${snapshots.asOf} desc nulls last, ${newestSnapshotFirst}`)
 					.limit(limit)
 				return {
 					name: instrument.name,

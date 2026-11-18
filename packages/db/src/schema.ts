@@ -36,8 +36,8 @@ export const collectionRuns = pgTable(
 )
 
 /**
- * The upstream response of a run, kept so data can be re-normalized after a
- * normalizer fix. Pruned after RAW_PAYLOAD_RETENTION_DAYS.
+ * The upstream response of a run that rejected it (decode, normalize or validation failure), as JSON text,
+ * kept to inspect and replay after a fix. Successful runs store none. Pruned after RAW_PAYLOAD_RETENTION_DAYS.
  */
 export const rawPayloads = pgTable(
 	"raw_payloads",
@@ -47,7 +47,8 @@ export const rawPayloads = pgTable(
 			.notNull()
 			.references(() => collectionRuns.id, { onDelete: "cascade" }),
 		fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
-		payload: jsonb("payload").notNull(),
+		// JSON text, not jsonb: jsonb rejects \u0000 and deep nesting, and the archive is only read back whole.
+		payload: text("payload").notNull(),
 	},
 	(t) => [uniqueIndex("raw_payloads_run_idx").on(t.runId), index("raw_payloads_fetched_idx").on(t.fetchedAt)],
 )
@@ -78,7 +79,8 @@ export const instruments = pgTable(
 /**
  * Values of one instrument at one point in time. Dedupe rule: dated values (`as_of`, e.g. mBank's
  * valuation date) keep one row per instrument and date, rewritten only when a value changed;
- * live quotes without a date (crypto) get one row per collection.
+ * live quotes without a date (crypto) get a row per collection that changed the quote, thinned to one
+ * per UTC day after LIVE_SNAPSHOT_DETAIL_DAYS.
  */
 export const snapshots = pgTable(
 	"snapshots",
@@ -101,6 +103,12 @@ export const snapshots = pgTable(
 			.where(sql`${t.asOf} is not null`),
 	],
 )
+
+/**
+ * Newest snapshot first, in snapshots_instrument_captured_idx order (Postgres sorts DESC as NULLS FIRST unless
+ * told otherwise, and then cannot read the index in order). `id` breaks ties between equal capture times.
+ */
+export const newestSnapshotFirst = sql`captured_at desc nulls last, id desc`
 
 /**
  * How the collector schedules each source, written by the collector when it starts so the web app can

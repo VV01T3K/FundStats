@@ -47,6 +47,8 @@ export class CollectorConfig extends Context.Service<
 		/** Per-source interval overrides from COLLECTOR_INTERVAL_<SOURCE>. */
 		readonly intervalOverride: (sourceId: string) => Option.Option<Duration.Duration>
 		readonly rawPayloadRetentionDays: number
+		/** Live quotes older than this many days are thinned to one per instrument and UTC day. */
+		readonly liveSnapshotDetailDays: number
 		/** A run's whole fetch phase, retries and Retry-After waits included. */
 		readonly fetchTimeout: Duration.Duration
 		readonly coingeckoApiKey: Option.Option<Redacted.Redacted<string>>
@@ -60,6 +62,7 @@ export class CollectorConfig extends Context.Service<
 				migrationsDir: Config.String("MIGRATIONS_DIR").pipe(Config.withDefault(migrationsFolder)),
 				collectorEnabled: Config.Boolean("COLLECTOR_ENABLED").pipe(Config.withDefault(true)),
 				rawPayloadRetentionDays: Config.schema(PositiveInt, "RAW_PAYLOAD_RETENTION_DAYS").pipe(Config.withDefault(30)),
+				liveSnapshotDetailDays: Config.schema(PositiveInt, "LIVE_SNAPSHOT_DETAIL_DAYS").pipe(Config.withDefault(7)),
 				fetchTimeout: Config.schema(FetchTimeout, "FETCH_TIMEOUT").pipe(Config.withDefault(Duration.minutes(5))),
 				coingeckoApiKey: Config.Redacted("COINGECKO_API_KEY").pipe(Config.option),
 				cmcApiKey: Config.Redacted("CMC_API_KEY").pipe(Config.option),

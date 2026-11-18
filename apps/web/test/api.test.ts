@@ -117,9 +117,9 @@ layer(ApiTest)("HTTP API", (it) => {
 				Object.fromEntries(json.map((s) => [s.id, s.intervalSeconds]))
 			assert.deepStrictEqual(intervals((yield* call("/api/v1/sources")).json), {
 				mbank: 6 * 3600,
-				coingecko: 1800,
-				coinpaprika: 1800,
-				coinmarketcap: 1800,
+				coingecko: 6 * 3600,
+				coinpaprika: 6 * 3600,
+				coinmarketcap: 6 * 3600,
 			})
 			yield* (yield* RunStore).publishSchedules([
 				{ source: "mbank", intervalSeconds: 3600, enabled: true },
@@ -128,8 +128,8 @@ layer(ApiTest)("HTTP API", (it) => {
 			assert.deepStrictEqual(intervals((yield* call("/api/v1/sources")).json), {
 				mbank: 3600,
 				coingecko: 600,
-				coinpaprika: 1800,
-				coinmarketcap: 1800,
+				coinpaprika: 6 * 3600,
+				coinmarketcap: 6 * 3600,
 			})
 			assert.isTrue((yield* call("/api/health")).json.collectorEnabled)
 		}),

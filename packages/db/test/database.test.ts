@@ -5,6 +5,7 @@
 import { assert, layer } from "@effect/vitest"
 import { sql } from "drizzle-orm"
 import * as Clock from "effect/Clock"
+import * as DateTime from "effect/DateTime"
 import * as Deferred from "effect/Deferred"
 import * as Duration from "effect/Duration"
 import * as Effect from "effect/Effect"
@@ -13,7 +14,7 @@ import * as Layer from "effect/Layer"
 
 import { Database } from "../src/Database.ts"
 import { RunStore } from "../src/RunStore.ts"
-import { collectionRuns } from "../src/schema.ts"
+import { collectionRuns, newestSnapshotFirst, snapshots } from "../src/schema.ts"
 import { SourceLocks } from "../src/SourceLocks.ts"
 import { Store } from "../src/Store.ts"
 import {
@@ -45,6 +46,12 @@ import {
 const storageWithShortTimeout = (url: string) =>
 	Layer.fresh(storageOn(dbConfigOn(url, { DB_STATEMENT_TIMEOUT: "1 second" })))
 
+const persistAt = (source: string, when: Date, rows: ReadonlyArray<ReturnType<typeof row>>) =>
+	Effect.gen(function* () {
+		const runId = yield* startRun(source, "test")
+		return yield* (yield* writer).persist({ source, runId, capturedAt: when, rows })
+	})
+
 layer(TestStorage)("runs and the latest view", (it) => {
 	it.effect("latest shows the newest valuation date even when an older date was captured later", () =>
 		Effect.gen(function* () {
@@ -67,6 +74,181 @@ layer(TestStorage)("runs and the latest view", (it) => {
 			const latest = at(yield* store.latest("mbank"), 0)
 			assert.strictEqual(latest.asOf, "2026-11-16")
 			assert.strictEqual(latest.value, 10)
+		}),
+	)
+
+	it.effect(
+		"history lists dated values by valuation date, newest first, even when an older date was written later",
+		() =>
+			Effect.gen(function* () {
+				yield* reset
+				const first = yield* startRun("mbank", "test")
+				yield* (yield* writer).persist({
+					source: "mbank",
+					runId: first,
+					capturedAt: capturedAt("2026-11-16T12:00:00Z"),
+					rows: [row("f", "2026-11-16", 10)],
+				})
+				const second = yield* startRun("mbank", "test")
+				yield* (yield* writer).persist({
+					source: "mbank",
+					runId: second,
+					capturedAt: capturedAt("2026-11-17T12:00:00Z"),
+					rows: [row("f", "2026-11-13", 9)],
+				})
+				const history = yield* (yield* Store).history("mbank", "f", 10)
+				assert.deepStrictEqual(
+					history?.points.map((p) => p.asOf),
+					["2026-11-16", "2026-11-13"],
+				)
+			}),
+	)
+
+	it.effect("a live quote equal to the instrument's newest snapshot is not stored again", () =>
+		Effect.gen(function* () {
+			yield* reset
+			const store = yield* Store
+			const first = yield* startRun("coingecko", "test")
+			yield* (yield* writer).persist({
+				source: "coingecko",
+				runId: first,
+				capturedAt: capturedAt("2026-11-16T12:00:00Z"),
+				rows: [row("a", null, 1), row("b", null, 2), { ...row("c", null, 3), metrics: { rank: 3 } }],
+			})
+			const second = yield* startRun("coingecko", "test")
+			const result = yield* (yield* writer).persist({
+				source: "coingecko",
+				runId: second,
+				capturedAt: capturedAt("2026-11-16T18:00:00Z"),
+				rows: [row("a", null, 1), row("b", null, 2.5), { ...row("c", null, 3), metrics: { rank: 4 } }],
+			})
+			assert.deepStrictEqual(result, { instrumentCount: 3, rowsWritten: 2 })
+			assert.strictEqual(yield* count("snapshots"), 5)
+			const [run] = yield* queryElsewhere<{ rows_written: number }>(
+				"select rows_written from collection_runs where id = $1",
+				[second],
+			)
+			assert.strictEqual(run?.rows_written, 2)
+			// The unchanged instrument is still listed, with the snapshot it last changed in.
+			const latest = yield* store.latest("coingecko")
+			assert.deepStrictEqual(
+				latest.map((r) => [r.externalId, r.value, r.capturedAt]),
+				[
+					["c", 3, "2026-11-16T18:00:00.000Z"],
+					["a", 1, "2026-11-16T12:00:00.000Z"],
+					["b", 2.5, "2026-11-16T18:00:00.000Z"],
+				],
+			)
+		}),
+	)
+
+	it.effect("downsampling keeps old live quotes only as each instrument's newest per UTC day", () =>
+		Effect.gen(function* () {
+			yield* reset
+			const { ms } = at(
+				yield* queryElsewhere<{ ms: number }>("select extract(epoch from now())::float8 * 1000 as ms"),
+				0,
+			)
+			const hoursAgo = (hours: number) => DateTime.toDateUtc(DateTime.makeUnsafe(ms - hours * 3_600_000))
+			// Old points: two UTC days around midnight, then recent ones inside the detail window.
+			const old = [
+				["2020-01-01T08:00:00Z", 1],
+				["2020-01-01T23:30:00Z", 2],
+				["2020-01-02T00:30:00Z", 3],
+				["2020-01-02T12:00:00Z", 4],
+			] as const
+			for (const [iso, value] of old) {
+				yield* persistAt("coingecko", capturedAt(iso), [row("a", null, value), row("gone", null, value)])
+			}
+			yield* persistAt("coingecko", hoursAgo(30), [row("a", null, 5)])
+			yield* persistAt("coingecko", hoursAgo(2), [row("a", null, 6)])
+			yield* persistAt("coingecko", hoursAgo(1), [row("a", null, 7)])
+			// Dated rows captured on one old day are never thinned.
+			yield* persistAt("mbank", capturedAt("2020-01-01T08:00:00Z"), [row("f", "2019-12-30", 1)])
+			yield* persistAt("mbank", capturedAt("2020-01-01T09:00:00Z"), [row("f", "2019-12-31", 2)])
+
+			const deleted = yield* (yield* RunStore).downsampleLiveSnapshots(7)
+			assert.strictEqual(deleted, 4)
+			const kept = yield* queryElsewhere<{ external_id: string; value: string }>(
+				`select i.external_id, s.value::text as value from snapshots s join instruments i on i.id = s.instrument_id
+				 order by i.external_id, s.captured_at`,
+			)
+			assert.deepStrictEqual(
+				kept.map((k) => `${k.external_id}=${k.value}`),
+				// "gone" is no longer reported; its newest snapshot (4) is kept with one point per day.
+				["a=2", "a=4", "a=5", "a=6", "a=7", "f=1", "f=2", "gone=2", "gone=4"],
+			)
+			assert.strictEqual(yield* (yield* RunStore).downsampleLiveSnapshots(7), 0, "a second pass deletes nothing")
+		}),
+	)
+
+	it.effect("downsampling works through a backlog larger than one batch", () =>
+		Effect.gen(function* () {
+			yield* reset
+			yield* persistAt("coingecko", capturedAt("2020-01-01T00:00:00Z"), [row("a", null, 0)])
+			// One quote a minute from 2020-01-01 00:01 to 2020-01-18 08:40 UTC: 18 UTC days.
+			yield* queryElsewhere(
+				`insert into snapshots (instrument_id, captured_at, value, metrics)
+				 select i.id, timestamptz '2020-01-01 00:00:00+00' + g * interval '1 minute', g, '{}'
+				 from instruments i, generate_series(1, 25000) g where i.external_id = 'a'`,
+			)
+			assert.strictEqual(yield* (yield* RunStore).downsampleLiveSnapshots(7), 25_001 - 18)
+			const days = yield* queryElsewhere<{ day: string; value: string }>(
+				`select (captured_at at time zone 'UTC')::date::text as day, value::text as value
+				 from snapshots order by captured_at`,
+			)
+			assert.strictEqual(days.length, 18)
+			assert.deepStrictEqual(at(days, 0), { day: "2020-01-01", value: "1439" })
+			assert.deepStrictEqual(at(days, 17), { day: "2020-01-18", value: "25000" })
+		}),
+	)
+
+	it.effect("live quotes with the same capture time: the higher id is the newest everywhere", () =>
+		Effect.gen(function* () {
+			yield* reset
+			const when = capturedAt("2020-01-01T08:00:00Z")
+			yield* persistAt("coingecko", when, [row("a", null, 1)])
+			yield* persistAt("coingecko", when, [row("a", null, 2)])
+			assert.strictEqual(at(yield* (yield* Store).latest("coingecko"), 0).value, 2)
+			// Equal to the newest (2), not to the older tie (1): not stored again.
+			const runId = yield* startRun("coingecko", "test")
+			const again = yield* (yield* writer).persist({
+				source: "coingecko",
+				runId,
+				capturedAt: when,
+				rows: [row("a", null, 2)],
+			})
+			assert.strictEqual(again.rowsWritten, 0)
+			assert.strictEqual(yield* (yield* RunStore).downsampleLiveSnapshots(7), 1)
+			const kept = yield* queryElsewhere<{ value: string }>("select value::text as value from snapshots")
+			assert.deepStrictEqual(kept, [{ value: "2" }])
+		}),
+	)
+
+	it.effect("the newest-snapshot lookup reads the index in order instead of sorting an instrument's history", () =>
+		Effect.gen(function* () {
+			yield* reset
+			yield* persistAt("coingecko", capturedAt("2020-01-01T00:00:00Z"), [row("a", null, 0)])
+			yield* queryElsewhere(
+				`insert into snapshots (instrument_id, captured_at, value, metrics)
+				 select i.id, timestamptz '2020-01-01 00:00:00+00' + g * interval '1 hour', g, '{}'
+				 from instruments i, generate_series(1, 5000) g where i.external_id = 'a'`,
+			)
+			yield* queryElsewhere("analyze snapshots")
+			const db = yield* Database
+			const plan = yield* db.execute<{ "QUERY PLAN": string }>(
+				sql`explain select value, metrics from ${snapshots} where instrument_id = 1 order by ${newestSnapshotFirst} limit 1`,
+			)
+			const lines = plan.rows.map((r) => r["QUERY PLAN"])
+			assert.isTrue(
+				lines.some((l) => l.includes("Index Scan using snapshots_instrument_captured_idx")),
+				lines.join("\n"),
+			)
+			// An Incremental Sort only orders the rows that tie on captured_at; a full Sort would order them all.
+			assert.isFalse(
+				lines.some((l) => /^\s*(->\s+)?Sort\s+\(cost/.test(l)),
+				lines.join("\n"),
+			)
 		}),
 	)
 

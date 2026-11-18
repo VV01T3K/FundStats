@@ -76,6 +76,12 @@ export const CollectorScheduler = Layer.effectDiscard(
 				runs.pruneRawPayloads(config.rawPayloadRetentionDays).pipe(
 					Effect.tap((n) => (n > 0 ? Effect.logInfo(`Pruned ${n} raw payload(s)`) : Effect.void)),
 					Effect.catchCause((cause) => Effect.logWarning(`Raw payload pruning failed: ${describe(cause)}`)),
+					Effect.andThen(
+						runs.downsampleLiveSnapshots(config.liveSnapshotDetailDays).pipe(
+							Effect.tap((n) => (n > 0 ? Effect.logInfo(`Downsampled ${n} live snapshot(s)`) : Effect.void)),
+							Effect.catchCause((cause) => Effect.logWarning(`Live snapshot downsampling failed: ${describe(cause)}`)),
+						),
+					),
 					Effect.andThen(Effect.sleep("1 day")),
 				),
 			),

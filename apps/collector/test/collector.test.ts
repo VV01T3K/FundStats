@@ -118,7 +118,7 @@ const RecordingSourceLocks = Layer.effect(
 )
 
 layer(TestServices)("collector and storage", (it) => {
-	it.effect("stores instruments, snapshots, the raw payload and a run record", () =>
+	it.effect("stores instruments, snapshots and a run record, and no raw payload for a successful run", () =>
 		Effect.gen(function* () {
 			yield* reset
 			const collector = yield* Collector
@@ -126,7 +126,7 @@ layer(TestServices)("collector and storage", (it) => {
 			assert.deepStrictEqual(result, { instrumentCount: 8, rowsWritten: 8 })
 			assert.strictEqual(yield* count("instruments"), 8)
 			assert.strictEqual(yield* count("snapshots"), 8)
-			assert.strictEqual(yield* count("raw_payloads"), 1)
+			assert.strictEqual(yield* count("raw_payloads"), 0)
 			const store = yield* Store
 			const summary = yield* store.runSummary("mbank")
 			assert.strictEqual(summary.lastSuccess?.status, "success")
@@ -159,14 +159,29 @@ layer(TestServices)("collector and storage", (it) => {
 		}),
 	)
 
-	it.effect("crypto quotes have no as_of date and get one row per collection", () =>
+	it.effect("crypto quotes have no as_of date and get a row per collection that changed the quote", () =>
 		Effect.gen(function* () {
 			yield* reset
 			const collector = yield* Collector
 			yield* collector.runOnce("coingecko", "test")
-			yield* collector.runOnce("coingecko", "test")
+			const unchanged = yield* collector.runOnce("coingecko", "test")
+			assert.strictEqual(unchanged.rowsWritten, 0)
 			assert.strictEqual(yield* count("instruments"), 5)
-			assert.strictEqual(yield* count("snapshots"), 10)
+			assert.strictEqual(yield* count("snapshots"), 5)
+
+			const original = upstream["api.coingecko.com"]
+			upstream["api.coingecko.com"] = () => {
+				const coins = fixture("coingecko-markets.json") as Array<{ current_price: number }>
+				at(coins, 0).current_price += 1
+				return coins
+			}
+			try {
+				const moved = yield* collector.runOnce("coingecko", "test")
+				assert.strictEqual(moved.rowsWritten, 1)
+				assert.strictEqual(yield* count("snapshots"), 6)
+			} finally {
+				upstream["api.coingecko.com"] = original
+			}
 		}),
 	)
 
@@ -188,12 +203,55 @@ layer(TestServices)("collector and storage", (it) => {
 			assert.strictEqual(summary.lastRun?.status, "failed")
 			assert.match(summary.lastRun?.error ?? "", /decode/)
 			// The response that failed to decode is kept for diagnosis and replay.
-			const kept = yield* queryElsewhere<{ payload: unknown }>("select payload from raw_payloads where run_id = $1", [
+			const kept = yield* queryElsewhere<{ payload: string }>("select payload from raw_payloads where run_id = $1", [
 				summary.lastRun?.id,
 			])
-			assert.deepStrictEqual(kept[0]?.payload, { error: "maintenance" })
+			assert.deepStrictEqual(kept[0]?.payload, '{"error":"maintenance"}')
 			assert.strictEqual((yield* store.latest("coinpaprika")).length, 4, "last good data is still served")
 		}),
+	)
+
+	const deeplyNested = 50_000
+	/** [what the response holds, the upstream answer, the archived JSON text or null for none] */
+	const rejectedResponses: ReadonlyArray<readonly [string, () => unknown, string | null]> = [
+		["JSON null", () => null, "null"],
+		// jsonb would reject this escape; the archive is text.
+		["a \\u0000 escape", () => ({ error: "bad\u0000shape" }), '{"error":"bad\\u0000shape"}'],
+		// Parses, but is nested too deep to encode back: not archived, and the run is still recorded.
+		[
+			"nesting too deep to re-encode",
+			() =>
+				new Response("[".repeat(deeplyNested) + "]".repeat(deeplyNested), {
+					headers: { "content-type": "application/json" },
+				}),
+			null,
+		],
+	]
+	it.effect.each(rejectedResponses)(
+		"a rejected response with %s records the run as failed with its reason",
+		([, body, archived]) =>
+			Effect.gen(function* () {
+				yield* reset
+				const collector = yield* Collector
+				const original = upstream["api.coingecko.com"]
+				upstream["api.coingecko.com"] = body
+				try {
+					assert.strictEqual((yield* collector.runOnce("coingecko", "test").pipe(Effect.flip))._tag, "SourceError")
+				} finally {
+					upstream["api.coingecko.com"] = original
+				}
+				const runs = yield* queryElsewhere<{ status: string; error: string }>(
+					"select status, error from collection_runs",
+				)
+				assert.lengthOf(runs, 1)
+				assert.strictEqual(at(runs, 0).status, "failed")
+				assert.match(at(runs, 0).error, /^decode: /)
+				const kept = yield* queryElsewhere<{ payload: string }>("select payload from raw_payloads")
+				assert.deepStrictEqual(
+					kept.map((k) => k.payload),
+					archived === null ? [] : [archived],
+				)
+			}),
 	)
 
 	it.effect("an upstream that lists an instrument twice fails the run and keeps its response", () =>
@@ -218,6 +276,27 @@ layer(TestServices)("collector and storage", (it) => {
 		}),
 	)
 
+	it.effect("a duplicate id containing NUL still records the run as failed", () =>
+		Effect.gen(function* () {
+			yield* reset
+			const collector = yield* Collector
+			const original = upstream["api.coingecko.com"]
+			upstream["api.coingecko.com"] = () => {
+				const coin = { ...at(fixture("coingecko-markets.json") as Array<object>, 0), id: "bad\u0000id" }
+				return [coin, coin]
+			}
+			try {
+				assert.strictEqual((yield* collector.runOnce("coingecko", "test").pipe(Effect.flip))._tag, "SourceError")
+			} finally {
+				upstream["api.coingecko.com"] = original
+			}
+			const runs = yield* queryElsewhere<{ status: string; error: string }>("select status, error from collection_runs")
+			assert.lengthOf(runs, 1)
+			assert.strictEqual(at(runs, 0).status, "failed")
+			assert.strictEqual(at(runs, 0).error, "upstream: Upstream listed instrument bad\\u0000id more than once")
+		}),
+	)
+
 	it.effect("on start it records each source's schedule for the web app, even when disabled", () =>
 		Effect.gen(function* () {
 			yield* reset
@@ -227,9 +306,9 @@ layer(TestServices)("collector and storage", (it) => {
 				schedules.map((s) => [s.source, s.intervalSeconds, s.enabled]),
 				[
 					["mbank", 6 * 3600, false],
-					["coingecko", 1800, false],
-					["coinpaprika", 1800, false],
-					["coinmarketcap", 1800, false],
+					["coingecko", 6 * 3600, false],
+					["coinpaprika", 6 * 3600, false],
+					["coinmarketcap", 6 * 3600, false],
 				],
 			)
 			assert.strictEqual(yield* count("collection_runs"), 0, "a disabled collector collects nothing")
@@ -366,10 +445,10 @@ layer(TestServices)("losing the lock or the fiber mid-run", (it) => {
 							return yield* Fiber.join(fiber)
 						}),
 					)
-					assert.strictEqual(error._tag, "EffectDrizzleQueryError")
+					// Its next write is persist's BEGIN on the lost session.
+					assert.strictEqual(error._tag, "SqlError")
 					const runs = yield* queryElsewhere<{ status: string }>("select status from collection_runs")
 					assert.deepStrictEqual(runs, [{ status: "failed" }])
-					assert.strictEqual(yield* count("raw_payloads"), 0)
 					assert.strictEqual(yield* count("snapshots"), 0)
 					// The next run takes the freed lock and serves its data.
 					upstream["api.coingecko.com"] = original
@@ -379,6 +458,37 @@ layer(TestServices)("losing the lock or the fiber mid-run", (it) => {
 					upstream["api.coingecko.com"] = original
 				}
 			}),
+	)
+
+	it.effect("a response rejected after the lock connection was lost is still recorded with its reason", () =>
+		Effect.gen(function* () {
+			yield* reset
+			const collector = yield* Collector
+			const original = upstream["api.coingecko.com"]
+			const upstreamGate = gate()
+			const requested = yield* Deferred.make<void>()
+			upstream["api.coingecko.com"] = () => {
+				Deferred.doneUnsafe(requested, Exit.void)
+				return upstreamGate.after(() => ({ error: "maintenance" }))
+			}
+			try {
+				const fiber = yield* collector.runOnce("coingecko", "test").pipe(Effect.flip, Effect.forkChild)
+				yield* Deferred.await(requested)
+				yield* terminateLockHolders
+				upstreamGate.open()
+				const error = yield* Fiber.join(fiber)
+				assert.strictEqual(error._tag, "SourceError")
+				const runs = yield* queryElsewhere<{ status: string; error: string; payload: string }>(
+					"select r.status, r.error, p.payload from collection_runs r join raw_payloads p on p.run_id = r.id",
+				)
+				assert.lengthOf(runs, 1)
+				assert.strictEqual(at(runs, 0).status, "failed")
+				assert.match(at(runs, 0).error, /^decode: /)
+				assert.deepStrictEqual(at(runs, 0).payload, '{"error":"maintenance"}')
+			} finally {
+				upstream["api.coingecko.com"] = original
+			}
+		}),
 	)
 
 	it.effect("interrupting a run during persist leaves the last good data served and the run status true", () =>

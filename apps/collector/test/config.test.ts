@@ -41,6 +41,8 @@ describe("config validation", () => {
 	it.effect.each([
 		["RAW_PAYLOAD_RETENTION_DAYS", "0"],
 		["RAW_PAYLOAD_RETENTION_DAYS", "-1"],
+		["LIVE_SNAPSHOT_DETAIL_DAYS", "0"],
+		["LIVE_SNAPSHOT_DETAIL_DAYS", "-1"],
 		["FETCH_TIMEOUT", "10 seconds"],
 		["FETCH_TIMEOUT", "2 hours"],
 		["FETCH_TIMEOUT", "Infinity"],
