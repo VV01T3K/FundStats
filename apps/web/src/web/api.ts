@@ -44,3 +44,28 @@ export const latestQuery = (source: SourceId) =>
 		// The collector updates crypto every 6 hours by default; keep an open tab reasonably fresh.
 		refetchInterval: 5 * 60_000,
 	})
+
+/** Every source's freshness, for the dots in the header. */
+export const sourcesQuery = () =>
+	queryOptions({
+		queryKey: ["sources"],
+		queryFn: () => callApi((api) => api.sources.list()),
+		staleTime: 60_000,
+		refetchInterval: 5 * 60_000,
+	})
+
+/** The API's maximum: years of daily points for any source (older crypto quotes are thinned to one a day). */
+export const HISTORY_LIMIT = 5000
+
+/** An instrument's stored history, newest first; null when the source never reported it. */
+export const historyQuery = (source: SourceId, externalId: string) =>
+	queryOptions({
+		queryKey: ["history", source, externalId],
+		queryFn: () =>
+			callApi((api) =>
+				api.sources
+					.history({ params: { source, externalId }, query: { limit: HISTORY_LIMIT } })
+					.pipe(Effect.catchTags({ InstrumentNotFound: () => Effect.succeed(null) })),
+			),
+		staleTime: 5 * 60_000,
+	})

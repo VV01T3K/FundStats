@@ -4,7 +4,7 @@ export default defineConfig({
 	resolve: { tsconfigPaths: true },
 	test: {
 		name: "web",
-		include: ["test/**/*.test.ts"],
+		include: ["test/**/*.test.{ts,tsx}"],
 		globalSetup: ["../../packages/db/test/postgres.ts"],
 		testTimeout: 30_000,
 		hookTimeout: 120_000,
