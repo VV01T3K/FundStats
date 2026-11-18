@@ -121,7 +121,7 @@ export class RunStore extends Context.Service<
 			const failRun = (runId: number, error: string) =>
 				database
 					.update(collectionRuns)
-					.set({ status: "failed", finishedAt: sql`clock_timestamp()`, error: error.slice(0, 4000) })
+					.set({ status: "failed", finishedAt: sql`clock_timestamp()`, error: storableText(error).slice(0, 4000) })
 					.where(and(eq(collectionRuns.id, runId), eq(collectionRuns.status, "running")))
 					.pipe(Effect.asVoid)
 
@@ -353,3 +353,9 @@ export class RunStore extends Context.Service<
 		}),
 	)
 }
+
+/**
+ * A run's error can quote upstream data, and Postgres text cannot hold the NUL character
+ * (https://www.postgresql.org/docs/current/datatype-character.html), so NUL is written as its JSON escape.
+ */
+const storableText = (text: string) => text.replaceAll("\u0000", "\\u0000")

@@ -276,6 +276,27 @@ layer(TestServices)("collector and storage", (it) => {
 		}),
 	)
 
+	it.effect("a duplicate id containing NUL still records the run as failed", () =>
+		Effect.gen(function* () {
+			yield* reset
+			const collector = yield* Collector
+			const original = upstream["api.coingecko.com"]
+			upstream["api.coingecko.com"] = () => {
+				const coin = { ...at(fixture("coingecko-markets.json") as Array<object>, 0), id: "bad\u0000id" }
+				return [coin, coin]
+			}
+			try {
+				assert.strictEqual((yield* collector.runOnce("coingecko", "test").pipe(Effect.flip))._tag, "SourceError")
+			} finally {
+				upstream["api.coingecko.com"] = original
+			}
+			const runs = yield* queryElsewhere<{ status: string; error: string }>("select status, error from collection_runs")
+			assert.lengthOf(runs, 1)
+			assert.strictEqual(at(runs, 0).status, "failed")
+			assert.strictEqual(at(runs, 0).error, "upstream: Upstream listed instrument bad\\u0000id more than once")
+		}),
+	)
+
 	it.effect("on start it records each source's schedule for the web app, even when disabled", () =>
 		Effect.gen(function* () {
 			yield* reset
