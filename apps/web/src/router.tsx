@@ -3,7 +3,6 @@ import { createRouter } from "@tanstack/react-router"
 import { setupRouterSsrQueryIntegration } from "@tanstack/react-router-ssr-query"
 
 import { routeTree } from "./routeTree.gen"
-import { parseSearch, stringifySearch } from "./web/url.ts"
 
 export function getRouter() {
 	const queryClient = new QueryClient({
@@ -12,8 +11,6 @@ export function getRouter() {
 	const router = createRouter({
 		routeTree,
 		context: { queryClient },
-		parseSearch,
-		stringifySearch,
 		scrollRestoration: true,
 		defaultPreload: "intent",
 		// Loader data comes from React Query, which has its own staleness rules.
