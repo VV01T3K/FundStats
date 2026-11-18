@@ -150,7 +150,7 @@ function RiskFilter({
 		<div
 			role="group"
 			aria-label="Ryzyko (skala mBanku)"
-			className="flex shrink-0 flex-wrap items-center gap-0.5 sm:flex-nowrap"
+			className="flex flex-wrap items-center gap-0.5 xl:shrink-0 xl:flex-nowrap"
 		>
 			<span className="text-muted mr-1 text-xs">Ryzyko</span>
 			{facets.scale.map(({ level, name, short }) => {
@@ -342,8 +342,9 @@ export function FilterRow({
 	return (
 		<>
 			<CategoryChips facets={facets} view={view} update={update} />
-			{/* No min-w-0: the unit's minimum (risk chips plus a readable family) decides when it wraps. */}
-			<div className="flex items-center gap-x-2 max-xl:basis-full xl:flex-1">
+			{/* Below xl the unit has its own row, and chips and family wrap inside it. From xl it has no
+			    min-w-0: its minimum (risk chips plus a readable family) decides when it moves to the next row. */}
+			<div className="flex items-center gap-x-2 gap-y-2 max-xl:min-w-0 max-xl:basis-full max-xl:flex-wrap xl:flex-1">
 				<RiskFilter facets={facets} view={view} update={update} />
 				<FamilySelect facets={facets} view={view} update={update} />
 			</div>

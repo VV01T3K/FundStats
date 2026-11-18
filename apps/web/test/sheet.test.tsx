@@ -20,6 +20,7 @@ import { Route as IndexRoute } from "#/routes/$kind.$source.index.tsx"
 import { Route as SourceRoute } from "#/routes/$kind.$source.tsx"
 import { latestQuery, sourcesQuery } from "#/web/api.ts"
 import { AppHeader } from "#/web/components/AppHeader.tsx"
+import { PriceChart } from "#/web/components/PriceChart.tsx"
 import { Sheet } from "#/web/components/Sheet.tsx"
 import { riskScale } from "#/web/risk.ts"
 import { resolveView, validateTableSearch } from "#/web/search.ts"
@@ -236,5 +237,37 @@ describe("table page", () => {
 		assert.notInclude(page.querySelector("header")?.textContent ?? "", "Dostawca")
 		const crypto = [...page.querySelectorAll("header a")].find((a) => a.textContent?.includes("Krypto"))
 		assert.strictEqual(crypto?.getAttribute("href"), "/crypto/coingecko")
+	})
+})
+
+describe("PriceChart", () => {
+	const at = (date: string) => Date.parse(`${date}T00:00:00Z`)
+	const main = {
+		id: "m",
+		name: "Main",
+		color: "red",
+		points: [at("2026-11-10"), at("2026-11-16")].map((t) => ({ t, v: 0 })),
+	}
+	const pin = { id: "p", name: "Pin", color: "blue", points: [{ t: at("2026-11-15"), v: 1 }] }
+	const domain = { start: at("2026-11-10"), end: at("2026-11-16") }
+	const chart = (series: ReadonlyArray<typeof main>) => (
+		<PriceChart series={series} mode="change" unit="PLN" kind="fund" domain={domain} />
+	)
+
+	it("keeps the selected time when a pin's quotes join the timeline", async () => {
+		container = document.createElement("div")
+		document.body.append(container)
+		const mount = createRoot(container)
+		root = mount
+		await act(async () => mount.render(chart([main])))
+		const group = container.querySelector<HTMLElement>('[role="group"]')!
+		act(() => group.focus())
+		await press(group, "End")
+		const live = () => container!.querySelector('[aria-live="polite"]')?.textContent ?? ""
+		assert.match(live(), /^16\.11\.2026/)
+		await act(async () => mount.render(chart([main, pin])))
+		assert.match(live(), /^16\.11\.2026/)
+		await press(group, "ArrowLeft")
+		assert.match(live(), /^15\.11\.2026: Main 0,00% z 16\.11\.2026, Pin/)
 	})
 })

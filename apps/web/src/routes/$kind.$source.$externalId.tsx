@@ -319,13 +319,17 @@ function InstrumentPage() {
 					<Legend entries={chart.legend} mainId={externalId} onRemove={(id) => setPins(togglePin(pins, id))} />
 				</div>
 				<div className="mt-3">
-					{points.length < 2 ? (
+					{points.length < 2 || !chart.series.some((s) => s.points.length > 0) ? (
 						<div className="bg-panel flex h-56 flex-col items-start justify-center gap-1 rounded-lg border px-5 text-[13px]">
-							<p className="font-medium">Za mało historii na wykres.</p>
+							<p className="font-medium">
+								{points.length < 2 ? "Za mało historii na wykres." : "Nie ma czego narysować w tym zakresie."}
+							</p>
 							<p className="text-muted max-w-prose">
-								{points.length === 1
-									? `FundStats ma na razie jedno notowanie (${since}). Linia pojawi się po kolejnych pobraniach; ${fund ? "fundusze są wyceniane raz na dzień roboczy" : "kolektor pobiera notowania co kilka godzin"}.`
-									: "Brak notowań z ceną."}
+								{points.length >= 2
+									? "Żadna z porównywanych linii nie ma tu wyceny powyżej zera."
+									: points.length === 1
+										? `FundStats ma na razie jedno notowanie (${since}). Linia pojawi się po kolejnych pobraniach; ${fund ? "fundusze są wyceniane raz na dzień roboczy" : "kolektor pobiera notowania co kilka godzin"}.`
+										: "Brak notowań z ceną."}
 							</p>
 						</div>
 					) : (

@@ -83,7 +83,8 @@ export function PriceChart({
 	const tooltip = useRef<HTMLDivElement>(null)
 	const [width, setWidth] = useState(880)
 	const [tooltipWidth, setTooltipWidth] = useState(200)
-	const [active, setActive] = useState<number | null>(null)
+	// The selected time, not an index: when a series loads, the same moment is found in the new timeline.
+	const [selected, setSelected] = useState<number | null>(null)
 	const gaps = GAPS[kind]
 
 	useLayoutEffect(() => {
@@ -129,23 +130,19 @@ export function PriceChart({
 	const main = series[0]
 	// The crosshair stops at any series' quote; each series then reads its own nearest quote there.
 	const times = useMemo(() => plottedTimes(series.map((s) => s.points)), [series])
-	const at = active === null ? undefined : times[Math.min(active, times.length - 1)]
+	const timeline = useMemo(() => times.map((t) => ({ t, v: 0 })), [times])
+	const nearestTime = (t: number) => nearestWithin(timeline, t, Infinity)?.t
+	const at = selected === null ? undefined : nearestTime(selected)
 
 	const onPointer = (event: PointerEvent<SVGRectElement>) => {
 		const rect = event.currentTarget.getBoundingClientRect()
 		const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width))
-		const t = scales.t0 + ratio * scales.span
-		const nearest = nearestWithin(
-			times.map((time) => ({ t: time, v: 0 })),
-			t,
-			Infinity,
-		)
-		setActive(nearest ? times.indexOf(nearest.t) : null)
+		setSelected(nearestTime(scales.t0 + ratio * scales.span) ?? null)
 	}
 
 	const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
 		const last = times.length - 1
-		const current = active ?? last
+		const current = at === undefined ? last : times.indexOf(at)
 		const moves: Record<string, number> = {
 			ArrowLeft: current - 1,
 			ArrowRight: current + 1,
@@ -154,11 +151,11 @@ export function PriceChart({
 			Home: 0,
 			End: last,
 		}
-		if (event.key === "Escape") return setActive(null)
+		if (event.key === "Escape") return setSelected(null)
 		const next = moves[event.key]
 		if (next === undefined) return
 		event.preventDefault()
-		setActive(Math.max(0, Math.min(last, next)))
+		setSelected(times[Math.max(0, Math.min(last, next))] ?? null)
 	}
 
 	const path = (points: ReadonlyArray<Point>) =>
@@ -205,8 +202,8 @@ export function PriceChart({
 					: "Wykres"
 			}
 			onKeyDown={onKeyDown}
-			onFocus={() => setActive((current) => current ?? times.length - 1)}
-			onBlur={() => setActive(null)}
+			onFocus={() => setSelected((current) => current ?? times.at(-1) ?? null)}
+			onBlur={() => setSelected(null)}
 			className="relative w-full rounded-sm select-none"
 			style={{ height }}
 		>
@@ -330,7 +327,7 @@ export function PriceChart({
 					onPointerMove={onPointer}
 					onPointerDown={onPointer}
 					onPointerLeave={(event) => {
-						if (event.pointerType === "mouse") setActive(null)
+						if (event.pointerType === "mouse") setSelected(null)
 					}}
 				/>
 			</svg>
