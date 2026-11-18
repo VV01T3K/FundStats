@@ -79,6 +79,9 @@ const riskFact = (level: RiskLevel, max: number) => (
 	</span>
 )
 
+/** Phones lay the tiles three to a row; the last one takes what its row leaves, so no slot is empty. */
+const LAST_TILE_SPAN = ["", "col-span-3", "col-span-2"]
+
 const SERIES_COLORS = ["var(--series-1)", "var(--series-2)", "var(--series-3)", "var(--series-4)", "var(--series-5)"]
 const NOTOWANIE = { one: "notowanie", few: "notowania", many: "notowań" }
 
@@ -272,7 +275,7 @@ function InstrumentPage() {
 				aria-label="Stopy zwrotu"
 				className="mt-5 grid grid-cols-3 gap-px overflow-hidden rounded-lg border bg-[var(--rule)] sm:inline-flex sm:max-w-full"
 			>
-				{returns.map((column) => {
+				{returns.map((column, i) => {
 					const value = column.value(row)
 					const heat = column.heatCap === null ? 0 : heatStep(value, column.heatCap)
 					return (
@@ -280,7 +283,11 @@ function InstrumentPage() {
 							key={column.id}
 							data-heat={heat === 0 ? undefined : heat}
 							title={column.title}
-							className={cn("min-w-0 px-3 py-2 sm:w-32", heat === 0 && "bg-bg")}
+							className={cn(
+								"min-w-0 px-3 py-2 sm:w-32",
+								heat === 0 && "bg-bg",
+								i === returns.length - 1 && LAST_TILE_SPAN[returns.length % 3],
+							)}
 						>
 							<div className="text-muted truncate text-xs">{column.label}</div>
 							<div className={cn("num mt-0.5 text-[15px]", column.format === "momentum" && "font-semibold")}>
