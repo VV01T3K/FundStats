@@ -54,8 +54,8 @@ export interface TableConfig {
 	readonly defaultThreshold: number
 }
 
-/** Threshold presets in the table controls; the sidebar slider takes any step of 5. */
-export const THRESHOLD_CHIPS = [10, 20, 30, 40, 50] as const
+/** The highlight slider moves in 5% steps (keyboard: arrows by one step, Page Up/Down by two). */
+export const THRESHOLD_STEP = 5
 export const THRESHOLD_MAX = 100
 
 const metadataNumber = (row: SnapshotRow, key: string) => {

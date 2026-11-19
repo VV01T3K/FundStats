@@ -1,4 +1,5 @@
 import { Popover } from "@base-ui/react/popover"
+import { Slider } from "@base-ui/react/slider"
 import { Settings2 } from "lucide-react"
 
 import { cn } from "#/lib/utils"
@@ -7,7 +8,7 @@ import { formatInteger } from "../format.ts"
 import { isColumnVisible, withColumn } from "../prefs.ts"
 import { usePrefs } from "../PrefsContext.tsx"
 import type { ResolvedView } from "../search.ts"
-import { FUND_CATEGORIES, type TableConfig, THRESHOLD_CHIPS } from "../tables.ts"
+import { FUND_CATEGORIES, type TableConfig, THRESHOLD_MAX, THRESHOLD_STEP } from "../tables.ts"
 
 const chipBase =
 	"inline-flex h-[26px] shrink-0 items-center gap-1.5 border px-2.5 text-[11px] whitespace-nowrap max-sm:h-11"
@@ -60,35 +61,39 @@ export function TableControls({
 					})}
 				</div>
 			) : (
-				<div
-					role="group"
-					aria-labelledby="threshold-label"
-					className="flex items-center gap-2 max-sm:min-w-0 max-sm:flex-1 max-sm:[scrollbar-width:none] max-sm:overflow-x-auto max-sm:overscroll-x-contain sm:flex-wrap"
-				>
-					<span id="threshold-label" className="text-dim mr-1 shrink-0 text-[11px] whitespace-nowrap">
+				<div className="flex min-w-0 items-center gap-3 max-sm:flex-1">
+					<span id="threshold-label" className="text-dim shrink-0 text-[11px] whitespace-nowrap">
 						Highlight {view.highlight.id.toUpperCase()} &gt;
 					</span>
-					{THRESHOLD_CHIPS.map((t) => {
-						const on = view.threshold === t
-						return (
-							<button
-								key={t}
-								type="button"
-								aria-pressed={on}
-								onClick={() => onThreshold(on ? 0 : t)}
-								className={cn(
-									chipBase,
-									on ? "border-warm bg-warm font-bold text-on-accent" : "border-rule-strong text-dim hover:text-ink",
-								)}
-							>
-								<span aria-hidden className={cn("size-1.5", on ? "bg-on-accent" : "bg-warm")} />
-								{t}%
-							</button>
-						)
-					})}
-					{view.threshold > 0 && !THRESHOLD_CHIPS.some((t) => t === view.threshold) ? (
-						<span className="text-warm text-[11px]">custom {view.threshold}%</span>
-					) : null}
+					<Slider.Root
+						value={view.threshold}
+						onValueChange={(value) => onThreshold(value)}
+						min={0}
+						max={THRESHOLD_MAX}
+						step={THRESHOLD_STEP}
+						largeStep={THRESHOLD_STEP * 2}
+						aria-labelledby="threshold-label"
+						className="w-56 max-sm:min-w-0 max-sm:flex-1"
+					>
+						<Slider.Control className="flex h-[26px] cursor-pointer touch-none items-center max-sm:h-11">
+							<Slider.Track className="bg-rule-strong relative h-1 w-full">
+								<Slider.Indicator className="bg-warm" />
+								<Slider.Thumb
+									getAriaValueText={(_, value) => (value > 0 ? `above ${value} percent` : "off")}
+									className="bg-warm outline-warm size-3.5 border-2 border-[var(--bg)] has-[:focus-visible]:outline has-[:focus-visible]:outline-offset-1"
+								/>
+							</Slider.Track>
+						</Slider.Control>
+					</Slider.Root>
+					<span
+						aria-hidden
+						className={cn(
+							"w-[5ch] shrink-0 text-right text-[11px] tabular-nums",
+							view.threshold > 0 ? "text-warm font-bold" : "text-dim",
+						)}
+					>
+						{view.threshold > 0 ? `${view.threshold}%` : "OFF"}
+					</span>
 				</div>
 			)}
 
