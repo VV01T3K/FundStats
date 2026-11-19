@@ -158,7 +158,8 @@ function TableSettings({ config }: { readonly config: TableConfig }) {
 
 /** Returns first, then the descriptive columns; the identity columns are always shown and not listed. */
 const COLUMN_GROUPS = [
-	{ label: "RETURNS", test: (column: Column) => column.kind === "percent" },
+	{ label: "RETURNS", test: (column: Column) => column.kind === "percent" && !column.indicator },
+	{ label: "INDICATORS", test: (column: Column) => column.indicator === true },
 	{ label: "INFO", test: (column: Column) => column.kind !== "percent" },
 ] as const
 
@@ -211,7 +212,7 @@ function ColumnPicker({ config }: { readonly config: TableConfig }) {
 													: "border-rule-strong text-dim hover:text-ink",
 											)}
 										>
-											{group.label === "RETURNS" ? column.label.replace(/\s*%$/, "") : column.label}
+											{group.label !== "INFO" ? column.label.replace(/\s*%$/, "") : column.label}
 										</button>
 									)
 								})}

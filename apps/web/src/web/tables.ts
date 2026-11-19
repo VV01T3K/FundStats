@@ -41,6 +41,8 @@ export interface Column {
 	readonly secondary?: boolean
 	/** The table can be filtered to some of this column's values, from its header menu. */
 	readonly facet?: Facet
+	/** Computed from other columns (momentum), not a return over one period. */
+	readonly indicator?: boolean
 	/** A `text` column's value. */
 	readonly text?: (row: SnapshotRow) => string | null
 }
@@ -278,6 +280,7 @@ export const TABLES = {
 				kind: "percent",
 				sortValue: (row) => momentum(row.metrics),
 				firstDir: "desc",
+				indicator: true,
 			},
 			change("3y", "change_3y", "Change over 3 years", true),
 			change("5y", "change_5y", "Change over 5 years", true),
