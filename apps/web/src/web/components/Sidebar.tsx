@@ -118,7 +118,7 @@ export function Sidebar({ dialog, source, statuses, onClose }: SidebarProps) {
 											<span aria-hidden className={cn("size-2 shrink-0 rounded-full", STATE_COLOR[state])} />
 											<Icon aria-hidden className={cn("size-3.5 shrink-0", active && "text-warm")} />
 											<span className="flex-1 truncate">{id === "mbank" ? "mBank · funds" : SOURCES[id].name}</span>
-											<span className="text-dim text-[10px] font-normal">
+											<span className="text-dim text-[11px] font-normal">
 												{status
 													? state === "stale" || state === "empty"
 														? state.toUpperCase()
@@ -172,7 +172,7 @@ export function Sidebar({ dialog, source, statuses, onClose }: SidebarProps) {
 							</button>
 						</Tip>
 					) : null}
-					<div className="text-dim mt-2 text-[10px]">
+					<div className="text-dim mt-2 text-[11px]">
 						<div>FundStats Terminal · v{__APP_VERSION__}</div>
 						<a href="https://github.com/VV01T3K/FundStats" className="hover:text-ink mt-0.5 inline-block">
 							github.com/VV01T3K/FundStats
@@ -193,7 +193,7 @@ const rowClass = (extra: string) =>
 function Section({ title, children }: { readonly title: string; readonly children: React.ReactNode }) {
 	return (
 		<section className="border-rule shrink-0 border-b px-[18px] py-3.5">
-			<h2 className="text-dim mb-2.5 text-[10px] font-normal tracking-[0.12em] uppercase">{title}</h2>
+			<h2 className="text-dim mb-2.5 text-[11px] font-normal tracking-[0.12em] uppercase">{title}</h2>
 			{children}
 		</section>
 	)

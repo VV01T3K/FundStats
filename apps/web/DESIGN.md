@@ -8,6 +8,7 @@ colors:
   panel-2: "#11151a"
   rule: "#1c1f23"
   rule-strong: "#2a3038"
+  rule-hover: "#3a4048"
   ink: "#d9dde2"
   ink-dim: "#a8aeb6"
   dim: "#7d858e"
@@ -17,6 +18,29 @@ colors:
   down: "#ff5a5f"
   on-accent: "#000000"
 typography:
+  display:
+    fontFamily: "JetBrains Mono Variable, ui-monospace, IBM Plex Mono, Menlo, monospace"
+    fontSize: "32px"
+    fontWeight: 400
+  figure-lg:
+    fontFamily: "JetBrains Mono Variable, ui-monospace, IBM Plex Mono, Menlo, monospace"
+    fontSize: "28px"
+    fontWeight: 400
+    fontFeature: "tnum"
+  figure:
+    fontFamily: "JetBrains Mono Variable, ui-monospace, IBM Plex Mono, Menlo, monospace"
+    fontSize: "26px"
+    fontWeight: 400
+    fontFeature: "tnum"
+  headline:
+    fontFamily: "JetBrains Mono Variable, ui-monospace, IBM Plex Mono, Menlo, monospace"
+    fontSize: "20px"
+    fontWeight: 700
+  figure-sm:
+    fontFamily: "JetBrains Mono Variable, ui-monospace, IBM Plex Mono, Menlo, monospace"
+    fontSize: "14px"
+    fontWeight: 400
+    fontFeature: "tnum"
   title:
     fontFamily: "JetBrains Mono Variable, ui-monospace, IBM Plex Mono, Menlo, monospace"
     fontSize: "13px"
@@ -27,21 +51,11 @@ typography:
     fontSize: "12px"
     fontWeight: 400
     fontFeature: "tnum"
-  body-compact:
+  label:
     fontFamily: "JetBrains Mono Variable, ui-monospace, IBM Plex Mono, Menlo, monospace"
     fontSize: "11px"
     fontWeight: 400
-    fontFeature: "tnum"
-  label:
-    fontFamily: "JetBrains Mono Variable, ui-monospace, IBM Plex Mono, Menlo, monospace"
-    fontSize: "10px"
-    fontWeight: 400
     letterSpacing: "0.1em"
-  micro:
-    fontFamily: "JetBrains Mono Variable, ui-monospace, IBM Plex Mono, Menlo, monospace"
-    fontSize: "9px"
-    fontWeight: 400
-    letterSpacing: "0.14em"
 rounded:
   none: "0"
 spacing:
@@ -58,7 +72,7 @@ components:
     rounded: "{rounded.none}"
     padding: "0 10px"
     height: "26px"
-    typography: "{typography.body-compact}"
+    typography: "{typography.label}"
   chip-active:
     backgroundColor: "{colors.warm}"
     textColor: "{colors.on-accent}"
@@ -116,7 +130,7 @@ The system is dark only, by design.
 
 **Key Characteristics:**
 
-- One monospace family at small sizes (9–13px), tabular figures everywhere.
+- One monospace family, 11px at the smallest, tabular figures everywhere.
 - Square corners on every element; hairline 1px rules instead of shadows for structure.
 - Amber for interface state, green and red only for gains and losses.
 - Full-width table; navigation in a drawer, never a docked column.
@@ -146,6 +160,7 @@ A near-black neutral ladder with one warm accent and a strict up/down pair.
 - **Raised Graphite** (panel-2): a second layer inside panels.
 - **Hairline** (rule): row dividers, section borders, quiet chip borders.
 - **Strong Hairline** (rule-strong): input and chip borders, the header's bottom rule, scrollbar thumb.
+- **Hover Hairline** (rule-hover): the scrollbar thumb under the pointer.
 - **Paper Ink** (ink): primary text and figures.
 - **Muted Ink** (ink-dim): secondary text such as inactive tab titles and long names.
 - **Dim Label** (dim): labels, column headers, placeholders, counters. Lifted from the design's #6a727b so 11px text passes 4.5:1 on Terminal Black.
@@ -164,11 +179,15 @@ A near-black neutral ladder with one warm accent and a strict up/down pair.
 
 ### Hierarchy
 
+- **Display** (400, 32px): the empty-table glyph.
+- **Figure large / Figure** (400, 28px / 26px, tabular): an instrument's price; the summary figures above a table.
+- **Headline** (700, 20px): an instrument page's name.
+- **Figure small** (400, 14px, tabular): the returns beside an instrument's chart.
 - **Title** (700, 13px, tracking 0.04em): source tab names and section titles. Inactive tabs drop to 500 in Muted Ink.
-- **Body** (400, 12px, tabular figures): table cells and general text.
-- **Body compact** (400, 11px): compact table density, chips, controls, popover content, taglines.
-- **Label** (400, 10px, tracking 0.1em, uppercase): column headers, type tags, keyboard hints.
-- **Micro** (400, 9px, tracking 0.14em, uppercase): tiny status marks such as "REQUIRED" or "SOON".
+- **Body** (400, 12px, tabular figures): table cells and running text, such as a fund's long name.
+- **Label** (400, 11px, tracking 0.06–0.14em, often uppercase): column headers, chips, type tags, compact table density, keyboard hints, SOON marks.
+
+**The 11px Floor Rule.** No text is smaller than 11px, labels included; running text is at least 12px.
 
 ### Named Rules
 
@@ -219,7 +238,7 @@ Square everywhere: radius 0 on buttons, chips, inputs, popovers, tags and scroll
 
 ### Market table (signature)
 
-- Sticky header row in Panel Graphite, 10px uppercase labels in Dim Label; the sorted column's label and arrow turn amber.
+- Sticky header row in Panel Graphite, 11px uppercase labels in Dim Label; the sorted column's label and arrow turn amber.
 - Rows are separated by hairlines. Figures are right-aligned and coloured by sign. A sparkline sits in the last column with a 1px non-scaling stroke in the row's up or down colour.
 - Keyboard focus outlines the whole row in amber, not the link text.
 - The type tag is a small bordered amber label (for example "AKCYJNY").
@@ -240,7 +259,7 @@ Square everywhere: radius 0 on buttons, chips, inputs, popovers, tags and scroll
 - **Do** use Terminal Amber for exactly one meaning: interface state (active, selected, sorted, focused).
 - **Do** right-align numbers with tabular figures and signal direction with Gain Green and Loss Red only.
 - **Do** give the table the full width and move navigation into the drawer.
-- **Do** keep labels at 10–11px uppercase with letter spacing, in Dim Label.
+- **Do** keep labels at 11px uppercase with letter spacing, in Dim Label; never smaller.
 
 ### Don't:
 

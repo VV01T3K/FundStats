@@ -141,14 +141,14 @@ function TableSettings({ config }: { readonly config: TableConfig }) {
 							Show sparkline chart
 						</label>
 						<fieldset className="max-h-[min(280px,50dvh)] overflow-auto overscroll-contain px-3.5 pt-2.5 pb-3">
-							<legend className="text-warm float-left mb-1.5 w-full text-[10px] tracking-[0.14em]">COLUMNS</legend>
+							<legend className="text-warm float-left mb-1.5 w-full text-[11px] tracking-[0.14em]">COLUMNS</legend>
 							<div className="clear-both">
 								{config.columns.map((column) =>
 									column.required ? (
 										<label key={column.id} className="text-dim flex cursor-not-allowed items-center gap-2 py-1">
 											<input type="checkbox" checked disabled className="accent-dim" />
 											<span>{column.label}</span>
-											<span className="ml-auto text-[9px]">REQUIRED</span>
+											<span className="ml-auto text-[11px]">REQUIRED</span>
 										</label>
 									) : (
 										<label
@@ -194,7 +194,7 @@ function Segmented<Option extends string>({
 }) {
 	return (
 		<fieldset className="border-rule border-b px-3.5 pt-2.5 pb-2">
-			<legend className="text-warm float-left mb-1.5 w-full text-[10px] tracking-[0.14em]">{legend}</legend>
+			<legend className="text-warm float-left mb-1.5 w-full text-[11px] tracking-[0.14em]">{legend}</legend>
 			<div className="border-rule clear-both flex border">
 				{options.map((option, i) => {
 					const on = value === option
@@ -205,7 +205,7 @@ function Segmented<Option extends string>({
 							aria-pressed={on}
 							onClick={() => onChange(option)}
 							className={cn(
-								"h-7 flex-1 text-[10px] tracking-[0.08em] uppercase",
+								"h-7 flex-1 text-[11px] tracking-[0.08em] uppercase",
 								i > 0 && "border-l border-rule",
 								on ? "bg-warm font-bold text-on-accent" : "text-dim hover:text-ink",
 							)}

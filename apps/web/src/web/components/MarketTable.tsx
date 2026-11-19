@@ -174,7 +174,7 @@ export function MarketTable({
 								data-wide={wide(column, view) || undefined}
 								data-secondary={secondary(column, view) || undefined}
 								className={cn(
-									"sticky top-0 z-[2] border-b border-rule-strong bg-panel py-[7px] pr-3.5 pl-2 @max-[52rem]/market:pr-1.5 @max-[52rem]/market:pl-1.5 text-[10px] font-normal tracking-[0.1em] whitespace-nowrap uppercase",
+									"sticky top-0 z-[2] border-b border-rule-strong bg-panel py-[7px] pr-3.5 pl-2 @max-[52rem]/market:pr-1.5 @max-[52rem]/market:pl-1.5 text-[11px] font-normal tracking-[0.1em] whitespace-nowrap uppercase",
 									i === 0 && "pl-[18px] @max-[52rem]/market:pl-4",
 									right ? "text-right" : "text-left",
 									sortedDir ? "text-warm" : "text-dim",
@@ -334,7 +334,7 @@ function Cell({
 					/>
 					<span className="truncate font-semibold">{row.symbol ?? row.name}</span>
 					{row.metrics.rank === undefined ? null : (
-						<span className="text-dim hidden text-[10px] @max-[52rem]/market:inline">#{row.metrics.rank}</span>
+						<span className="text-dim hidden text-[11px] @max-[52rem]/market:inline">#{row.metrics.rank}</span>
 					)}
 				</span>
 			)
@@ -348,7 +348,7 @@ function Cell({
 			return <span className={cn("text-ink-dim block truncate", NAME_CAP)}>{row.name}</span>
 		case "category":
 			return row.category ? (
-				<span className="border-rule-strong text-warm border px-1.5 py-px text-[10px] tracking-[0.06em] uppercase">
+				<span className="border-rule-strong text-warm border px-1.5 py-px text-[11px] tracking-[0.06em] uppercase">
 					{categoryLabel(row.category)}
 				</span>
 			) : (

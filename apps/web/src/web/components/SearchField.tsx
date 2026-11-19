@@ -109,7 +109,7 @@ export function SearchField({
 				) : (
 					<kbd
 						aria-hidden
-						className="border-rule text-dim pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 border px-1.5 text-[10px] max-lg:hidden"
+						className="border-rule text-dim pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 border px-1.5 text-[11px] max-lg:hidden"
 					>
 						/
 					</kbd>
@@ -128,7 +128,7 @@ export function SearchField({
 									items={group.items}
 									className="border-rule border-b last:border-b-0"
 								>
-									<Autocomplete.GroupLabel className="text-warm px-3.5 pt-2.5 pb-1 text-[10px] tracking-[0.14em] uppercase">
+									<Autocomplete.GroupLabel className="text-warm px-3.5 pt-2.5 pb-1 text-[11px] tracking-[0.14em] uppercase">
 										{SOURCES[group.value].name}
 									</Autocomplete.GroupLabel>
 									<Autocomplete.Collection>
@@ -141,7 +141,7 @@ export function SearchField({
 												<span className="text-ink w-[9ch] shrink-0 truncate font-semibold">{hit.symbol ?? "–"}</span>
 												<span className="text-ink-dim min-w-0 flex-1 truncate">{hit.name}</span>
 												{hit.category ? (
-													<span className="text-dim shrink-0 text-[10px] uppercase">{hit.category}</span>
+													<span className="text-dim shrink-0 text-[11px] uppercase">{hit.category}</span>
 												) : null}
 											</Autocomplete.Item>
 										)}

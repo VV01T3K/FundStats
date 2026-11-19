@@ -1,40 +1,27 @@
-import { useId } from "react"
+/** The FundStats mark: three rising bars, the brightest last. Also the favicon (public/favicon.svg). */
+function LogoMark({ size }: { readonly size: number }) {
+	return (
+		<svg viewBox="0 0 20 20" width={size} height={size} aria-hidden className="block shrink-0">
+			<rect x="1" y="11" width="4" height="8" fill="var(--warm)" opacity="0.55" />
+			<rect x="8" y="7" width="4" height="12" fill="var(--warm)" opacity="0.8" />
+			<rect x="15" y="1" width="4" height="18" fill="var(--warm)" />
+		</svg>
+	)
+}
 
-/** "Fun" + the D|S monogram + "tats", the terminal (mono) cut of the owner's wordmark. */
+/** The logo: the mark, then "Fund" in ink and "Stats" in amber, in the terminal's mono face. */
 export function Wordmark({ size = 20 }: { readonly size?: number }) {
-	const mask = useId()
 	return (
 		<span
 			role="img"
 			aria-label="FundStats"
 			className="text-ink inline-flex items-center font-bold"
-			style={{ gap: size * 0.04, fontSize: size, lineHeight: 1, letterSpacing: "-0.01em" }}
+			style={{ gap: size * 0.4, fontSize: size, lineHeight: 1, letterSpacing: "-0.01em" }}
 		>
-			<span aria-hidden>Fun</span>
-			<svg viewBox="0 0 64 64" width={size * 1.05} height={size} aria-hidden className="block shrink-0">
-				<defs>
-					<mask id={mask}>
-						<rect width="64" height="64" fill="white" />
-						<rect x="36" y="29" width="16" height="7" fill="black" />
-					</mask>
-				</defs>
-				<g mask={`url("#${mask}")`}>
-					<path
-						d="M 8 6 L 30 6 L 50 18 L 50 46 L 30 58 L 8 58 Z M 16 14 L 16 50 L 28 50 L 42 42 L 42 22 L 28 14 Z"
-						fill="currentColor"
-						fillRule="evenodd"
-					/>
-				</g>
-				<path
-					d="M 50 16 L 36 16 L 22 26 L 36 34 L 50 34 L 50 46 L 32 50 L 22 46"
-					fill="none"
-					stroke="var(--warm)"
-					strokeWidth="6"
-					strokeLinejoin="miter"
-					strokeLinecap="square"
-				/>
-			</svg>
-			<span aria-hidden>tats</span>
+			<LogoMark size={size * 0.9} />
+			<span aria-hidden>
+				Fund<span className="text-warm">Stats</span>
+			</span>
 		</span>
 	)
 }

@@ -89,7 +89,7 @@ function StateBadge({ status }: { readonly status: SourceStatus | undefined }) {
 		<Tip label={stateDetail(status)}>
 			<span
 				className={cn(
-					"ml-1 inline-flex shrink-0 items-center gap-1 border border-rule-strong bg-bg px-[7px] py-px text-[9px] font-bold tracking-[0.1em]",
+					"ml-1 inline-flex shrink-0 items-center gap-1 border border-rule-strong bg-bg px-[7px] py-px text-[11px] font-bold tracking-[0.1em]",
 					BADGE[state],
 				)}
 			>

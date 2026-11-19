@@ -59,28 +59,44 @@
 			"on-accent": {
 				"role": "neutral",
 				"displayName": "On Amber"
+			},
+			"rule-hover": {
+				"role": "neutral",
+				"displayName": "Hover Hairline"
 			}
 		},
 		"typographyMeta": {
+			"display": {
+				"displayName": "Display",
+				"purpose": "The empty-table glyph."
+			},
+			"figure-lg": {
+				"displayName": "Figure large",
+				"purpose": "An instrument's price."
+			},
+			"figure": {
+				"displayName": "Figure",
+				"purpose": "Summary figures above a table."
+			},
+			"headline": {
+				"displayName": "Headline",
+				"purpose": "An instrument page's name."
+			},
+			"figure-sm": {
+				"displayName": "Figure small",
+				"purpose": "Returns beside an instrument's chart."
+			},
 			"title": {
 				"displayName": "Title",
 				"purpose": "Source tab names and section titles."
 			},
 			"body": {
 				"displayName": "Body",
-				"purpose": "Table cells and general text."
-			},
-			"body-compact": {
-				"displayName": "Body compact",
-				"purpose": "Compact density, chips, controls."
+				"purpose": "Table cells and running text."
 			},
 			"label": {
 				"displayName": "Label",
-				"purpose": "Column headers, tags, hints."
-			},
-			"micro": {
-				"displayName": "Micro",
-				"purpose": "Tiny status marks."
+				"purpose": "Headers, chips, tags, hints; the 11px floor."
 			}
 		},
 		"shadows": [
@@ -137,7 +153,7 @@
 			"refersTo": "input-search",
 			"description": "Global search with / shortcut hint.",
 			"html": "<label class=\"ds-search\"><input placeholder=\"Search coins, funds or tickers\"/><kbd>/</kbd></label>",
-			"css": ".ds-search{position:relative;display:block;width:320px}.ds-search input{font-family:var(--font-mono,'JetBrains Mono Variable',ui-monospace,monospace);box-sizing:border-box;width:100%;height:32px;padding:0 36px 0 12px;background:var(--bg,#0a0b0c);color:var(--ink,#d9dde2);border:1px solid var(--rule-strong,#2a3038);border-radius:0;font-size:12px;outline:none;caret-color:var(--warm,#f7b955)}.ds-search input::placeholder{color:var(--dim,#7d858e)}.ds-search input:focus{border-color:var(--warm,#f7b955)}.ds-search kbd{font-family:var(--font-mono,'JetBrains Mono Variable',ui-monospace,monospace);position:absolute;right:8px;top:50%;transform:translateY(-50%);border:1px solid var(--rule,#1c1f23);color:var(--dim,#7d858e);padding:0 6px;font-size:10px}"
+			"css": ".ds-search{position:relative;display:block;width:320px}.ds-search input{font-family:var(--font-mono,'JetBrains Mono Variable',ui-monospace,monospace);box-sizing:border-box;width:100%;height:32px;padding:0 36px 0 12px;background:var(--bg,#0a0b0c);color:var(--ink,#d9dde2);border:1px solid var(--rule-strong,#2a3038);border-radius:0;font-size:12px;outline:none;caret-color:var(--warm,#f7b955)}.ds-search input::placeholder{color:var(--dim,#7d858e)}.ds-search input:focus{border-color:var(--warm,#f7b955)}.ds-search kbd{font-family:var(--font-mono,'JetBrains Mono Variable',ui-monospace,monospace);position:absolute;right:8px;top:50%;transform:translateY(-50%);border:1px solid var(--rule,#1c1f23);color:var(--dim,#7d858e);padding:0 6px;font-size:11px}"
 		},
 		{
 			"name": "Source Tab",
@@ -153,7 +169,7 @@
 			"refersTo": "table-header",
 			"description": "Signature dense table: sticky header, right-aligned signed figures.",
 			"html": "<table class=\"ds-table\"><thead><tr><th>#</th><th>FUND</th><th>TYPE</th><th class=\"r ds-sorted\">1M % ↓</th><th class=\"r\">1Y %</th></tr></thead><tbody><tr><td class=\"d\">01</td><td><b>AB SICAV I - India Growth</b></td><td><span class=\"ds-tag\">AKCYJNY</span></td><td class=\"r up\">+10,83%</td><td class=\"r dn\">-7,09%</td></tr><tr><td class=\"d\">02</td><td><b>Allianz India Equity</b></td><td><span class=\"ds-tag\">AKCYJNY</span></td><td class=\"r up\">+9,27%</td><td class=\"r dn\">-0,99%</td></tr></tbody></table>",
-			"css": ".ds-table{font-family:var(--font-mono,'JetBrains Mono Variable',ui-monospace,monospace);width:100%;border-collapse:separate;border-spacing:0;font-size:12px;font-variant-numeric:tabular-nums;color:var(--ink,#d9dde2);background:var(--bg,#0a0b0c)}.ds-table th{background:var(--panel,#0e1012);color:var(--dim,#7d858e);font-size:10px;font-weight:400;letter-spacing:.1em;text-align:left;padding:7px 14px 7px 8px;border-bottom:1px solid var(--rule-strong,#2a3038)}.ds-table td{padding:12px 14px 12px 8px;border-bottom:1px solid var(--rule,#1c1f23)}.ds-table tr:hover td{background:var(--panel,#0e1012)}.ds-table .r{text-align:right}.ds-table .d{color:var(--dim,#7d858e)}.ds-table .up{color:var(--up,#2ee07a)}.ds-table .dn{color:var(--down,#ff5a5f)}.ds-table th.ds-sorted{color:var(--warm,#f7b955)}.ds-tag{border:1px solid var(--rule-strong,#2a3038);color:var(--warm,#f7b955);padding:1px 6px;font-size:10px;letter-spacing:.06em}"
+			"css": ".ds-table{font-family:var(--font-mono,'JetBrains Mono Variable',ui-monospace,monospace);width:100%;border-collapse:separate;border-spacing:0;font-size:12px;font-variant-numeric:tabular-nums;color:var(--ink,#d9dde2);background:var(--bg,#0a0b0c)}.ds-table th{background:var(--panel,#0e1012);color:var(--dim,#7d858e);font-size:11px;font-weight:400;letter-spacing:.1em;text-align:left;padding:7px 14px 7px 8px;border-bottom:1px solid var(--rule-strong,#2a3038)}.ds-table td{padding:12px 14px 12px 8px;border-bottom:1px solid var(--rule,#1c1f23)}.ds-table tr:hover td{background:var(--panel,#0e1012)}.ds-table .r{text-align:right}.ds-table .d{color:var(--dim,#7d858e)}.ds-table .up{color:var(--up,#2ee07a)}.ds-table .dn{color:var(--down,#ff5a5f)}.ds-table th.ds-sorted{color:var(--warm,#f7b955)}.ds-tag{border:1px solid var(--rule-strong,#2a3038);color:var(--warm,#f7b955);padding:1px 6px;font-size:11px;letter-spacing:.06em}"
 		},
 		{
 			"name": "Popover",
@@ -161,14 +177,14 @@
 			"refersTo": "popover",
 			"description": "Floating settings panel with amber legends.",
 			"html": "<div class=\"ds-pop\"><div class=\"ds-pop-sec\"><div class=\"ds-legend\">DENSITY</div><div class=\"ds-seg\"><button class=\"on\">Comfort</button><button>Compact</button></div></div><div class=\"ds-pop-sec\"><div class=\"ds-legend\">COLUMNS</div><label><input type=\"checkbox\" checked> 1M %</label></div></div>",
-			"css": ".ds-pop{font-family:var(--font-mono,'JetBrains Mono Variable',ui-monospace,monospace);width:240px;background:var(--panel,#0e1012);color:var(--ink,#d9dde2);border:1px solid var(--rule-strong,#2a3038);box-shadow:0 12px 32px rgb(0 0 0/.5);font-size:11px}.ds-pop-sec{padding:10px 14px;border-bottom:1px solid var(--rule,#1c1f23)}.ds-legend{color:var(--warm,#f7b955);font-size:10px;letter-spacing:.14em;margin-bottom:6px}.ds-seg{display:flex;border:1px solid var(--rule,#1c1f23)}.ds-seg button{font-family:var(--font-mono,'JetBrains Mono Variable',ui-monospace,monospace);flex:1;height:26px;background:none;border:0;color:var(--dim,#7d858e);font-size:11px;cursor:pointer}.ds-seg button.on{background:var(--warm,#f7b955);color:#000;font-weight:700}.ds-pop input{accent-color:var(--warm,#f7b955)}"
+			"css": ".ds-pop{font-family:var(--font-mono,'JetBrains Mono Variable',ui-monospace,monospace);width:240px;background:var(--panel,#0e1012);color:var(--ink,#d9dde2);border:1px solid var(--rule-strong,#2a3038);box-shadow:0 12px 32px rgb(0 0 0/.5);font-size:11px}.ds-pop-sec{padding:10px 14px;border-bottom:1px solid var(--rule,#1c1f23)}.ds-legend{color:var(--warm,#f7b955);font-size:11px;letter-spacing:.14em;margin-bottom:6px}.ds-seg{display:flex;border:1px solid var(--rule,#1c1f23)}.ds-seg button{font-family:var(--font-mono,'JetBrains Mono Variable',ui-monospace,monospace);flex:1;height:26px;background:none;border:0;color:var(--dim,#7d858e);font-size:11px;cursor:pointer}.ds-seg button.on{background:var(--warm,#f7b955);color:#000;font-weight:700}.ds-pop input{accent-color:var(--warm,#f7b955)}"
 		}
 	],
 	"narrative": {
 		"northStar": "The Trader Terminal",
 		"overview": "FundStats looks like a market data terminal: near-black, square, monospace and dense. Every screen is a full-width data surface first. Chrome is thin hairline rules and small uppercase labels, so the numbers carry the page. Amber is the single voice of the interface (selection, focus, the active source, the sorted column); green and red belong only to price movement.\n\nSpace is spent on data. There are no docked sidebars, no empty gutters beside the table and no decorative cards. Navigation lives in a drawer behind the menu button, closed by default, and the table runs edge to edge. Highlighted numbers change colour or weight, never position, so columns stay aligned.\n\nThe system is dark only, by design.",
 		"keyCharacteristics": [
-			"One monospace family at small sizes (9–13px), tabular figures everywhere.",
+			"One monospace family 11px at the smallest, tabular figures everywhere.",
 			"Square corners on every element; hairline 1px rules instead of shadows for structure.",
 			"Amber for interface state, green and red only for gains and losses.",
 			"Full-width table; navigation in a drawer, never a docked column."
@@ -185,13 +201,23 @@
 				"section": "colors"
 			},
 			{
+				"name": "The 11px Floor Rule",
+				"body": "No text is smaller than 11px, labels included; running text is at least 12px.",
+				"section": "typography"
+			},
+			{
 				"name": "The Aligned Figures Rule",
 				"body": "Every number uses tabular figures and right alignment. Emphasis changes colour or weight only, so a highlighted value never shifts its column.",
 				"section": "typography"
 			},
 			{
 				"name": "The No Gutter Rule",
-				"body": "The table spans the full width. Don't add sidebars, empty columns or centred max-width containers beside it.",
+				"body": "The table spans the full width. Don't add sidebars, empty columns or centred max-width containers beside it. Inside it, spare width is spread over the figure columns; the name column stops at its longest name (at most 44ch), so no single gap opens after the names.",
+				"section": "layout"
+			},
+			{
+				"name": "The Floating Option",
+				"body": "The viewer can switch the table to a floating panel (LAYOUT in the table settings): an inset of 32px × 24px on Void with a Strong Hairline border, on screens 1024px and up. It is a frame around the full-width table, not a narrower one.",
 				"section": "layout"
 			},
 			{
@@ -205,7 +231,7 @@
 			"Do use Terminal Amber for exactly one meaning: interface state (active, selected, sorted, focused).",
 			"Do right-align numbers with tabular figures and signal direction with Gain Green and Loss Red only.",
 			"Do give the table the full width and move navigation into the drawer.",
-			"Do keep labels at 10–11px uppercase with letter spacing, in Dim Label."
+			"Do keep labels at 11px uppercase with letter spacing, in Dim Label; never smaller."
 		],
 		"donts": [
 			"Don't dock a sidebar or leave empty space beside the table.",

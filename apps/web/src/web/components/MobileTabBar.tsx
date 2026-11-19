@@ -22,7 +22,7 @@ export function MobileTabBar() {
 					<span
 						key={tab.label}
 						aria-current="page"
-						className="text-warm flex h-11 flex-1 items-center justify-center text-[10px] tracking-[0.06em]"
+						className="text-warm flex h-11 flex-1 items-center justify-center text-[11px] tracking-[0.06em]"
 					>
 						{tab.label}
 					</span>
@@ -32,7 +32,7 @@ export function MobileTabBar() {
 							type="button"
 							aria-disabled="true"
 							aria-label={`${tab.name} (coming soon)`}
-							className={cn("h-11 flex-1 cursor-not-allowed text-[10px] tracking-[0.06em] text-dim")}
+							className={cn("h-11 flex-1 cursor-not-allowed text-[11px] tracking-[0.06em] text-dim")}
 						>
 							{tab.label}
 						</button>

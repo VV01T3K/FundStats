@@ -107,18 +107,18 @@ function DetailPage() {
 			<section className="border-rule border-b px-4 py-5 lg:px-[18px]">
 				<div className="flex flex-wrap items-end justify-between gap-x-10 gap-y-4">
 					<div className="min-w-0">
-						<div className="text-dim flex items-center gap-2.5 text-[11px] tracking-[0.1em]">
+						<h1 className="text-ink text-[20px] leading-tight font-bold text-pretty">{name}</h1>
+						<div className="text-dim mt-1.5 flex items-center gap-2.5 text-[11px] tracking-[0.1em]">
 							{ticker && config.kind === "crypto" ? <span className="text-warm font-bold">{ticker}</span> : null}
 							<span>{info.name.toUpperCase()}</span>
 							{row?.category ? (
-								<span className="border-rule-strong text-warm border px-1.5 py-px text-[10px]">
+								<span className="border-rule-strong text-warm border px-1.5 py-px text-[11px]">
 									{categoryLabel(row.category).toUpperCase()}
 								</span>
 							) : null}
 						</div>
-						<h1 className="text-ink mt-1.5 text-[20px] leading-tight font-bold text-pretty">{name}</h1>
 						{row && longName(row) && longName(row) !== name ? (
-							<p className="text-dim mt-1 max-w-[80ch] text-[11px]">{longName(row)}</p>
+							<p className="text-dim mt-1 max-w-[80ch] text-[12px]">{longName(row)}</p>
 						) : null}
 					</div>
 					{price !== null ? (
@@ -153,7 +153,7 @@ function DetailPage() {
 							const value = percentValue(column, row)
 							return (
 								<div key={column.id} className="border-rule border-r border-b px-4 py-3 lg:px-[18px]">
-									<div className="text-dim text-[10px] tracking-[0.1em]" title={column.title}>
+									<div className="text-dim text-[11px] tracking-[0.1em]" title={column.title}>
 										{column.label}
 									</div>
 									<div className={cn("mt-1 text-[14px]", value === null ? "text-dim" : TREND_TEXT[trend(value)])}>
@@ -187,7 +187,7 @@ function DetailPage() {
 							</button>
 						)
 					})}
-					<span className="text-dim ml-auto text-[10px]">
+					<span className="text-dim ml-auto text-[12px]">
 						{history && history.points.length >= HISTORY_LIMIT
 							? `last ${formatInteger(HISTORY_LIMIT)} quotes`
 							: `${formatInteger(points.length)} quotes`}
@@ -210,7 +210,7 @@ function DetailPage() {
 					<dl className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-x-8 gap-y-3 text-[11px]">
 						{facts.map(([term, value]) => (
 							<div key={term}>
-								<dt className="text-dim text-[10px] tracking-[0.1em] uppercase">{term}</dt>
+								<dt className="text-dim text-[11px] tracking-[0.1em] uppercase">{term}</dt>
 								<dd className="text-ink mt-0.5">{value}</dd>
 							</div>
 						))}

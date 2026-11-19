@@ -13,6 +13,7 @@
 	--panel-2: #11151a;
 	--rule: #1c1f23;
 	--rule-strong: #2a3038;
+	--rule-hover: #3a4048;
 	--ink: #d9dde2;
 	--ink-dim: #a8aeb6;
 	--dim: #7d858e;
@@ -95,7 +96,7 @@
 	border: 2px solid var(--bg);
 }
 ::-webkit-scrollbar-thumb:hover {
-	background: #3a4048;
+	background: var(--rule-hover);
 }
 ::-webkit-scrollbar-thumb:active {
 	background: var(--warm);

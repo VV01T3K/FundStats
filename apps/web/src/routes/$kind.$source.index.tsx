@@ -123,7 +123,7 @@ function MobileSummary({
 	if (figure === null) return null
 	return (
 		<div className="border-rule shrink-0 border-b px-4 py-3 lg:hidden">
-			<div className="text-dim flex justify-between gap-3 text-[9px] tracking-[0.12em] uppercase">
+			<div className="text-dim flex justify-between gap-3 text-[11px] tracking-[0.12em] uppercase">
 				<span>{figure.label}</span>
 				<span aria-live="polite">
 					<span className="text-ink">{formatInteger(filtered.length)}</span> rows

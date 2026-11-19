@@ -34,7 +34,7 @@ export function SoonBadge({ className }: { readonly className?: string }) {
 	return (
 		<span
 			className={cn(
-				"inline-flex h-3.5 items-center border border-rule-strong px-1 text-[9px] font-bold tracking-[0.08em] text-dim",
+				"inline-flex h-3.5 items-center border border-rule-strong px-1 text-[11px] font-bold tracking-[0.08em] text-dim",
 				className,
 			)}
 		>
