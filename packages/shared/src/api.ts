@@ -99,6 +99,26 @@ const SourceSparklines = Schema.Struct({
 })
 type SourceSparklines = typeof SourceSparklines.Type
 
+const SearchHit = Schema.Struct({
+	source: SourceIdSchema,
+	externalId: Schema.String,
+	name: Schema.String,
+	symbol: Schema.NullOr(Schema.String),
+	category: Schema.NullOr(Schema.String),
+})
+
+const SearchResult = Schema.Struct({
+	query: Schema.String,
+	hits: Schema.Array(SearchHit),
+})
+export type SearchResult = typeof SearchResult.Type
+
+/** A search: 1 to 100 characters, as long as the search field allows. */
+const SearchQuery = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100))
+
+/** How many hits one search may ask for. */
+const SearchLimit = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 50 }))
+
 /** A server-sent event: `source` has new data. */
 const DataChanged = Schema.Struct({ source: SourceIdSchema })
 
@@ -149,6 +169,13 @@ class SourcesApi extends HttpApiGroup.make("sources")
 			success: SourceSparklines,
 			error: SourceNotFound,
 		}),
+		HttpApiEndpoint.get("search", "/search", {
+			query: { q: SearchQuery, limit: Schema.optional(SearchLimit) },
+			success: SearchResult,
+		}).annotate(
+			OpenApi.Description,
+			"Instruments listed now in any source whose name or ticker contains every word of `q`; exact tickers first.",
+		),
 		HttpApiEndpoint.get("events", "/events", {
 			success: HttpApiSchema.StreamSse({ data: DataChanged, keepAlive: "25 seconds" }),
 		}).annotate(

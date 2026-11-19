@@ -135,15 +135,6 @@ export function Sidebar({ dialog, source, statuses, onClose }: SidebarProps) {
 
 				<Section title="Display">
 					<Choice
-						label="TABLE LAYOUT"
-						options={[
-							{ id: "edge", label: "EDGE TO EDGE" },
-							{ id: "floating", label: "FLOATING" },
-						]}
-						value={prefs.layout}
-						onChange={(layout) => update({ ...prefs, layout })}
-					/>
-					<Choice
 						label="SOON FEATURES"
 						options={[
 							{ id: "show", label: "SHOW" },

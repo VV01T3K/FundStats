@@ -127,7 +127,7 @@ A near-black neutral ladder with one warm accent and a strict up/down pair.
 
 ### Primary
 
-- **Terminal Amber** (warm): the interface's only accent. The active source tab's underline and dot, the selected category chip (filled, black text), the sorted column header, the focus ring, the text caret, type tags and the "LIVE" or "CACHED" badges.
+- **Terminal Amber** (warm): the interface's only accent. The active source tab's underline and dot, the selected category chip (filled, black text), the sorted column header, the focus ring, the text caret and type tags. Freshness is not decorated: only a stale source gets a word (STALE, in Loss Red).
 
 ### Secondary
 
@@ -176,7 +176,7 @@ A near-black neutral ladder with one warm accent and a strict up/down pair.
 
 ## Layout
 
-A vertical stack, full width: header (menu, wordmark, search, live clock, sign-in), source tabs (four equal columns on desktop, a scrollable pill strip below 1024px), a controls bar (category chips, row count, table settings), then the table filling the rest of the viewport, then a thin status footer.
+A vertical stack, full width: header (menu, wordmark, search across every source, "Updated" time in Polish format, sign-in), source tabs (four equal columns on desktop, a scrollable pill strip below 1024px), a controls bar (category chips, row count, table settings), then the table filling the rest of the viewport, then a thin status footer.
 
 The table is a size container (`market`). Below 1100px of table width it drops descriptive columns; below 52rem it keeps only identity, price and the sorted column. Columns respond to the space the table has, not the viewport.
 
@@ -186,7 +186,7 @@ Spacing is tight and irregular in the terminal tradition: 4, 8, 10, 14, 18 and 2
 
 **The No Gutter Rule.** The table spans the full width. Don't add sidebars, empty columns or centred max-width containers beside it. Inside it, spare width is spread over the figure columns; the name column stops at its longest name (at most 44ch), so no single gap opens after the names.
 
-**The Floating Option.** The viewer can switch the table to a floating panel (Display in the drawer): an even inset (20px × 16px) on Void with a Strong Hairline border, on screens 1024px and up. It is a frame around the full-width table, not a narrower one.
+**The Floating Option.** The viewer can switch the table to a floating panel (LAYOUT in the table settings): an inset of 32px × 24px on Void with a Strong Hairline border, on screens 1024px and up. It is a frame around the full-width table, not a narrower one.
 
 ## Elevation & Depth
 

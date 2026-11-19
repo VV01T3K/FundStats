@@ -119,29 +119,18 @@ function TableSettings({ config }: { readonly config: TableConfig }) {
 				<Popover.Positioner side="bottom" align="end" sideOffset={4} collisionPadding={8} className="z-40">
 					<Popover.Popup className="popup border-rule-strong bg-panel text-ink w-60 border text-[11px] shadow-[0_12px_32px_rgb(0_0_0/0.5)] outline-none">
 						<Popover.Title className="sr-only">Table settings</Popover.Title>
-						<fieldset className="border-rule border-b px-3.5 pt-2.5 pb-2">
-							<legend className="text-warm float-left mb-1.5 w-full text-[10px] tracking-[0.14em]">DENSITY</legend>
-							<div className="border-rule clear-both flex border">
-								{(["compact", "comfy"] as const).map((d, i) => {
-									const on = prefs.density === d
-									return (
-										<button
-											key={d}
-											type="button"
-											aria-pressed={on}
-											onClick={() => update({ ...prefs, density: d })}
-											className={cn(
-												"h-7 flex-1 text-[10px] tracking-[0.08em] uppercase",
-												i > 0 && "border-l border-rule",
-												on ? "bg-warm font-bold text-on-accent" : "text-dim hover:text-ink",
-											)}
-										>
-											{d}
-										</button>
-									)
-								})}
-							</div>
-						</fieldset>
+						<Segmented
+							legend="DENSITY"
+							options={["compact", "comfy"] as const}
+							value={prefs.density}
+							onChange={(density) => update({ ...prefs, density })}
+						/>
+						<Segmented
+							legend="LAYOUT"
+							options={["edge", "floating"] as const}
+							value={prefs.layout}
+							onChange={(layout) => update({ ...prefs, layout })}
+						/>
 						<label className="border-rule flex cursor-pointer items-center gap-2 border-b px-3.5 py-2.5">
 							<input
 								type="checkbox"
@@ -188,5 +177,44 @@ function TableSettings({ config }: { readonly config: TableConfig }) {
 				</Popover.Positioner>
 			</Popover.Portal>
 		</Popover.Root>
+	)
+}
+
+/** A popover section choosing one of `options`, the chosen one filled amber. */
+function Segmented<Option extends string>({
+	legend,
+	options,
+	value,
+	onChange,
+}: {
+	readonly legend: string
+	readonly options: ReadonlyArray<Option>
+	readonly value: Option
+	readonly onChange: (option: Option) => void
+}) {
+	return (
+		<fieldset className="border-rule border-b px-3.5 pt-2.5 pb-2">
+			<legend className="text-warm float-left mb-1.5 w-full text-[10px] tracking-[0.14em]">{legend}</legend>
+			<div className="border-rule clear-both flex border">
+				{options.map((option, i) => {
+					const on = value === option
+					return (
+						<button
+							key={option}
+							type="button"
+							aria-pressed={on}
+							onClick={() => onChange(option)}
+							className={cn(
+								"h-7 flex-1 text-[10px] tracking-[0.08em] uppercase",
+								i > 0 && "border-l border-rule",
+								on ? "bg-warm font-bold text-on-accent" : "text-dim hover:text-ink",
+							)}
+						>
+							{option}
+						</button>
+					)
+				})}
+			</div>
+		</fieldset>
 	)
 }

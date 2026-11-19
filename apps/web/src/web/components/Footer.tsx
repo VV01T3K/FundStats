@@ -30,10 +30,12 @@ export function Footer() {
 					API <span className="text-ink">{ok ? `${health.data.ms}ms` : health.isError ? "DOWN" : "…"}</span>
 				</span>
 			</Tip>
-			{ok ? (
-				<span>
-					Collector <span className="text-ink">{health.data.collectorEnabled ? "ON" : "OFF"}</span>
-				</span>
+			{ok && !health.data.collectorEnabled ? (
+				<Tip label="No collector is scheduled, so the data will not update until it runs again." side="top">
+					<span tabIndex={0} className="text-warm">
+						Updates paused
+					</span>
+				</Tip>
 			) : null}
 			<div className="flex-1" />
 			<a href="https://github.com/VV01T3K/FundStats" className="hover:text-ink">

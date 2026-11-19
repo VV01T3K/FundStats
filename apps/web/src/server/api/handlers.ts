@@ -11,6 +11,7 @@ import * as Stream from "effect/Stream"
 
 const DEFAULT_HISTORY_LIMIT = 500
 const DEFAULT_SPARKLINE_POINTS = 24
+const DEFAULT_SEARCH_LIMIT = 30
 
 /** A source is stale when its last run failed or its last success is more than two intervals old. */
 export const isStale = (summary: RunSummary, interval: Duration.Duration, now: number) => {
@@ -117,6 +118,15 @@ const SourcesHandlers = HttpApiBuilder.group(
 					const series = yield* store.sparklines(id, points).pipe(Effect.orDie)
 					return { source: id, points, series }
 				}),
+			)
+			.handle("search", ({ query }) =>
+				store.search(query.q, query.limit ?? DEFAULT_SEARCH_LIMIT).pipe(
+					Effect.map((hits) => ({
+						query: query.q,
+						hits: hits.flatMap((hit) => (isSourceId(hit.source) ? [{ ...hit, source: hit.source }] : [])),
+					})),
+					Effect.orDie,
+				),
 			)
 			.handle("events", () =>
 				Effect.succeed(

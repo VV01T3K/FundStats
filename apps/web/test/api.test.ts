@@ -219,4 +219,34 @@ layer(ApiTest)("HTTP API", (it) => {
 			yield* Effect.promise(dispose)
 		}),
 	)
+	it("searches every source's listed instruments by name or ticker, exact tickers first", () =>
+		Effect.gen(function* () {
+			yield* reset
+			const named = (externalId: string, name: string, symbol: string | null) => ({
+				...instrument(externalId, null, {}),
+				name,
+				symbol,
+			})
+			yield* collected("coingecko", [named("cbbtc", "Coinbase Wrapped BTC", "CBBTC"), named("btc", "Bitcoin", "BTC")])
+			yield* collected("mbank", [named("1", "Złoty Obligacji 50%", "0001")])
+			yield* collected("coinpaprika", [named("gone", "Old BTC", "OBTC")])
+			yield* collected("coinpaprika", [named("eth", "Ethereum", "ETH")])
+
+			const btc = yield* call("/api/v1/search?q=btc")
+			assert.strictEqual(btc.status, 200)
+			// Exact ticker first; an instrument the source no longer lists is not found.
+			assert.deepStrictEqual(
+				btc.json.hits.map((hit: { externalId: string }) => hit.externalId),
+				["btc", "cbbtc"],
+			)
+			// Every word must match, Polish letters fold, and % is a literal character.
+			const zloty = yield* call("/api/v1/search?q=zloty%20obligacji")
+			assert.deepStrictEqual(
+				zloty.json.hits.map((hit: { source: string }) => hit.source),
+				["mbank"],
+			)
+			assert.strictEqual((yield* call("/api/v1/search?q=50%25")).json.hits.length, 1)
+			assert.strictEqual((yield* call("/api/v1/search?q=5_%25")).json.hits.length, 0)
+			assert.strictEqual((yield* call("/api/v1/search?q=")).status, 400)
+		}))
 })

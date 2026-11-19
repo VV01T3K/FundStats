@@ -93,7 +93,7 @@ function SourceLayout() {
 					className={cn(
 						"bg-bg flex min-h-0 flex-1 flex-col [view-transition-name:source-panel]",
 						// Floating: the panel sits inset on the darker frame, on screens wide enough to spare it.
-						floating && "lg:border-rule-strong lg:mx-5 lg:my-4 lg:border",
+						floating && "lg:border-rule-strong lg:mx-8 lg:my-6 lg:border",
 					)}
 				>
 					<Outlet />

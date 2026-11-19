@@ -64,6 +64,14 @@ export const sparklinesQuery = (source: SourceId) =>
 		staleTime: 30_000,
 	})
 
+/** Instruments in every source matching `q`, for the search box's suggestions. */
+export const searchQuery = (q: string) =>
+	queryOptions({
+		queryKey: ["search", q],
+		queryFn: () => callApi((api) => api.sources.search({ query: { q, limit: 24 } })),
+		staleTime: 5 * 60_000,
+	})
+
 /** The API's maximum: years of daily points for any source (older crypto quotes are thinned to one a day). */
 export const HISTORY_LIMIT = 5000
 

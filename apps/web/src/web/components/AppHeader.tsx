@@ -1,16 +1,11 @@
 import type { SourceStatus } from "@fundstats/shared/api"
 
-import { cn } from "#/lib/utils"
-
 import { formatStamp } from "../format.ts"
 import { collectedAt, sourceState, stateDetail, stateLabel } from "../freshness.ts"
 import { usePrefs } from "../PrefsContext.tsx"
 import { SearchField } from "./SearchField.tsx"
 import { SoonBadge, soonLabel, Tip } from "./Tip.tsx"
 import { Wordmark } from "./Wordmark.tsx"
-
-const STATE_TEXT = { live: "text-up", cached: "text-warm", stale: "text-down", empty: "text-dim" } as const
-const STATE_BG = { live: "bg-up", cached: "bg-warm", stale: "bg-down", empty: "bg-dim" } as const
 
 /** Menu · wordmark · search · freshness of the open source · account. */
 export function AppHeader({
@@ -64,18 +59,24 @@ export function AppHeader({
 }
 
 function FreshnessStamp({ status }: { readonly status: SourceStatus }) {
-	// The header says whether the open table is current; the tab's badge says how it is collected.
-	const state = sourceState(status) === "cached" ? "live" : sourceState(status)
+	// When the open table was last collected; only a problem gets a colour and a word.
+	const state = sourceState(status)
+	const problem = state === "stale" || state === "empty"
 	const at = collectedAt(status)
 	return (
 		<Tip label={stateDetail(status)}>
-			<span tabIndex={0} className={cn("inline-flex items-center gap-1.5 outline-offset-4", STATE_TEXT[state])}>
-				<span
-					aria-hidden
-					className={cn("size-1.5", STATE_BG[state], state !== "stale" && state !== "empty" && "live-pulse")}
-				/>
-				<span className="font-semibold">{state === "live" ? "LIVE" : stateLabel(status)}</span>
-				{at ? <span className="text-dim ml-1 hidden sm:inline">{formatStamp(at)}</span> : null}
+			<span tabIndex={0} className="inline-flex items-center gap-1.5 outline-offset-4">
+				{problem ? (
+					<span className="text-down inline-flex items-center gap-1.5 font-semibold">
+						<span aria-hidden className="bg-down size-1.5" />
+						{stateLabel(status)}
+					</span>
+				) : null}
+				{at ? (
+					<span className="text-dim ml-1 hidden sm:inline">
+						Updated <span className="text-ink-dim">{formatStamp(at)}</span>
+					</span>
+				) : null}
 			</span>
 		</Tip>
 	)

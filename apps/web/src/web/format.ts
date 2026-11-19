@@ -72,18 +72,11 @@ const warsaw = (options: Intl.DateTimeFormatOptions) =>
 	new Intl.DateTimeFormat(LOCALE, { timeZone: TIME_ZONE, ...options })
 const fullDate = warsaw({ day: "2-digit", month: "2-digit", year: "numeric" })
 const clock = warsaw({ hour: "2-digit", minute: "2-digit" })
-// pl-PL names the zone "CET" too, but en-GB is the locale that reliably gives the CET/CEST abbreviation.
-const zoneName = new Intl.DateTimeFormat("en-GB", { timeZone: TIME_ZONE, timeZoneName: "short" })
-
 const at = (iso: string) => DateTime.makeUnsafe(iso)
 
-/** `CET` or `CEST`, Warsaw's zone at that moment. */
-const zoneOf = (iso: string) =>
-	zoneName.formatToParts(DateTime.toDateUtc(at(iso))).find((part) => part.type === "timeZoneName")?.value ?? ""
-
-/** `18.11.2026 · 06:02 CET`, the header clock. */
+/** `18.11.2026, 06:02`: a moment in Polish time, as Poles write it (the app is for the Polish market). */
 export const formatStamp = (iso: string) =>
-	`${DateTime.formatIntl(at(iso), fullDate)} · ${DateTime.formatIntl(at(iso), clock)} ${zoneOf(iso)}`.trim()
+	`${DateTime.formatIntl(at(iso), fullDate)}, ${DateTime.formatIntl(at(iso), clock)}`
 
 /** A chart time as ISO, for the timestamp formatters above. */
 export const epochToIso = (t: number) => DateTime.formatIso(DateTime.makeUnsafe(t))

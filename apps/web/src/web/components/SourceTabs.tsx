@@ -83,6 +83,8 @@ export function SourceTabs({
 function StateBadge({ status }: { readonly status: SourceStatus | undefined }) {
 	if (!status) return null
 	const state = sourceState(status)
+	// Fresh is the normal case and says nothing; only a stale or empty source is flagged.
+	if (state !== "stale" && state !== "empty") return null
 	return (
 		<Tip label={stateDetail(status)}>
 			<span

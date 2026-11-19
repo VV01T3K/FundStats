@@ -259,9 +259,9 @@ describe("pl-PL numbers and Warsaw time", () => {
 		assert.strictEqual(formatCompact(512), "512")
 	})
 
-	it("dates and times are Warsaw's, with the zone of that moment", () => {
+	it("dates and times are Warsaw's, winter and summer time alike", () => {
 		assert.strictEqual(formatDate("2026-11-17"), "17.11.2026")
-		assert.strictEqual(formatStamp("2026-11-18T05:02:00Z"), "18.11.2026 · 06:02 CET")
-		assert.strictEqual(formatStamp("2026-07-18T05:02:00Z"), "18.07.2026 · 07:02 CEST")
+		assert.strictEqual(formatStamp("2026-11-18T05:02:00Z"), "18.11.2026, 06:02")
+		assert.strictEqual(formatStamp("2026-07-18T05:02:00Z"), "18.07.2026, 07:02")
 	})
 })
