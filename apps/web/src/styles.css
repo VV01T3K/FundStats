@@ -31,7 +31,7 @@
 
 /*
  * Classic: the first FundStats (shadcn's dark zinc): violet for the sorted column, blue row highlights,
- * green-400 and #ff2424 for moves, the system sans-serif. Violet-400 rather than its violet-600, which
+ * green-400 and #ff2424 for moves; colours only, in the terminal's mono face. Violet-400 rather than its violet-600, which
  * is under 4.5:1 for small text on this background.
  */
 [data-theme="classic"] {
@@ -52,7 +52,7 @@
 	--down: #ff2424;
 	--on-accent: #09090b;
 	--highlight: #2563eb;
-	--font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+	--font-ui: "JetBrains Mono Variable", ui-monospace, "IBM Plex Mono", Menlo, monospace;
 }
 
 /* Light: the terminal on paper; every text colour holds 4.5:1 on white and on the highlight tint. */
