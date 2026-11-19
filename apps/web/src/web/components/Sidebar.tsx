@@ -5,12 +5,8 @@ import {
 	Bell,
 	BookOpen,
 	BriefcaseBusiness,
-	ChartCandlestick,
-	Coins,
 	Download,
-	Flame,
 	KeyRound,
-	Landmark,
 	LayoutDashboard,
 	LogIn,
 	type LucideIcon,
@@ -25,15 +21,9 @@ import { cn } from "#/lib/utils"
 import { formatInterval } from "../format.ts"
 import { sourceState, stateDetail, type SourceState } from "../freshness.ts"
 import { usePrefs } from "../PrefsContext.tsx"
+import { ProviderLogo } from "./ProviderLogo.tsx"
 import { SoonBadge, soonLabel, Tip } from "./Tip.tsx"
 import { Wordmark } from "./Wordmark.tsx"
-
-const SOURCE_ICONS: Record<SourceId, LucideIcon> = {
-	mbank: Landmark,
-	coingecko: Coins,
-	coinpaprika: Flame,
-	coinmarketcap: ChartCandlestick,
-}
 
 const STATE_COLOR: Record<SourceState, string> = {
 	live: "bg-up",
@@ -97,7 +87,6 @@ export function Sidebar({ dialog, source, statuses, onClose }: SidebarProps) {
 						{SOURCE_IDS.map((id) => {
 							const status = statuses.find((s) => s.id === id)
 							const state = status ? sourceState(status) : "empty"
-							const Icon = SOURCE_ICONS[id]
 							const active = id === source
 							return (
 								<li key={id} className="mb-1">
@@ -116,7 +105,7 @@ export function Sidebar({ dialog, source, statuses, onClose }: SidebarProps) {
 											)}
 										>
 											<span aria-hidden className={cn("size-2 shrink-0 rounded-full", STATE_COLOR[state])} />
-											<Icon aria-hidden className={cn("size-3.5 shrink-0", active && "text-warm")} />
+											<ProviderLogo source={id} size={14} />
 											<span className="flex-1 truncate">{id === "mbank" ? "mBank · funds" : SOURCES[id].name}</span>
 											<span className="text-dim text-[11px] font-normal">
 												{status

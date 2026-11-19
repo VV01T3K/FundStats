@@ -11,6 +11,7 @@ import { cn } from "#/lib/utils"
 
 import { searchQuery } from "../api.ts"
 import { MAX_QUERY } from "../search.ts"
+import { ProviderLogo } from "./ProviderLogo.tsx"
 
 /** The fewest characters that ask the other sources too. */
 const SUGGEST_FROM = 2
@@ -128,7 +129,8 @@ export function SearchField({
 									items={group.items}
 									className="border-rule border-b last:border-b-0"
 								>
-									<Autocomplete.GroupLabel className="text-warm px-3.5 pt-2.5 pb-1 text-[11px] tracking-[0.14em] uppercase">
+									<Autocomplete.GroupLabel className="text-warm flex items-center gap-2 px-3.5 pt-2.5 pb-1 text-[11px] tracking-[0.14em] uppercase">
+										<ProviderLogo source={group.value} size={12} />
 										{SOURCES[group.value].name}
 									</Autocomplete.GroupLabel>
 									<Autocomplete.Collection>

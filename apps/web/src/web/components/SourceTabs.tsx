@@ -6,6 +6,7 @@ import { cn } from "#/lib/utils"
 
 import { sourceState, stateDetail, stateLabel } from "../freshness.ts"
 import { getTable } from "../tables.ts"
+import { ProviderLogo } from "./ProviderLogo.tsx"
 import { Tip } from "./Tip.tsx"
 
 const BADGE = { live: "text-up", cached: "text-warm", stale: "text-down", empty: "text-dim" } as const
@@ -37,7 +38,7 @@ export function SourceTabs({
 								)}
 							>
 								<span className="flex min-w-0 items-center gap-2.5">
-									<span aria-hidden className={cn("size-2 shrink-0", active ? "bg-warm" : "bg-rule")} />
+									<ProviderLogo source={id} size={16} className={cn(!active && "opacity-60 grayscale-[40%]")} />
 									<span
 										className={cn(
 											"truncate text-[13px] tracking-[0.04em]",
@@ -69,7 +70,7 @@ export function SourceTabs({
 									active ? "bg-panel font-bold text-warm" : "text-dim",
 								)}
 							>
-								<span aria-hidden className={cn("size-1.5 rounded-full", active ? "bg-warm" : "bg-rule-strong")} />
+								<ProviderLogo source={id} size={14} className={cn(!active && "opacity-60")} />
 								{id === "mbank" ? "mBank" : SOURCES[id].name}
 							</Link>
 						</li>

@@ -228,8 +228,8 @@ Square everywhere: radius 0 on buttons, chips, inputs, popovers, tags and scroll
 
 ### Source tabs
 
-- **Style:** four equal cells divided by hairlines. Each has a square dot, a 13px title and an 11px Dim Label tagline listing timeframes.
-- **State:** the active tab gets Panel Graphite fill, an amber dot and a 3px amber underline, plus its cache or live badge. On mobile the tabs become a scrolling pill strip with round dots.
+- **Style:** four equal cells divided by hairlines. Each has the provider's own logo (16px; dimmed when inactive), a 13px title and an 11px Dim Label tagline listing timeframes.
+- **State:** the active tab gets Panel Graphite fill and a 3px amber underline; a stale source adds a red STALE badge. On mobile the tabs become a scrolling strip of logo and name.
 
 ### Inputs / Fields
 

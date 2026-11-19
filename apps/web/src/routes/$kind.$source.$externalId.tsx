@@ -7,6 +7,7 @@ import { useMemo } from "react"
 import { cn } from "#/lib/utils"
 import { historyQuery, HISTORY_LIMIT, latestQuery } from "#/web/api.ts"
 import { PriceChart } from "#/web/components/PriceChart.tsx"
+import { ProviderLogo } from "#/web/components/ProviderLogo.tsx"
 import {
 	formatCompact,
 	epochToIso,
@@ -110,7 +111,10 @@ function DetailPage() {
 						<h1 className="text-ink text-[20px] leading-tight font-bold text-pretty">{name}</h1>
 						<div className="text-dim mt-1.5 flex items-center gap-2.5 text-[11px] tracking-[0.1em]">
 							{ticker && config.kind === "crypto" ? <span className="text-warm font-bold">{ticker}</span> : null}
-							<span>{info.name.toUpperCase()}</span>
+							<span className="inline-flex items-center gap-1.5">
+								<ProviderLogo source={source} size={12} />
+								{info.name.toUpperCase()}
+							</span>
 							{row?.category ? (
 								<span className="border-rule-strong text-warm border px-1.5 py-px text-[11px]">
 									{categoryLabel(row.category).toUpperCase()}
