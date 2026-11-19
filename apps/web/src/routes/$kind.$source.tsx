@@ -1,16 +1,27 @@
 import { isSourceId, KIND_SEGMENT, SOURCES, type SourceId } from "@fundstats/shared/sources"
-import { useSuspenseQuery } from "@tanstack/react-query"
-import { createFileRoute, notFound } from "@tanstack/react-router"
-import { useMemo } from "react"
+import { useQuery, useSuspenseQuery } from "@tanstack/react-query"
+import { createFileRoute, notFound, Outlet } from "@tanstack/react-router"
+import { useRef, useState } from "react"
 
-import { Button } from "#/components/ui/button"
-import { latestQuery } from "#/web/api.ts"
-import { DataTable } from "#/web/components/DataTable.tsx"
-import { SourceStatusBar } from "#/web/components/SourceStatusBar.tsx"
-import { resolveView, type TableSearch, validateTableSearch } from "#/web/search.ts"
-import { getTable } from "#/web/tables/index.ts"
+import { cn } from "#/lib/utils"
+import { latestQuery, sourcesQuery, sparklinesQuery } from "#/web/api.ts"
+import { AppHeader } from "#/web/components/AppHeader.tsx"
+import { Footer } from "#/web/components/Footer.tsx"
+import { MobileTabBar } from "#/web/components/MobileTabBar.tsx"
+import { SearchField, useSlashToSearch } from "#/web/components/SearchField.tsx"
+import { Sidebar } from "#/web/components/Sidebar.tsx"
+import { SourceTabs } from "#/web/components/SourceTabs.tsx"
+import { TipProvider } from "#/web/components/Tip.tsx"
+import { useDataEvents } from "#/web/events.ts"
+import { usePrefs } from "#/web/PrefsContext.tsx"
+import { resolveView, validateTableSearch } from "#/web/search.ts"
+import { getTable } from "#/web/tables.ts"
 
-/** One table view per source: /funds/mbank, /crypto/coingecko, ... */
+/**
+ * One source: /funds/mbank, /crypto/coingecko. The terminal's frame (header, source tabs, footer,
+ * menu) around its table and its instruments' detail pages, which share the table's search params so
+ * a detail page's back link returns to the same view.
+ */
 export const Route = createFileRoute("/$kind/$source")({
 	validateSearch: validateTableSearch,
 	params: {
@@ -21,113 +32,86 @@ export const Route = createFileRoute("/$kind/$source")({
 		},
 		stringify: (params) => params,
 	},
-	loader: ({ context, params }) => context.queryClient.ensureQueryData(latestQuery(params.source)),
-	head: ({ params }) => ({ meta: [{ title: `${SOURCES[params.source].name} · FundStats` }] }),
-	component: SourceTablePage,
+	loader: async ({ context, params }) => {
+		// A first page arrives with its sparklines. Switching sources in the browser shows the table at
+		// once: sparklines decorate it, so they fill in when they arrive instead of holding it back.
+		const sparklines = sparklinesQuery(params.source)
+		if (!import.meta.env.SSR) void context.queryClient.prefetchQuery(sparklines)
+		await Promise.all([
+			context.queryClient.ensureQueryData(latestQuery(params.source)),
+			context.queryClient.ensureQueryData(sourcesQuery()),
+			import.meta.env.SSR ? context.queryClient.ensureQueryData(sparklines) : undefined,
+		])
+	},
+	head: ({ params }) => ({ meta: [{ title: `${getTable(params.source).title} · FundStats` }] }),
+	component: SourceLayout,
 })
 
-function SourceTablePage() {
+function SourceLayout() {
 	const { source } = Route.useParams()
 	const search = Route.useSearch()
 	const navigate = Route.useNavigate()
+	const { prefs } = usePrefs()
+	const floating = prefs.layout === "floating"
 	const { data } = useSuspenseQuery(latestQuery(source))
+	const statuses = useQuery(sourcesQuery()).data ?? [data.source]
+	useDataEvents()
 	const config = getTable(source)
-	const view = useMemo(() => resolveView(config, search), [config, search])
+	const view = resolveView(config, search)
+	const menu = useRef<HTMLDialogElement>(null)
+	const [menuOpen, setMenuOpen] = useState(false)
+	useSlashToSearch()
 
-	const rows = useMemo(
-		() =>
-			view.category && view.category !== "all" ? data.rows.filter((row) => row.category === view.category) : data.rows,
-		[data.rows, view.category],
-	)
-
-	const update = (patch: Partial<TableSearch>) =>
-		navigate({ search: (prev) => ({ ...prev, ...patch }), replace: true, resetScroll: false })
+	// Searching from an instrument's page goes back to the table it filters.
+	const onQuery = (q: string) =>
+		navigate({
+			to: "/$kind/$source",
+			params: (prev) => prev,
+			search: (prev) => ({ ...prev, q: q || undefined }),
+			replace: true,
+			resetScroll: false,
+		})
 
 	return (
-		<section className="space-y-4">
-			<div className="flex flex-wrap items-baseline justify-between gap-2">
-				<h1 className="text-2xl font-semibold tracking-tight">{SOURCES[source].name}</h1>
-				<span className="text-muted-foreground text-sm">{rows.length} rows</span>
-			</div>
-
-			<SourceStatusBar status={data.source} rows={data.rows} />
-
-			{config.categories ? (
-				<FilterGroup label="Category">
-					{[...config.categories, { value: "all", label: "Wszystkie" }].map((c) => (
-						<Choice key={c.value} active={view.category === c.value} onClick={() => update({ category: c.value })}>
-							{c.label}
-						</Choice>
-					))}
-				</FilterGroup>
-			) : null}
-
-			{config.periods ? (
-				<FilterGroup label="Period">
-					{config.periods.map((p) => (
-						<Choice
-							key={p}
-							active={view.period === p}
-							// Choosing a period also sorts by it.
-							onClick={() => update({ period: p, sort: undefined, dir: undefined })}
-						>
-							{p}
-						</Choice>
-					))}
-				</FilterGroup>
-			) : null}
-
-			{config.thresholds ? (
-				<FilterGroup label={`Highlight above (${view.period})`}>
-					{[0, ...config.thresholds].map((t) => (
-						<Choice key={t} active={view.threshold === t} onClick={() => update({ threshold: t })}>
-							{t === 0 ? "Off" : `${t} %`}
-						</Choice>
-					))}
-				</FilterGroup>
-			) : null}
-
-			<div className="rounded-lg border">
-				<DataTable
-					config={config}
-					rows={rows}
-					view={view}
-					onSortChange={(sort, desc) => update({ sort, dir: desc ? "desc" : "asc" })}
+		<TipProvider>
+			<div className={cn("flex h-dvh flex-col overflow-hidden", floating ? "bg-outer" : "bg-bg")}>
+				<AppHeader
+					status={data.source}
+					query={view.q}
+					onQuery={onQuery}
+					menuExpanded={menuOpen}
+					onMenu={() => {
+						menu.current?.showModal()
+						setMenuOpen(true)
+					}}
 				/>
+				<SourceTabs source={source} statuses={statuses} />
+				<div className="border-rule shrink-0 border-b px-3 py-2 lg:hidden">
+					<SearchField query={view.q} onQuery={onQuery} />
+				</div>
+				<main
+					className={cn(
+						"bg-bg flex min-h-0 flex-1 flex-col [view-transition-name:source-panel]",
+						// Floating: the panel sits inset on the darker frame, on screens wide enough to spare it.
+						floating && "lg:border-rule-strong lg:mx-8 lg:my-6 lg:border",
+					)}
+				>
+					<Outlet />
+				</main>
+				<Footer />
+				{prefs.showSoon ? <MobileTabBar /> : null}
 			</div>
-
-			<div className="text-center">
-				<a href="#top" className="text-muted-foreground text-sm underline underline-offset-4">
-					Back to top
-				</a>
-			</div>
-		</section>
-	)
-}
-
-function FilterGroup({ label, children }: { readonly label: string; readonly children: React.ReactNode }) {
-	return (
-		<div className="flex flex-wrap items-center gap-2">
-			<span className="text-muted-foreground w-full text-xs tracking-wide uppercase sm:w-auto sm:min-w-24">
-				{label}
-			</span>
-			{children}
-		</div>
-	)
-}
-
-function Choice({
-	active,
-	onClick,
-	children,
-}: {
-	readonly active: boolean
-	readonly onClick: () => void
-	readonly children: React.ReactNode
-}) {
-	return (
-		<Button size="sm" variant={active ? "default" : "secondary"} aria-pressed={active} onClick={onClick}>
-			{children}
-		</Button>
+			<Sidebar
+				dialog={menu}
+				source={source}
+				statuses={statuses}
+				view={view}
+				rows={data.rows}
+				onSearch={(patch) =>
+					navigate({ to: ".", search: (prev) => ({ ...prev, ...patch }), replace: true, resetScroll: false })
+				}
+				onClose={() => setMenuOpen(false)}
+			/>
+		</TipProvider>
 	)
 }

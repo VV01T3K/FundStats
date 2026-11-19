@@ -6,6 +6,7 @@ import * as Layer from "effect/Layer"
 import * as Schema from "effect/Schema"
 
 import { Database, type DatabaseError, type Db } from "./Database.ts"
+import { announceData } from "./DataEvents.ts"
 import { collectionRuns, instruments, newestSnapshotFirst, rawPayloads, snapshots, sourceSchedules } from "./schema.ts"
 import { SourceLocks } from "./SourceLocks.ts"
 import type { SourceSchedule } from "./Store.ts"
@@ -233,6 +234,7 @@ export class RunStore extends Context.Service<
 								error: null,
 							})
 							.where(eq(collectionRuns.id, input.runId))
+						yield* announceData(tx, input.source)
 						return { instrumentCount: rows.length, rowsWritten }
 					}),
 				)

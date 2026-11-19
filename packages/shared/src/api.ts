@@ -1,4 +1,4 @@
-import { HttpApi, HttpApiEndpoint, HttpApiError, HttpApiGroup, OpenApi } from "effect/http-api"
+import { HttpApi, HttpApiEndpoint, HttpApiError, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/http-api"
 /**
  * The HTTP API contract. Imported by the server (handlers) and by the web
  * client (typed HttpApiClient), so it must not import server-only code.
@@ -83,6 +83,45 @@ const InstrumentHistory = Schema.Struct({
 })
 type InstrumentHistory = typeof InstrumentHistory.Type
 
+/** How many recent points per instrument one sparkline request may ask for. */
+const SparklinePoints = Schema.Int.check(Schema.isBetween({ minimum: 2, maximum: 200 }))
+
+const Sparkline = Schema.Struct({
+	externalId: Schema.String,
+	/** The instrument's last values, oldest first, ordered like its history. */
+	values: Schema.Array(Schema.Number),
+})
+
+const SourceSparklines = Schema.Struct({
+	source: SourceIdSchema,
+	points: Schema.Int,
+	series: Schema.Array(Sparkline),
+})
+type SourceSparklines = typeof SourceSparklines.Type
+
+const SearchHit = Schema.Struct({
+	source: SourceIdSchema,
+	externalId: Schema.String,
+	name: Schema.String,
+	symbol: Schema.NullOr(Schema.String),
+	category: Schema.NullOr(Schema.String),
+})
+
+const SearchResult = Schema.Struct({
+	query: Schema.String,
+	hits: Schema.Array(SearchHit),
+})
+export type SearchResult = typeof SearchResult.Type
+
+/** A search: 1 to 100 characters, as long as the search field allows. */
+const SearchQuery = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100))
+
+/** How many hits one search may ask for. */
+const SearchLimit = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 50 }))
+
+/** A server-sent event: `source` has new data. */
+const DataChanged = Schema.Struct({ source: SourceIdSchema })
+
 const Health = Schema.Struct({
 	status: Schema.Literal("ok"),
 	database: Schema.Literal("ok"),
@@ -124,6 +163,25 @@ class SourcesApi extends HttpApiGroup.make("sources")
 			success: InstrumentHistory,
 			error: [SourceNotFound, InstrumentNotFound],
 		}),
+		HttpApiEndpoint.get("sparklines", "/sources/:source/sparklines", {
+			params: { source: Schema.String },
+			query: { points: Schema.optional(SparklinePoints) },
+			success: SourceSparklines,
+			error: SourceNotFound,
+		}),
+		HttpApiEndpoint.get("search", "/search", {
+			query: { q: SearchQuery, limit: Schema.optional(SearchLimit) },
+			success: SearchResult,
+		}).annotate(
+			OpenApi.Description,
+			"Instruments listed now in any source whose name or ticker contains every word of `q`; exact tickers first.",
+		),
+		HttpApiEndpoint.get("events", "/events", {
+			success: HttpApiSchema.StreamSse({ data: DataChanged, keepAlive: "25 seconds" }),
+		}).annotate(
+			OpenApi.Description,
+			"Server-sent events: one `message` each time the collector stores a run, naming its source.",
+		),
 	)
 	.prefix("/v1")
 	.annotateMerge(

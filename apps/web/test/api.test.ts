@@ -1,9 +1,18 @@
 /** The HTTP API against a real Postgres (see @fundstats/db/test/postgres.ts), on data written by hand. */
 import { assert, layer } from "@effect/vitest"
+import { DataEvents } from "@fundstats/db/DataEvents"
 import type { NormalizedRow } from "@fundstats/db/RunStore"
 import { RunStore } from "@fundstats/db/RunStore"
 import { Store } from "@fundstats/db/Store"
-import { capturedAt, reset, startRun, TestStorage, writer } from "@fundstats/db/test/support"
+import {
+	capturedAt,
+	dbConfigOn,
+	reset,
+	startRun,
+	testDatabaseUrl,
+	TestStorage,
+	writer,
+} from "@fundstats/db/test/support"
 import * as DateTime from "effect/DateTime"
 import * as Effect from "effect/Effect"
 import { HttpRouter, HttpServer } from "effect/http"
@@ -12,9 +21,18 @@ import { TestClock } from "effect/testing"
 
 import { ApiRoutesLayer } from "#/server/runtime.ts"
 
-const ApiTest = Layer.mergeAll(TestStorage, HttpServer.layerServices)
+const ApiTest = Layer.mergeAll(
+	TestStorage,
+	DataEvents.layer.pipe(Layer.provide(dbConfigOn(testDatabaseUrl))),
+	HttpServer.layerServices,
+)
 
-const instrument = (externalId: string, asOf: string | null, metrics: Record<string, number>): NormalizedRow => ({
+const instrument = (
+	externalId: string,
+	asOf: string | null,
+	metrics: Record<string, number>,
+	value: number | null = 1,
+): NormalizedRow => ({
 	externalId,
 	name: externalId,
 	symbol: null,
@@ -22,15 +40,15 @@ const instrument = (externalId: string, asOf: string | null, metrics: Record<str
 	currency: "PLN",
 	metadata: {},
 	asOf,
-	value: 1,
+	value,
 	metrics,
 })
 
 /** Records one successful run of `source` with `rows`, the way the collector does. */
-const collected = (source: string, rows: ReadonlyArray<NormalizedRow>) =>
+const collected = (source: string, rows: ReadonlyArray<NormalizedRow>, at?: string) =>
 	Effect.gen(function* () {
 		const runId = yield* startRun(source, "test")
-		yield* (yield* writer).persist({ source, runId, capturedAt: capturedAt(), rows })
+		yield* (yield* writer).persist({ source, runId, capturedAt: capturedAt(at), rows })
 	})
 
 layer(ApiTest)("HTTP API", (it) => {
@@ -134,4 +152,101 @@ layer(ApiTest)("HTTP API", (it) => {
 			assert.isTrue((yield* call("/api/health")).json.collectorEnabled)
 		}),
 	)
+
+	it.effect("serves the last points of every listed instrument in one sparkline response", () =>
+		Effect.gen(function* () {
+			yield* reset
+			// Funds by valuation date: a date captured later but older stays in date order.
+			yield* collected("mbank", [instrument("f", "2026-11-12", {}, 10), instrument("gone", "2026-11-12", {}, 5)])
+			yield* collected("mbank", [instrument("f", "2026-11-14", {}, 12)], "2026-11-16T13:00:00Z")
+			yield* collected("mbank", [instrument("f", "2026-11-13", {}, 11)], "2026-11-16T14:00:00Z")
+			// Live quotes by capture time; a missing value is no point.
+			for (const [hour, value] of [
+				[0, 100],
+				[6, null],
+				[12, 102],
+				[18, 103],
+			] as const) {
+				yield* collected(
+					"coingecko",
+					[instrument("btc", null, {}, value)],
+					`2026-11-16T${String(hour).padStart(2, "0")}:00:00Z`,
+				)
+			}
+
+			const funds = yield* call("/api/v1/sources/mbank/sparklines")
+			assert.strictEqual(funds.status, 200)
+			assert.deepStrictEqual(funds.json, {
+				source: "mbank",
+				points: 24,
+				// "gone" left the ranking with the last run, so it has no sparkline either.
+				series: [{ externalId: "f", values: [10, 11, 12] }],
+			})
+
+			const coins = yield* call("/api/v1/sources/coingecko/sparklines?points=2")
+			assert.deepStrictEqual(coins.json.series, [{ externalId: "btc", values: [102, 103] }])
+
+			for (const points of ["1", "201", "x"]) {
+				assert.strictEqual((yield* call(`/api/v1/sources/mbank/sparklines?points=${points}`)).status, 400, points)
+			}
+			assert.strictEqual((yield* call("/api/v1/sources/nope/sparklines")).status, 404)
+			assert.deepStrictEqual((yield* call("/api/v1/sources/coinpaprika/sparklines")).json.series, [])
+		}),
+	)
+
+	it.effect("streams an event naming the source each time a run is stored", () =>
+		Effect.gen(function* () {
+			yield* reset
+			const { handler, dispose } = HttpRouter.toWebHandler(ApiRoutesLayer.pipe(Layer.provide(ApiTest)), {
+				disableLogger: true,
+			})
+			const response = yield* Effect.promise(() => handler(new Request("http://test/api/v1/events")))
+			assert.strictEqual(response.status, 200)
+			assert.include(response.headers.get("content-type"), "text/event-stream")
+			const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader()
+
+			yield* collected("coingecko", [instrument("btc", null, {}, 1)])
+
+			let text = ""
+			while (!text.includes("\n\n")) {
+				const { value, done } = yield* Effect.promise(() => reader.read())
+				if (done) break
+				text += value
+			}
+			assert.include(text, 'data: {"source":"coingecko"}')
+			// Cancelling the body closes the stream, which unsubscribes it.
+			yield* Effect.promise(() => reader.cancel())
+			yield* Effect.promise(dispose)
+		}),
+	)
+	it("searches every source's listed instruments by name or ticker, exact tickers first", () =>
+		Effect.gen(function* () {
+			yield* reset
+			const named = (externalId: string, name: string, symbol: string | null) => ({
+				...instrument(externalId, null, {}),
+				name,
+				symbol,
+			})
+			yield* collected("coingecko", [named("cbbtc", "Coinbase Wrapped BTC", "CBBTC"), named("btc", "Bitcoin", "BTC")])
+			yield* collected("mbank", [named("1", "Złoty Obligacji 50%", "0001")])
+			yield* collected("coinpaprika", [named("gone", "Old BTC", "OBTC")])
+			yield* collected("coinpaprika", [named("eth", "Ethereum", "ETH")])
+
+			const btc = yield* call("/api/v1/search?q=btc")
+			assert.strictEqual(btc.status, 200)
+			// Exact ticker first; an instrument the source no longer lists is not found.
+			assert.deepStrictEqual(
+				btc.json.hits.map((hit: { externalId: string }) => hit.externalId),
+				["btc", "cbbtc"],
+			)
+			// Every word must match, Polish letters fold, and % is a literal character.
+			const zloty = yield* call("/api/v1/search?q=zloty%20obligacji")
+			assert.deepStrictEqual(
+				zloty.json.hits.map((hit: { source: string }) => hit.source),
+				["mbank"],
+			)
+			assert.strictEqual((yield* call("/api/v1/search?q=50%25")).json.hits.length, 1)
+			assert.strictEqual((yield* call("/api/v1/search?q=5_%25")).json.hits.length, 0)
+			assert.strictEqual((yield* call("/api/v1/search?q=")).status, 400)
+		}))
 })

@@ -40,7 +40,62 @@ export const latestQuery = (source: SourceId) =>
 	queryOptions({
 		queryKey: ["latest", source],
 		queryFn: () => callApi((api) => api.sources.latest({ params: { source } })),
-		staleTime: 60_000,
-		// The collector updates crypto every 6 hours by default; keep an open tab reasonably fresh.
-		refetchInterval: 5 * 60_000,
+		staleTime: 30_000,
+	})
+
+/** Every source's freshness, for the sidebar's status dots. */
+export const sourcesQuery = () =>
+	queryOptions({
+		queryKey: ["sources"],
+		queryFn: () => callApi((api) => api.sources.list()),
+		staleTime: 30_000,
+	})
+
+/** How many recent points each sparkline draws. */
+const SPARKLINE_POINTS = 24
+
+/** The last points of every instrument of a source, keyed by external id, in one request. */
+export const sparklinesQuery = (source: SourceId) =>
+	queryOptions({
+		queryKey: ["sparklines", source],
+		queryFn: () =>
+			callApi((api) => api.sources.sparklines({ params: { source }, query: { points: SPARKLINE_POINTS } })),
+		select: (data) => new Map(data.series.map((s) => [s.externalId, s.values])),
+		staleTime: 30_000,
+	})
+
+/** Instruments in every source matching `q`, for the search box's suggestions. */
+export const searchQuery = (q: string) =>
+	queryOptions({
+		queryKey: ["search", q],
+		queryFn: () => callApi((api) => api.sources.search({ query: { q, limit: 24 } })),
+		staleTime: 5 * 60_000,
+	})
+
+/** The API's maximum: years of daily points for any source (older crypto quotes are thinned to one a day). */
+export const HISTORY_LIMIT = 5000
+
+/** An instrument's stored history, newest first; null when the source never reported it. */
+export const historyQuery = (source: SourceId, externalId: string) =>
+	queryOptions({
+		queryKey: ["history", source, externalId],
+		queryFn: () =>
+			callApi((api) =>
+				api.sources
+					.history({ params: { source, externalId }, query: { limit: HISTORY_LIMIT } })
+					.pipe(Effect.catchTags({ InstrumentNotFound: () => Effect.succeed(null) })),
+			),
+		staleTime: 5 * 60_000,
+	})
+
+/** The API's health and how long the round trip took, for the footer. */
+export const healthQuery = () =>
+	queryOptions({
+		queryKey: ["health"],
+		queryFn: async () => {
+			const started = performance.now()
+			const health = await callApi((api) => api.health())
+			return { ...health, ms: Math.round(performance.now() - started) }
+		},
+		staleTime: 30_000,
 	})

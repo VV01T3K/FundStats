@@ -1,24 +1,93 @@
 import * as DateTime from "effect/DateTime"
 
 // Fixed locale and time zone so server-rendered and hydrated text match.
-const dateTime = new Intl.DateTimeFormat("en-GB", {
-	timeZone: "Europe/Warsaw",
-	day: "2-digit",
-	month: "2-digit",
-	year: "numeric",
-	hour: "2-digit",
-	minute: "2-digit",
+const LOCALE = "pl-PL"
+const TIME_ZONE = "Europe/Warsaw"
+
+/** pl-PL groups digits with a no-break space (U+00A0), which keeps a figure on one line; minus is U+2212. */
+const typeset = (text: string) => text.replaceAll("-", "\u2212")
+
+const percentFormat = new Intl.NumberFormat(LOCALE, {
+	minimumFractionDigits: 2,
+	maximumFractionDigits: 2,
+	signDisplay: "exceptZero",
+	useGrouping: "always",
+})
+const fixed2 = new Intl.NumberFormat(LOCALE, {
+	minimumFractionDigits: 2,
+	maximumFractionDigits: 2,
+	useGrouping: "always",
+})
+const small = new Intl.NumberFormat(LOCALE, { maximumSignificantDigits: 6, useGrouping: "always" })
+const integer = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 0, useGrouping: "always" })
+
+const twoDecimals = new Intl.NumberFormat("en-US", {
+	maximumFractionDigits: 2,
+	roundingMode: "halfExpand",
+	useGrouping: false,
 })
 
-export const formatDateTime = (iso: string) => `${DateTime.formatIntl(DateTime.makeUnsafe(iso), dateTime)} (Warsaw)`
+/**
+ * The value at two decimals, halves away from zero on its shortest decimal form (2.675 → 2.68, where
+ * `toFixed` sees the binary 2.67499…): the one rounding rule behind the printed percent, its colour
+ * and the threshold highlight, so `0,00%` is never green and `+40,00%` never misses a 40% threshold.
+ */
+export const roundForDisplay = (value: number) => Number(twoDecimals.format(value))
 
-const fixed2 = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-const priceFormat = new Intl.NumberFormat("en-US", { maximumSignificantDigits: 6 })
+/** `+9,15%`, `−4,51%`, `0,00%`. */
+export const formatPercent = (value: number) => `${typeset(percentFormat.format(roundForDisplay(value)))}%`
 
-export const formatPercent = (value: number) => `${value > 0 ? "+" : ""}${fixed2.format(value)} %`
-export const formatNumber = (value: number) => fixed2.format(value)
-export const formatPrice = (value: number) => (Math.abs(value) >= 1 ? fixed2.format(value) : priceFormat.format(value))
+/** Gain, loss or flat, by the value as printed. */
+export const trend = (value: number): "up" | "down" | "flat" => {
+	const shown = roundForDisplay(value)
+	return shown > 0 ? "up" : shown < 0 ? "down" : "flat"
+}
 
-/** Tailwind class for a gain (green), loss (red) or flat value. */
-export const trendClass = (value: number | null) =>
-	value === null || value === 0 ? "text-muted-foreground" : value > 0 ? "text-gain" : "text-loss"
+/** `412 840,32`: two decimals from 1 up (including what rounds up to 1), six significant digits below. */
+export const formatPrice = (value: number) =>
+	typeset(Math.abs(Number(value.toPrecision(6))) >= 1 ? fixed2.format(value) : small.format(value))
+
+const SCALES = [
+	[1e12, "T"],
+	[1e9, "B"],
+	[1e6, "M"],
+	[1e3, "K"],
+] as const
+
+/** `384,00B`, `8,14T`: pl-PL digits with the short-scale letters the terminal uses. */
+export const formatCompact = (value: number) => {
+	const scale = SCALES.find(([size]) => Math.abs(value) >= size)
+	return scale ? `${typeset(fixed2.format(value / scale[0]))}${scale[1]}` : typeset(integer.format(value))
+}
+
+export const formatInteger = (value: number) => typeset(integer.format(value))
+
+/** `2026-11-17` → `17.11.2026`. Valuation dates are calendar dates; no time zone applies. */
+export const formatDate = (isoDate: string) => {
+	const [year, month, day] = isoDate.slice(0, 10).split("-")
+	return `${day}.${month}.${year}`
+}
+
+const warsaw = (options: Intl.DateTimeFormatOptions) =>
+	new Intl.DateTimeFormat(LOCALE, { timeZone: TIME_ZONE, ...options })
+const fullDate = warsaw({ day: "2-digit", month: "2-digit", year: "numeric" })
+const clock = warsaw({ hour: "2-digit", minute: "2-digit" })
+const at = (iso: string) => DateTime.makeUnsafe(iso)
+
+/** `18.11.2026, 06:02`: a moment in Polish time, as Poles write it (the app is for the Polish market). */
+export const formatStamp = (iso: string) =>
+	`${DateTime.formatIntl(at(iso), fullDate)}, ${DateTime.formatIntl(at(iso), clock)}`
+
+/** A chart time as ISO, for the timestamp formatters above. */
+export const epochToIso = (t: number) => DateTime.formatIso(DateTime.makeUnsafe(t))
+
+/** A valuation date stored as UTC midnight, as `17.11.2026`. */
+export const formatEpochDay = (t: number) => formatDate(DateTime.formatIsoDateUtc(DateTime.makeUnsafe(t)))
+
+/** `6h`, `30m`, `1d`: a collection interval. */
+export const formatInterval = (seconds: number) =>
+	seconds % 86_400 === 0
+		? `${seconds / 86_400}d`
+		: seconds % 3600 === 0
+			? `${seconds / 3600}h`
+			: `${Math.round(seconds / 60)}m`

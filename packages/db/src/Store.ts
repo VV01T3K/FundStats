@@ -1,6 +1,6 @@
 import type { CollectionRun, SnapshotRow } from "@fundstats/shared/api"
 import type { Metrics } from "@fundstats/shared/metrics"
-import { and, eq, sql } from "drizzle-orm"
+import { and, eq, type SQL, sql } from "drizzle-orm"
 import * as Context from "effect/Context"
 import * as DateTime from "effect/DateTime"
 import * as Effect from "effect/Effect"
@@ -24,6 +24,33 @@ export interface HistoryResult {
 	}>
 }
 
+export interface SparklineResult {
+	readonly externalId: string
+	readonly values: ReadonlyArray<number>
+}
+
+/** An instrument whose name or ticker matches a search, in any source. */
+export interface SearchHit {
+	readonly source: string
+	readonly externalId: string
+	readonly name: string
+	readonly symbol: string | null
+	readonly category: string | null
+}
+
+/** Lower case without Polish diacritics, the way `search` compares names (SQL: FOLDED). */
+const foldTerm = (value: string) =>
+	value
+		.toLocaleLowerCase("pl-PL")
+		.normalize("NFD")
+		.replace(/\p{Diacritic}/gu, "")
+		.replaceAll("ł", "l")
+
+const folded = (column: SQL) => sql`translate(lower(${column}), 'ąćęłńóśźż', 'acelnoszz')`
+
+/** `term` with `%`, `_` and `\` matching literally in a LIKE pattern. */
+const escapeLike = (term: string) => term.replace(/[\\%_]/g, (c) => `\\${c}`)
+
 /** How the collector last said it schedules a source. */
 export interface SourceSchedule {
 	readonly source: string
@@ -43,7 +70,14 @@ export class Store extends Context.Service<
 		readonly runSummary: (source: string) => E<RunSummary>
 		readonly latest: (source: string) => E<ReadonlyArray<SnapshotRow>>
 		readonly history: (source: string, externalId: string, limit: number) => E<HistoryResult | null>
+		/** The last `points` values of every instrument `latest` lists, oldest first. */
+		readonly sparklines: (source: string, points: number) => E<ReadonlyArray<SparklineResult>>
 		readonly schedules: E<ReadonlyArray<SourceSchedule>>
+		/**
+		 * Instruments currently listed in any source whose name or ticker contains every word of `query`,
+		 * at most `limit`: exact tickers first, then tickers and names that start with the query.
+		 */
+		readonly search: (query: string, limit: number) => E<ReadonlyArray<SearchHit>>
 	}
 >()("@fundstats/db/Store") {
 	static readonly layer = Layer.effect(
@@ -169,6 +203,32 @@ export class Store extends Context.Service<
 				}
 			})
 
+			const sparklines = Effect.fn("Store.sparklines")(function* (source: string, points: number) {
+				const result = yield* database.execute<{ external_id: string; values: ReadonlyArray<number> }>(sql`
+					select i.external_id, array(
+						select value from (
+							-- The newest points in history order, then turned oldest first.
+							select value::float8 as value, as_of, captured_at, id
+							from ${snapshots}
+							where instrument_id = i.id and value is not null
+							order by as_of desc nulls last, ${newestSnapshotFirst}
+							limit ${points}
+						) recent
+						order by as_of asc nulls first, captured_at asc, id asc
+					) as values
+					from ${instruments} i
+					where i.source = ${source}
+					  and i.last_seen_run_id = (
+						select id from ${collectionRuns}
+						where source = ${source} and status = 'success'
+						order by id desc
+						limit 1
+					  )
+					order by i.id
+				`)
+				return result.rows.map((r): SparklineResult => ({ externalId: r.external_id, values: r.values }))
+			})
+
 			const schedules = database
 				.select({
 					source: sourceSchedules.source,
@@ -177,7 +237,51 @@ export class Store extends Context.Service<
 				})
 				.from(sourceSchedules)
 
-			return Store.of({ runSummary, latest, history, schedules })
+			const search = Effect.fn("Store.search")(function* (query: string, limit: number) {
+				const terms = foldTerm(query).split(/\s+/).filter(Boolean)
+				if (terms.length === 0) return []
+				const whole = foldTerm(query).trim()
+				const name = folded(sql`i.name`)
+				const symbol = folded(sql`coalesce(i.symbol, '')`)
+				const matches = sql.join(
+					terms.map(
+						(term) => sql`(${name} like ${`%${escapeLike(term)}%`} or ${symbol} like ${`%${escapeLike(term)}%`})`,
+					),
+					sql` and `,
+				)
+				const result = yield* database.execute<{
+					source: string
+					external_id: string
+					name: string
+					symbol: string | null
+					category: string | null
+				}>(sql`
+					select i.source, i.external_id, i.name, i.symbol, i.category
+					from ${instruments} i
+					where ${matches}
+					  and i.last_seen_run_id = (
+						select id from ${collectionRuns}
+						where source = i.source and status = 'success'
+						order by id desc
+						limit 1
+					  )
+					order by
+						${symbol} = ${whole} desc,
+						${symbol} like ${`${escapeLike(whole)}%`} desc,
+						${name} like ${`${escapeLike(whole)}%`} desc,
+						i.name asc
+					limit ${limit}
+				`)
+				return result.rows.map((r): SearchHit => ({
+					source: r.source,
+					externalId: r.external_id,
+					name: r.name,
+					symbol: r.symbol,
+					category: r.category,
+				}))
+			})
+
+			return Store.of({ runSummary, latest, history, sparklines, schedules, search })
 		}),
 	)
 }

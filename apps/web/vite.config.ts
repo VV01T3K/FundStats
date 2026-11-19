@@ -9,6 +9,7 @@ export default defineConfig({
 	resolve: { tsconfigPaths: true },
 	// `.env` lives at the repository root, next to the collector's.
 	envDir: "../..",
+	define: { __APP_VERSION__: JSON.stringify(process.env.npm_package_version ?? "dev") },
 	server: { port: Number(process.env.PORT ?? 3000), strictPort: false },
 	plugins: [
 		devtools(),
