@@ -255,6 +255,16 @@ Square everywhere: radius 0 on buttons, chips, inputs, popovers, tags and scroll
 
 - A native modal dialog sliding in from the left (260ms, `cubic-bezier(0.22, 1, 0.36, 1)`), at most 340px wide, over a 55% black backdrop. Closed by default.
 
+### Source options (drawer)
+- The drawer's first section after Source status holds options only the open source has, kept in the URL like the bar's: funds filter by risk level (toggle chips of mBank's own scale) and fund family (a select); crypto filter by a market-cap floor (ANY, 100M, 1B, 10B) and can pin the column the highlight reads (AUTO follows the sort).
+- While any of them is on, the controls bar shows an amber "N FILTERS ×" chip that clears them.
+
+### Highlight slider
+- The crypto bar's threshold is a slider that stops only at the source's presets (OFF, 10–50%; CoinPaprika also 5%), each marked with a tick and labelled under the track; the chosen label is amber and bold.
+
+### Settings (header gear)
+- App-wide settings live behind the gear in the header, not in the drawer: Theme and SOON features.
+
 ## Do's and Don'ts
 
 ### Do:

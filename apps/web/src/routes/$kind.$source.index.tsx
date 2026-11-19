@@ -13,6 +13,7 @@ import { isColumnVisible } from "#/web/prefs.ts"
 import { usePrefs } from "#/web/PrefsContext.tsx"
 import {
 	categoryPatch,
+	clearFiltersPatch,
 	filterRows,
 	type ResolvedView,
 	resolveView,
@@ -53,6 +54,7 @@ function TablePage() {
 				rowCount={rows.length}
 				onCategory={(value) => update(categoryPatch(value))}
 				onThreshold={(value) => update(thresholdPatch(config, value))}
+				onClearFilters={() => update(clearFiltersPatch)}
 			/>
 			<div className="market min-h-0 flex-1 overflow-auto">
 				<MarketTable

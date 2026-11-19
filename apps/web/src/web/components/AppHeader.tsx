@@ -4,6 +4,7 @@ import { formatStamp } from "../format.ts"
 import { collectedAt, sourceState, stateDetail, stateLabel } from "../freshness.ts"
 import { usePrefs } from "../PrefsContext.tsx"
 import { SearchField } from "./SearchField.tsx"
+import { SettingsMenu } from "./SettingsMenu.tsx"
 import { SoonBadge, soonLabel, Tip } from "./Tip.tsx"
 import { Wordmark } from "./Wordmark.tsx"
 
@@ -42,6 +43,7 @@ export function AppHeader({
 			<div className="flex-1" />
 			<FreshnessStamp status={status} />
 			<div aria-hidden className="bg-rule-strong hidden h-[18px] w-px lg:block" />
+			<SettingsMenu />
 			{prefs.showSoon ? (
 				<Tip label={soonLabel("Accounts and sign-in")}>
 					<button

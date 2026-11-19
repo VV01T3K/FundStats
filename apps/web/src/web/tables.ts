@@ -52,10 +52,19 @@ export interface TableConfig {
 	readonly defaultSort: string
 	/** Highlight above this change (percent); 0 = off. */
 	readonly defaultThreshold: number
+	/** The highlight slider's stops, besides off; empty where the table has no highlight control. */
+	readonly thresholds: ReadonlyArray<number>
 }
 
-/** The highlight slider moves in 5% steps (keyboard: arrows by one step, Page Up/Down by two). */
-export const THRESHOLD_STEP = 5
+/** The highlight presets the first FundStats offered; CoinPaprika's also had 5%. */
+const THRESHOLDS = [10, 20, 30, 40, 50] as const
+
+/** The market-cap floors a crypto table can hide coins under. */
+export const MARKET_CAP_FLOORS = [
+	{ value: 1e8, label: "100M" },
+	{ value: 1e9, label: "1B" },
+	{ value: 1e10, label: "10B" },
+] as const
 export const THRESHOLD_MAX = 100
 
 const metadataNumber = (row: SnapshotRow, key: string) => {
@@ -122,6 +131,7 @@ const crypto = (
 	periods: ReadonlyArray<keyof typeof CRYPTO_CHANGES>,
 	defaultSort: string,
 	defaultThreshold: number,
+	thresholds: ReadonlyArray<number> = THRESHOLDS,
 ): TableConfig => {
 	const { name, currency } = SOURCES[source]
 	return {
@@ -164,6 +174,7 @@ const crypto = (
 		],
 		defaultSort,
 		defaultThreshold,
+		thresholds,
 	}
 }
 
@@ -241,9 +252,10 @@ export const TABLES = {
 		],
 		defaultSort: "1m",
 		defaultThreshold: 0,
+		thresholds: [],
 	},
 	coingecko: crypto("coingecko", ["24h", "7d", "30d", "200d", "1y"], "1y", 50),
-	coinpaprika: crypto("coinpaprika", ["1h", "24h", "7d"], "7d", 10),
+	coinpaprika: crypto("coinpaprika", ["1h", "24h", "7d"], "7d", 10, [5, ...THRESHOLDS]),
 	coinmarketcap: crypto("coinmarketcap", ["1h", "24h", "7d", "30d", "60d", "90d"], "30d", 40),
 } satisfies Record<SourceId, TableConfig>
 

@@ -16,10 +16,12 @@ import {
 import { sourceState, stateLabel, tableAsOf } from "#/web/freshness.ts"
 import { DEFAULT_PREFS, isColumnVisible, parsePrefs, prefsCookie, readPrefsCookie, withColumn } from "#/web/prefs.ts"
 import {
+	activeFilters,
 	categoryPatch,
 	filterRows,
 	isHighlighted,
 	resolveView,
+	riskPatch,
 	sortPatch,
 	thresholdPatch,
 	validateTableSearch,
@@ -187,6 +189,51 @@ describe("filters and highlight", () => {
 		assert.isFalse(isHighlighted(view, coin(-80)), "losses are not highlights")
 		assert.isFalse(isHighlighted(resolveView(TABLES.coingecko, { threshold: 0 }), coin(500)), "0 turns it off")
 		assert.isFalse(isHighlighted(view, row("none")), "a missing value is not above anything")
+	})
+	it("the menu's source filters: fund risk levels and family, crypto market-cap floor", () => {
+		const risky = [
+			row("a", { metadata: { riskScale: 2, umbrella: "PKO" } }),
+			row("b", { metadata: { riskScale: 4, umbrella: "PKO" } }),
+			row("c", { metadata: { riskScale: 4, umbrella: "Investor" } }),
+		]
+		const all = resolveView(TABLES.mbank, { category: "all" })
+		// Toggling one level off keeps the others; turning every level back on clears the param.
+		const without4 = riskPatch(all, 4, [2, 4])
+		assert.deepStrictEqual(without4, { risk: "2" })
+		const only2 = resolveView(TABLES.mbank, { category: "all", ...validateTableSearch(without4) })
+		assert.deepStrictEqual(riskPatch(only2, 4, [2, 4]), { risk: undefined })
+		assert.deepStrictEqual(
+			filterRows(risky, only2).map((r) => r.externalId),
+			["a"],
+		)
+		const family = resolveView(TABLES.mbank, { category: "all", risk: "4", family: "PKO" })
+		assert.deepStrictEqual(
+			filterRows(risky, family).map((r) => r.externalId),
+			["b"],
+		)
+		assert.strictEqual(activeFilters(family), 2)
+
+		const coins = [
+			row("big", { metadata: { marketCap: 2e10 } }),
+			row("small", { metadata: { marketCap: 5e8 } }),
+			row("none"),
+		]
+		const floor = resolveView(TABLES.coingecko, validateTableSearch({ mincap: "1000000000" }))
+		assert.deepStrictEqual(
+			filterRows(coins, floor).map((r) => r.externalId),
+			["big"],
+		)
+		assert.isUndefined(validateTableSearch({ mincap: "12345" }).mincap, "only the offered floors")
+		assert.isNull(resolveView(TABLES.mbank, { mincap: 1e9 }).minCap, "funds have no market cap")
+	})
+
+	it("the highlight can read a chosen percent column instead of the sorted one", () => {
+		const view = resolveView(TABLES.coingecko, { hl: "7d", threshold: 10 })
+		assert.strictEqual(view.highlight.id, "7d")
+		assert.isTrue(view.highlightChosen)
+		assert.isTrue(isHighlighted(view, row("c", {}, { change_7d: 12, change_1y: 0 })))
+		assert.strictEqual(resolveView(TABLES.coingecko, { hl: "mcap" }).highlight.id, "1y", "not a percent column")
+		assert.deepStrictEqual(TABLES.coinpaprika.thresholds, [5, 10, 20, 30, 40, 50])
 	})
 })
 
