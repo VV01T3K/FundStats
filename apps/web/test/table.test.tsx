@@ -45,7 +45,7 @@ afterEach(() => {
 
 const render = async (search: TableSearch, prefs: Prefs = DEFAULT_PREFS) => {
 	const config = TABLES.coingecko
-	const sorts: Array<string> = []
+	const patches: Array<Partial<TableSearch>> = []
 	const router = createRouter({
 		routeTree: createRootRoute({
 			component: () => (
@@ -58,8 +58,7 @@ const render = async (search: TableSearch, prefs: Prefs = DEFAULT_PREFS) => {
 					sparklines={new Map([["aaa", [1, 2, 3]]])}
 					asOf={null}
 					allRows={ROWS}
-					onSort={(id) => sorts.push(id)}
-					onSearch={() => {}}
+					onSearch={(patch) => patches.push(patch)}
 				/>
 			),
 		}),
@@ -76,7 +75,7 @@ const render = async (search: TableSearch, prefs: Prefs = DEFAULT_PREFS) => {
 	const headers = [...table.querySelectorAll("thead th")].map((th) => th.textContent?.trim())
 	// The ticker itself; the phone layout adds the rank after it.
 	const tickers = [...table.querySelectorAll("tbody a[data-row] .font-semibold")].map((a) => a.textContent)
-	return { table, headers, tickers, sorts }
+	return { table, headers, tickers, patches }
 }
 
 describe("market table", () => {
@@ -129,11 +128,16 @@ describe("market table", () => {
 		)
 	})
 
-	it("header buttons report the column; only the first row link is tabbable and arrows move between rows", async () => {
-		const { table, sorts } = await render({})
-		const button = [...table.querySelectorAll("thead button")].find((b) => b.textContent?.includes("MKT CAP"))!
-		act(() => (button as HTMLButtonElement).click())
-		assert.deepStrictEqual(sorts, ["mcap"])
+	it("a column's one button opens its menu, which sorts; only the first row link is tabbable and arrows move between rows", async () => {
+		const { table, patches } = await render({})
+		const button = table.querySelector<HTMLButtonElement>('thead button[aria-label^="Market capitalisation"]')!
+		assert.include(button.getAttribute("aria-label"), "sort and filter")
+		await act(async () => button.click())
+		const item = [...document.querySelectorAll<HTMLButtonElement>("button")].find(
+			(b) => b.textContent === "Sort high to low",
+		)!
+		await act(async () => item.click())
+		assert.deepStrictEqual(patches, [{ sort: "mcap", dir: "desc" }])
 
 		const links = [...table.querySelectorAll<HTMLAnchorElement>("tbody a[data-row]")]
 		assert.deepStrictEqual(

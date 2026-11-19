@@ -137,6 +137,43 @@ export const sortPatch = (config: TableConfig, view: ResolvedView, columnId: str
 	return isDefault ? { sort: undefined, dir: undefined } : { sort: columnId, dir: desc ? "desc" : "asc" }
 }
 
+/** The search change for sorting by `columnId` in a chosen direction; the source default drops out. */
+export const sortToPatch = (config: TableConfig, columnId: string, desc: boolean): Partial<TableSearch> => {
+	const column = columnOf(config, columnId)
+	if (!column?.sortValue) return {}
+	const isDefault = columnId === config.defaultSort && desc === (column.firstDir === "desc")
+	return isDefault ? { sort: undefined, dir: undefined } : { sort: columnId, dir: desc ? "desc" : "asc" }
+}
+
+/** The search change for picking one fund category in the bar (null: every category). */
+export const categoryPatch = (config: TableConfig, value: string | null): Partial<TableSearch> =>
+	facetPatch(config, "category", value === null ? null : new Set([value]))
+
+/** The search change for toggling one value of a filterable column; all values on means no filter. */
+export const toggleFacetPatch = (
+	config: TableConfig,
+	view: ResolvedView,
+	param: FacetParam,
+	value: string,
+	allValues: ReadonlyArray<string>,
+): Partial<TableSearch> => {
+	const next = new Set(view.facets[param] ?? allValues)
+	if (next.has(value)) next.delete(value)
+	else next.add(value)
+	return facetPatch(config, param, next.size === allValues.length ? null : next)
+}
+
+/** Clears the filters `extraFilters` counts. */
+export const clearExtraFiltersPatch: Partial<TableSearch> = {
+	risk: undefined,
+	family: undefined,
+	mincap: undefined,
+}
+
+/** How many filters set outside the bar's own controls are on (the bar's chip counts and clears them). */
+export const extraFilters = (view: ResolvedView) =>
+	[view.facets.risk, view.facets.family, view.minCap ?? undefined].filter((f) => f !== undefined).length
+
 /** The search change for showing only `values` of a filterable column (empty or null: no filter). */
 export const facetPatch = (
 	config: TableConfig,

@@ -1,16 +1,16 @@
 import { Popover } from "@base-ui/react/popover"
 import { Slider } from "@base-ui/react/slider"
 import type { SnapshotRow } from "@fundstats/shared/api"
-import { Check, ChevronDown, Filter, Highlighter, Search } from "lucide-react"
+import { ArrowDown, ArrowUp, Check, ChevronDown, Filter, Highlighter, Search } from "lucide-react"
 import { useState } from "react"
 
 import { cn } from "#/lib/utils"
 
-import { facetPatch, highlightPatch, minCapPatch, type ResolvedView, type TableSearch } from "../search.ts"
+import { facetPatch, highlightPatch, minCapPatch, type ResolvedView, sortToPatch, type TableSearch } from "../search.ts"
 import { type Column, type Facet, FUND_CATEGORIES, MARKET_CAP_FLOORS, type TableConfig } from "../tables.ts"
 import { Segmented } from "./Segmented.tsx"
 
-/** What a column's header menu offers beyond sorting (a header click sorts); null: no menu. */
+/** What a column's menu offers besides sorting; null: sorting only. */
 export const columnMenuKind = (config: TableConfig, column: Column) =>
 	column.facet
 		? "facet"
@@ -23,9 +23,18 @@ export const columnMenuKind = (config: TableConfig, column: Column) =>
 /** A menu lists a search box once it has more values than fit at a glance. */
 const SEARCH_FROM = 8
 
+const isFigure = (column: Column) =>
+	column.kind === "percent" ||
+	column.kind === "price" ||
+	column.kind === "compact" ||
+	column.kind === "rank" ||
+	column.kind === "risk"
+
 /**
- * A column's menu, opened from the small button beside its header: filter to some of its values, set
- * the highlight on it, or a market-cap floor. Sorting stays on the header itself, one click away.
+ * A column's one control, beside its label: a small button that shows the column's state (an arrow
+ * when sorted, a funnel when filtered or highlighted, a count when several values are picked) and
+ * opens one menu with sorting, then whatever else the column offers: a value filter, its highlight,
+ * or a market-cap floor.
  */
 export function ColumnMenu({
 	config,
@@ -41,54 +50,123 @@ export function ColumnMenu({
 	readonly onSearch: (patch: Partial<TableSearch>) => void
 }) {
 	const kind = columnMenuKind(config, column)
-	if (kind === null) return null
-	const active =
+	const canSort = column.sortValue !== undefined
+	if (kind === null && !canSort) return null
+	const sorted = view.sort === column.id ? (view.desc ? "desc" : "asc") : null
+	const selected = kind === "facet" ? view.facets[column.facet!.param] : undefined
+	const filtered =
 		kind === "facet"
-			? view.facets[column.facet!.param] !== undefined
+			? selected !== undefined
 			: kind === "highlight"
 				? view.highlight.id === column.id && view.threshold > 0
-				: view.minCap !== null
-	const Icon = kind === "highlight" ? Highlighter : Filter
+				: kind === "floor" && view.minCap !== null
+	const figure = isFigure(column)
+	const sortItems = [
+		{ desc: true, label: figure ? "Sort high to low" : "Sort Z to A", Icon: ArrowDown },
+		{ desc: false, label: figure ? "Sort low to high" : "Sort A to Z", Icon: ArrowUp },
+	].sort((a) => (a.desc === (column.firstDir === "desc") ? -1 : 1))
+	const state = [
+		sorted && `sorted ${sorted === "desc" ? "high to low" : "low to high"}`,
+		filtered && (kind === "highlight" ? `highlight above ${view.threshold}%` : "filtered"),
+	]
+		.filter(Boolean)
+		.join(", ")
 	return (
 		<Popover.Root>
 			<Popover.Trigger
-				aria-label={`${column.title}: ${kind === "highlight" ? "highlight" : "filter"}`}
+				aria-label={`${column.title}: sort${kind === "highlight" ? " and highlight" : kind ? " and filter" : ""}${state ? ` (${state})` : ""}`}
+				title={state || undefined}
 				className={cn(
-					"inline-grid size-5 shrink-0 place-items-center border align-middle max-sm:size-9",
-					active
-						? "border-warm bg-warm text-on-accent"
-						: "text-dim hover:text-ink data-[popup-open]:text-warm border-transparent opacity-0 group-hover/th:opacity-100 focus-visible:opacity-100 data-[popup-open]:opacity-100 [@media(hover:none)]:opacity-100",
+					"group/btn relative inline-flex h-5 w-8 shrink-0 items-center justify-center gap-0.5 border align-middle max-sm:h-9 max-sm:w-10",
+					filtered
+						? "border-warm bg-warm/15 text-warm hover:bg-warm/25"
+						: sorted
+							? "border-warm text-warm hover:bg-panel-2 data-[popup-open]:bg-panel-2"
+							: "border-rule-strong text-dim hover:text-ink hover:bg-panel-2 data-[popup-open]:text-ink data-[popup-open]:bg-panel-2",
 				)}
 			>
-				{active ? <Icon aria-hidden className="size-3" /> : <ChevronDown aria-hidden className="size-3" />}
+				{filtered ? (
+					kind === "highlight" ? (
+						<Highlighter aria-hidden className="size-3" />
+					) : (
+						<Filter aria-hidden className="size-3" fill="currentColor" />
+					)
+				) : !sorted ? (
+					<ChevronDown
+						aria-hidden
+						className="size-3 transition-transform duration-200 group-data-[popup-open]/btn:rotate-180"
+					/>
+				) : null}
+				{sorted === "desc" ? <ArrowDown aria-hidden className="size-3" /> : null}
+				{sorted === "asc" ? <ArrowUp aria-hidden className="size-3" /> : null}
+				{selected && selected.size > 1 ? (
+					<span className="bg-warm text-on-accent absolute -top-2 -right-1.5 grid h-3.5 min-w-3.5 place-items-center px-0.5 text-[11px] leading-none font-bold tabular-nums">
+						{selected.size}
+					</span>
+				) : null}
 			</Popover.Trigger>
 			<Popover.Portal>
 				<Popover.Positioner side="bottom" align="end" sideOffset={6} collisionPadding={8} className="z-40">
-					<Popover.Popup className="popup border-rule-strong bg-panel text-ink w-64 border text-left text-[11px] font-normal tracking-normal normal-case shadow-[0_12px_32px_rgb(0_0_0/0.5)] outline-none">
-						<Popover.Title className="sr-only">{column.title}</Popover.Title>
-						{kind === "facet" ? (
-							<FacetList config={config} facet={column.facet!} view={view} rows={rows} onSearch={onSearch} />
-						) : kind === "highlight" ? (
-							<div className="px-3.5 pt-2.5 pb-3">
-								<div className="text-warm mb-2 text-[11px] tracking-[0.14em]">HIGHLIGHT {column.label} ABOVE</div>
-								<ThresholdSlider
-									stops={[0, ...config.thresholds]}
-									value={view.highlight.id === column.id ? view.threshold : 0}
-									onChange={(threshold) => onSearch(highlightPatch(config, column.id, threshold))}
-									label={`Highlight ${column.title} above`}
-								/>
-							</div>
-						) : (
-							<Segmented
-								legend="MARKET CAP AT LEAST"
-								options={[
-									{ id: "any", label: "ANY" },
-									...MARKET_CAP_FLOORS.map((f) => ({ id: f.label, label: f.label })),
-								]}
-								value={MARKET_CAP_FLOORS.find((f) => f.value === view.minCap)?.label ?? "any"}
-								onChange={(id) => onSearch(minCapPatch(MARKET_CAP_FLOORS.find((f) => f.label === id)?.value ?? null))}
-							/>
+					<Popover.Popup
+						className={cn(
+							"popup border-rule-strong bg-panel text-ink border text-left text-[11px] font-normal tracking-normal normal-case shadow-[0_12px_32px_rgb(0_0_0/0.5)] outline-none",
+							kind ? "w-64" : "w-52",
 						)}
+					>
+						<Popover.Title className="text-dim border-rule border-b px-3.5 py-2 text-[11px] tracking-[0.1em] uppercase">
+							{column.title}
+						</Popover.Title>
+						{canSort ? (
+							<div role="group" aria-label="Sorting" className="py-1">
+								{sortItems.map(({ desc, label, Icon }) => {
+									const on = sorted === (desc ? "desc" : "asc")
+									return (
+										<Popover.Close
+											key={label}
+											aria-pressed={on}
+											onClick={() => onSearch(sortToPatch(config, column.id, desc))}
+											className={cn(
+												"hover:bg-panel-2 flex min-h-7 w-full items-center gap-2.5 px-3.5 text-left max-lg:min-h-11",
+												on ? "text-warm font-semibold" : "text-ink-dim hover:text-ink",
+											)}
+										>
+											<Icon aria-hidden className="size-3.5 shrink-0" />
+											<span className="flex-1">{label}</span>
+											{on ? <Check aria-hidden className="size-3.5 shrink-0" /> : null}
+										</Popover.Close>
+									)
+								})}
+							</div>
+						) : null}
+						{kind ? (
+							<div className={cn(canSort && "border-rule border-t")}>
+								{kind === "facet" ? (
+									<FacetList config={config} facet={column.facet!} view={view} rows={rows} onSearch={onSearch} />
+								) : kind === "highlight" ? (
+									<div className="px-3.5 pt-2.5 pb-3">
+										<div className="text-warm mb-2 text-[11px] tracking-[0.14em]">HIGHLIGHT ABOVE</div>
+										<ThresholdSlider
+											stops={[0, ...config.thresholds]}
+											value={view.highlight.id === column.id ? view.threshold : 0}
+											onChange={(threshold) => onSearch(highlightPatch(config, column.id, threshold))}
+											label={`Highlight ${column.title} above`}
+										/>
+									</div>
+								) : (
+									<Segmented
+										legend="MARKET CAP AT LEAST"
+										options={[
+											{ id: "any", label: "ANY" },
+											...MARKET_CAP_FLOORS.map((f) => ({ id: f.label, label: f.label })),
+										]}
+										value={MARKET_CAP_FLOORS.find((f) => f.value === view.minCap)?.label ?? "any"}
+										onChange={(id) =>
+											onSearch(minCapPatch(MARKET_CAP_FLOORS.find((f) => f.label === id)?.value ?? null))
+										}
+									/>
+								)}
+							</div>
+						) : null}
 					</Popover.Popup>
 				</Popover.Positioner>
 			</Popover.Portal>

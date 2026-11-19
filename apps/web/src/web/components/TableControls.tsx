@@ -1,5 +1,4 @@
 import { Popover } from "@base-ui/react/popover"
-import type { SnapshotRow } from "@fundstats/shared/api"
 import { Settings2, X } from "lucide-react"
 
 import { cn } from "#/lib/utils"
@@ -8,68 +7,16 @@ import { formatInteger } from "../format.ts"
 import { isColumnVisible, withAllColumns, withColumn } from "../prefs.ts"
 import { usePrefs } from "../PrefsContext.tsx"
 import {
-	clearFiltersPatch,
-	facetColumns,
-	facetPatch,
-	hasFilters,
+	categoryPatch,
+	clearExtraFiltersPatch,
+	extraFilters,
 	highlightPatch,
-	minCapPatch,
 	type ResolvedView,
 	type TableSearch,
 } from "../search.ts"
-import { type Column, MARKET_CAP_FLOORS, type TableConfig } from "../tables.ts"
+import { type Column, FUND_CATEGORIES, type TableConfig } from "../tables.ts"
+import { ThresholdSlider } from "./ColumnMenu.tsx"
 import { Segmented } from "./Segmented.tsx"
-
-interface Pill {
-	readonly key: string
-	readonly kind: "filter" | "highlight"
-	readonly label: string
-	/** The first value, `+N` for the rest. */
-	readonly value: string
-	readonly full: string
-	readonly clear: Partial<TableSearch>
-}
-
-/** One pill per active column filter, the market-cap floor and the highlight. */
-const activePills = (config: TableConfig, view: ResolvedView, rows: ReadonlyArray<SnapshotRow>): Array<Pill> => {
-	const pills: Array<Pill> = []
-	for (const column of facetColumns(config)) {
-		const selected = view.facets[column.facet.param]
-		if (!selected) continue
-		const labels = [...selected].map((value) => {
-			const row = rows.find((r) => column.facet.value(r) === value)
-			return row ? column.facet.label(value, row) : value
-		})
-		pills.push({
-			key: column.id,
-			kind: "filter",
-			label: column.label,
-			value: labels.length > 1 ? `${labels[0]} +${labels.length - 1}` : labels[0]!,
-			full: labels.join(", "),
-			clear: facetPatch(config, column.facet.param, null),
-		})
-	}
-	const floor = MARKET_CAP_FLOORS.find((f) => f.value === view.minCap)
-	if (floor)
-		pills.push({
-			key: "mincap",
-			kind: "filter",
-			label: "MKT CAP",
-			value: `≥ ${floor.label}`,
-			full: `at least ${floor.label}`,
-			clear: minCapPatch(null),
-		})
-	if (view.threshold > 0 && config.thresholds.length > 0)
-		pills.push({
-			key: "highlight",
-			kind: "highlight",
-			label: "HIGHLIGHT",
-			value: `${view.highlight.label.replace(/\s*%$/, "")} > ${view.threshold}%`,
-			full: `${view.highlight.title} above ${view.threshold}%`,
-			clear: highlightPatch(config, view.highlight.id, 0),
-		})
-	return pills
-}
 
 const chipBase =
 	"inline-flex h-[26px] shrink-0 items-center gap-1.5 border px-2.5 text-[11px] whitespace-nowrap max-sm:h-11"
@@ -79,72 +26,81 @@ const chipBase =
  * then the row count and the table settings.
  */
 /**
- * The row above the table: what filters and highlights the rows (each a pill that clears it, set from
- * the column menus), then the row count and the table settings.
+ * The row above the table: the source's own quick control (fund category chips, or the crypto
+ * highlight slider), a chip for any other filter that is on, then the row count and table settings.
  */
 export function TableControls({
 	config,
 	view,
-	rows,
 	rowCount,
 	onSearch,
 }: {
 	readonly config: TableConfig
 	readonly view: ResolvedView
-	/** Every row of the source, to name the filtered values. */
-	readonly rows: ReadonlyArray<SnapshotRow>
 	readonly rowCount: number
 	readonly onSearch: (patch: Partial<TableSearch>) => void
 }) {
-	const pills = activePills(config, view, rows)
+	const extra = extraFilters(view)
+	const category = view.facets.category
 	return (
-		<div className="border-rule bg-bg flex shrink-0 items-center gap-2 border-b px-4 py-2.5 sm:flex-wrap lg:px-[18px]">
-			<ul
-				aria-label="Filters and highlight"
-				className="flex min-w-0 items-center gap-2 max-sm:flex-1 max-sm:[scrollbar-width:none] max-sm:overflow-x-auto max-sm:overscroll-x-contain sm:flex-wrap"
-			>
-				{pills.length === 0 ? (
-					<li className="text-dim text-[11px]">All rows · filter and highlight from the column menus</li>
-				) : (
-					pills.map((pill) => (
-						<li key={pill.key}>
-							<span
+		<div className="border-rule bg-bg flex shrink-0 items-center gap-2.5 border-b px-4 py-2.5 sm:flex-wrap lg:px-[18px]">
+			{config.kind === "fund" ? (
+				<div
+					role="group"
+					aria-labelledby="category-label"
+					className="flex items-center gap-2 max-sm:min-w-0 max-sm:flex-1 max-sm:[scrollbar-width:none] max-sm:overflow-x-auto max-sm:overscroll-x-contain sm:flex-wrap"
+				>
+					<span id="category-label" className="text-dim mr-1 shrink-0 text-[11px]">
+						Category:
+					</span>
+					{[{ value: null, label: "All" }, ...FUND_CATEGORIES].map((c) => {
+						const on = c.value === null ? category === undefined : category?.size === 1 && category.has(c.value)
+						return (
+							<button
+								key={c.label}
+								type="button"
+								aria-pressed={on}
+								onClick={() => onSearch(categoryPatch(config, c.value))}
 								className={cn(
 									chipBase,
-									"gap-0 pr-0",
-									pill.kind === "highlight" ? "border-warm text-warm" : "border-rule-strong text-ink",
+									"tracking-[0.06em] uppercase",
+									on ? "border-warm bg-warm font-bold text-on-accent" : "border-rule-strong text-dim hover:text-ink",
 								)}
 							>
-								<span className="text-dim mr-1.5">{pill.label}</span>
-								<span title={pill.full} className="max-w-56 truncate font-semibold">
-									{pill.value}
-								</span>
-								<button
-									type="button"
-									aria-label={`Remove ${pill.label.toLowerCase()} ${pill.full}`}
-									onClick={() => onSearch(pill.clear)}
-									className="hover:text-ink text-dim ml-1 grid h-full w-6 place-items-center"
-								>
-									<X aria-hidden className="size-3" />
-								</button>
-							</span>
-						</li>
-					))
-				)}
-				{hasFilters(view) ? (
-					<li>
-						<button
-							type="button"
-							onClick={() => onSearch(clearFiltersPatch(config))}
-							className="text-dim hover:text-ink px-1 text-[11px] tracking-[0.06em] whitespace-nowrap max-sm:min-h-11"
-						>
-							CLEAR FILTERS
-						</button>
-					</li>
-				) : null}
-			</ul>
+								{c.label}
+							</button>
+						)
+					})}
+				</div>
+			) : (
+				<div className="flex min-w-0 items-center gap-3 max-sm:flex-1">
+					<span className="text-dim shrink-0 text-[11px] whitespace-nowrap">
+						Highlight {view.highlight.id.toUpperCase()} &gt;
+					</span>
+					<div className="w-60 max-sm:min-w-0 max-sm:flex-1">
+						<ThresholdSlider
+							stops={[0, ...config.thresholds]}
+							value={view.threshold}
+							onChange={(threshold) => onSearch(highlightPatch(config, view.highlight.id, threshold))}
+							label={`Highlight ${view.highlight.title} above`}
+						/>
+					</div>
+				</div>
+			)}
 
 			<div className="flex-1 max-sm:hidden" />
+
+			{extra > 0 ? (
+				<button
+					type="button"
+					onClick={() => onSearch(clearExtraFiltersPatch)}
+					title="Clear the filters set in the menu and the column menus"
+					className={cn(chipBase, "border-warm text-warm hover:bg-warm hover:text-on-accent tracking-[0.06em]")}
+				>
+					{extra} {extra === 1 ? "FILTER" : "FILTERS"}
+					<X aria-hidden className="size-3" />
+				</button>
+			) : null}
 
 			<span className="border-rule text-dim border px-2.5 py-1 text-[11px] max-sm:hidden" aria-live="polite">
 				<span className="text-ink font-semibold">{formatInteger(rowCount)}</span> rows

@@ -11,7 +11,7 @@ import { formatCompact, formatInteger, formatPercent, formatStamp } from "#/web/
 import { collectedAt, tableAsOf } from "#/web/freshness.ts"
 import { isColumnVisible } from "#/web/prefs.ts"
 import { usePrefs } from "#/web/PrefsContext.tsx"
-import { filterRows, type ResolvedView, resolveView, sortPatch, type TableSearch } from "#/web/search.ts"
+import { filterRows, type ResolvedView, resolveView, type TableSearch } from "#/web/search.ts"
 import { getTable, marketCap, type TableConfig } from "#/web/tables.ts"
 
 /** A source's table. */
@@ -39,7 +39,7 @@ function TablePage() {
 		<>
 			<StaleNotice status={data.source} />
 			<MobileSummary config={config} view={view} rows={data.rows} filtered={rows} />
-			<TableControls config={config} view={view} rows={data.rows} rowCount={rows.length} onSearch={update} />
+			<TableControls config={config} view={view} rowCount={rows.length} onSearch={update} />
 			<div className="market min-h-0 flex-1 overflow-auto">
 				<MarketTable
 					config={config}
@@ -50,7 +50,6 @@ function TablePage() {
 					sparklines={sparklines}
 					asOf={asOf}
 					allRows={data.rows}
-					onSort={(columnId) => update(sortPatch(config, view, columnId))}
 					onSearch={update}
 					emptyAction={
 						view.q ? (

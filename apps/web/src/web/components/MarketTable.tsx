@@ -12,7 +12,6 @@ import {
 	tableFeatures,
 	useTable,
 } from "@tanstack/react-table"
-import { ArrowDown, ArrowUp } from "lucide-react"
 import { type ReactNode, useMemo, useRef, useState } from "react"
 
 import { cn } from "#/lib/utils"
@@ -23,7 +22,6 @@ import { isHighlighted, type ResolvedView, type TableSearch } from "../search.ts
 import { categoryLabel, type Column, fundRisk, fundRiskName, longName, type TableConfig } from "../tables.ts"
 import { ColumnMenu } from "./ColumnMenu.tsx"
 import { Sparkline } from "./Sparkline.tsx"
-import { Tip } from "./Tip.tsx"
 
 const features = tableFeatures({
 	rowSortingFeature,
@@ -58,7 +56,6 @@ interface MarketTableProps {
 	readonly asOf: string | null
 	/** Every row of the source, before filtering: the column menus count values in them. */
 	readonly allRows: ReadonlyArray<SnapshotRow>
-	readonly onSort: (columnId: string) => void
 	readonly onSearch: (patch: Partial<TableSearch>) => void
 	readonly emptyAction?: ReactNode
 }
@@ -77,7 +74,6 @@ export function MarketTable({
 	sparklines,
 	asOf,
 	allRows,
-	onSort,
 	onSearch,
 	emptyAction,
 }: MarketTableProps) {
@@ -162,16 +158,6 @@ export function MarketTable({
 						const column = columnOf(header.column.id)
 						const sortedDir = header.column.getIsSorted()
 						const right = column ? isNumeric(column) : true
-						const label = (
-							<span className="inline-flex items-center gap-1">
-								{String(header.column.columnDef.header)}
-								{sortedDir === "desc" ? (
-									<ArrowDown aria-hidden className="size-3" />
-								) : sortedDir === "asc" ? (
-									<ArrowUp aria-hidden className="size-3" />
-								) : null}
-							</span>
-						)
 						return (
 							<th
 								key={header.id}
@@ -180,27 +166,15 @@ export function MarketTable({
 								data-wide={wide(column, view) || undefined}
 								data-secondary={secondary(column, view) || undefined}
 								className={cn(
-									"group/th sticky top-0 z-[2] border-b border-rule-strong bg-panel py-[7px] pr-3.5 pl-2 @max-[52rem]/market:pr-1.5 @max-[52rem]/market:pl-1.5 text-[11px] font-normal tracking-[0.1em] whitespace-nowrap uppercase",
+									"sticky top-0 z-[2] border-b border-rule-strong bg-panel py-[7px] pr-3.5 pl-2 @max-[52rem]/market:pr-1.5 @max-[52rem]/market:pl-1.5 text-[11px] font-normal tracking-[0.1em] whitespace-nowrap uppercase",
 									i === 0 && "pl-[18px] @max-[52rem]/market:pl-4",
 									right ? "text-right" : "text-left",
 									sortedDir ? "text-warm" : "text-dim",
 									header.column.id === CHART_COLUMN && "pr-[18px] @max-[52rem]/market:pr-4",
 								)}
 							>
-								<span className={cn("inline-flex items-center gap-1", right && "flex-row-reverse")}>
-									{header.column.getCanSort() && column ? (
-										<Tip label={column.title} side="top">
-											<button
-												type="button"
-												onClick={() => onSort(column.id)}
-												className="hover:text-ink inline-flex min-h-4 items-center uppercase max-sm:min-h-11"
-											>
-												{label}
-											</button>
-										</Tip>
-									) : (
-										label
-									)}
+								<span className={cn("inline-flex items-center gap-1.5", right && "flex-row-reverse")}>
+									<span title={column?.title}>{String(header.column.columnDef.header)}</span>
 									{column ? (
 										<ColumnMenu config={config} column={column} view={view} rows={allRows} onSearch={onSearch} />
 									) : null}

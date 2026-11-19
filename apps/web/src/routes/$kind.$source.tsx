@@ -101,7 +101,17 @@ function SourceLayout() {
 				<Footer />
 				{prefs.showSoon ? <MobileTabBar /> : null}
 			</div>
-			<Sidebar dialog={menu} source={source} statuses={statuses} onClose={() => setMenuOpen(false)} />
+			<Sidebar
+				dialog={menu}
+				source={source}
+				statuses={statuses}
+				view={view}
+				rows={data.rows}
+				onSearch={(patch) =>
+					navigate({ to: ".", search: (prev) => ({ ...prev, ...patch }), replace: true, resetScroll: false })
+				}
+				onClose={() => setMenuOpen(false)}
+			/>
 		</TipProvider>
 	)
 }

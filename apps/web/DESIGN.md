@@ -255,15 +255,18 @@ Square everywhere: radius 0 on buttons, chips, inputs, popovers, tags and scroll
 
 - A native modal dialog sliding in from the left (260ms, `cubic-bezier(0.22, 1, 0.36, 1)`), at most 340px wide, over a 55% black backdrop. Closed by default.
 
-### Column menus
-- Clicking a header sorts by it, as before. Columns with more to offer get a small menu button beside the label, hidden until the column is hovered (always shown on touch, and filled amber with its icon while active):
-  - TYPE, RISK, FAMILY: a checklist of the column's values with row counts (a search box from 8 values), SHOW ALL to clear.
-  - Percent columns: "Highlight … above", a slider that stops only at the source's presets (OFF, 10–50%; CoinPaprika and funds also 5%), each stop ticked and labelled.
-  - MKT CAP: "at least" ANY, 100M, 1B or 10B.
-- Funds open filtered to Akcyjne, shown as a TYPE pill like any other filter.
+### Column button and menu
 
-### Filter pills
-- The controls bar lists what shapes the rows: one pill per filter ("TYPE Akcyjny +1 ×") and the highlight ("HIGHLIGHT 1Y > 50% ×", amber), then CLEAR FILTERS. With none, it says filters and the highlight come from the column menus.
+- Every sortable column has one small bordered button beside its label (Research Cruise App's pattern). It shows the column's state: a caret when idle, an arrow when sorted, an amber funnel (with a count badge when several values are picked) when filtered, a highlighter when the highlight reads it.
+- It opens one menu: the column's name, Sort high to low / low to high (A to Z for text) with the current one checked, then what else the column offers:
+  - TYPE, RISK, FAMILY: a checklist of values with row counts (search from 8 values), SHOW ALL.
+  - Percent columns: "Highlight above", the preset-stop slider.
+  - MKT CAP: "at least" ANY, 100M, 1B, 10B.
+
+### Controls bar and drawer
+
+- The bar keeps the source's quick control (fund category chips; the crypto highlight slider with its presets ticked and labelled), plus an amber "N FILTERS ×" chip while risk, family or market-cap filters are on.
+- The drawer's section for the open source sets the same filters (risk levels, fund family; market-cap floor, the column the highlight reads). Bar, drawer and column menus share the URL, so they always agree.
 
 ### Settings (header gear)
 
