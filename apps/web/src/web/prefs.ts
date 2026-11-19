@@ -91,6 +91,14 @@ export const isColumnVisible = (prefs: Prefs, source: SourceId, columnId: string
 	return prefs.columns[source]?.[columnId] ?? !column.hidden
 }
 
+/** Every optional column of `source` back to its default (`"default"`) or shown (`"all"`). */
+export const withAllColumns = (prefs: Prefs, source: SourceId, to: "default" | "all"): Prefs => {
+	const { [source]: _, ...others } = prefs.columns
+	if (to === "default") return { ...prefs, columns: others }
+	const optional = getTable(source).columns.filter((c) => !c.required)
+	return { ...prefs, columns: { ...others, [source]: Object.fromEntries(optional.map((c) => [c.id, true])) } }
+}
+
 export const withColumn = (prefs: Prefs, source: SourceId, columnId: string, on: boolean): Prefs => ({
 	...prefs,
 	columns: { ...prefs.columns, [source]: { ...prefs.columns[source], [columnId]: on } },

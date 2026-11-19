@@ -5,10 +5,10 @@ import { Settings2 } from "lucide-react"
 import { cn } from "#/lib/utils"
 
 import { formatInteger } from "../format.ts"
-import { isColumnVisible, withColumn } from "../prefs.ts"
+import { isColumnVisible, withAllColumns, withColumn } from "../prefs.ts"
 import { usePrefs } from "../PrefsContext.tsx"
 import type { ResolvedView } from "../search.ts"
-import { FUND_CATEGORIES, type TableConfig, THRESHOLD_MAX, THRESHOLD_STEP } from "../tables.ts"
+import { type Column, FUND_CATEGORIES, type TableConfig, THRESHOLD_MAX, THRESHOLD_STEP } from "../tables.ts"
 
 const chipBase =
 	"inline-flex h-[26px] shrink-0 items-center gap-1.5 border px-2.5 text-[11px] whitespace-nowrap max-sm:h-11"
@@ -122,7 +122,7 @@ function TableSettings({ config }: { readonly config: TableConfig }) {
 			</Popover.Trigger>
 			<Popover.Portal>
 				<Popover.Positioner side="bottom" align="end" sideOffset={4} collisionPadding={8} className="z-40">
-					<Popover.Popup className="popup border-rule-strong bg-panel text-ink w-60 border text-[11px] shadow-[0_12px_32px_rgb(0_0_0/0.5)] outline-none">
+					<Popover.Popup className="popup border-rule-strong bg-panel text-ink w-72 border text-[11px] shadow-[0_12px_32px_rgb(0_0_0/0.5)] outline-none">
 						<Popover.Title className="sr-only">Table settings</Popover.Title>
 						<Segmented
 							legend="DENSITY"
@@ -145,43 +145,79 @@ function TableSettings({ config }: { readonly config: TableConfig }) {
 							/>
 							Show sparkline chart
 						</label>
-						<fieldset className="max-h-[min(280px,50dvh)] overflow-auto overscroll-contain px-3.5 pt-2.5 pb-3">
-							<legend className="text-warm float-left mb-1.5 w-full text-[11px] tracking-[0.14em]">COLUMNS</legend>
-							<div className="clear-both">
-								{config.columns.map((column) =>
-									column.required ? (
-										<label key={column.id} className="text-dim flex cursor-not-allowed items-center gap-2 py-1">
-											<input type="checkbox" checked disabled className="accent-dim" />
-											<span>{column.label}</span>
-											<span className="ml-auto text-[11px]">REQUIRED</span>
-										</label>
-									) : (
-										<label
-											key={column.id}
-											title={column.title}
-											className={cn(
-												"flex cursor-pointer items-center gap-2 py-1",
-												isColumnVisible(prefs, config.source, column.id) ? "text-ink" : "text-dim",
-											)}
-										>
-											<input
-												type="checkbox"
-												checked={isColumnVisible(prefs, config.source, column.id)}
-												onChange={(event) =>
-													update(withColumn(prefs, config.source, column.id, event.currentTarget.checked))
-												}
-												className="accent-warm"
-											/>
-											<span>{column.label}</span>
-										</label>
-									),
-								)}
-							</div>
-						</fieldset>
+						<ColumnPicker config={config} />
 					</Popover.Popup>
 				</Popover.Positioner>
 			</Popover.Portal>
 		</Popover.Root>
+	)
+}
+
+/** Returns first, then the descriptive columns; the identity columns are always shown and not listed. */
+const COLUMN_GROUPS = [
+	{ label: "RETURNS", test: (column: Column) => column.kind === "percent" },
+	{ label: "INFO", test: (column: Column) => column.kind !== "percent" },
+] as const
+
+/** The optional columns as toggle chips, grouped, with shortcuts back to the defaults or to all of them. */
+function ColumnPicker({ config }: { readonly config: TableConfig }) {
+	const { prefs, update } = usePrefs()
+	const optional = config.columns.filter((column) => !column.required)
+	return (
+		<fieldset className="px-3.5 pt-2.5 pb-3">
+			<legend className="float-left mb-2 flex w-full items-center text-[11px]">
+				<span className="text-warm tracking-[0.14em]">COLUMNS</span>
+				<span className="ml-auto flex gap-3">
+					<button
+						type="button"
+						onClick={() => update(withAllColumns(prefs, config.source, "default"))}
+						className="text-dim hover:text-ink tracking-[0.06em]"
+					>
+						DEFAULT
+					</button>
+					<button
+						type="button"
+						onClick={() => update(withAllColumns(prefs, config.source, "all"))}
+						className="text-dim hover:text-ink tracking-[0.06em]"
+					>
+						ALL
+					</button>
+				</span>
+			</legend>
+			<div className="clear-both">
+				{COLUMN_GROUPS.map((group) => {
+					const columns = optional.filter(group.test)
+					if (columns.length === 0) return null
+					return (
+						<div key={group.label} className="mb-2.5 last:mb-0">
+							<div className="text-dim mb-1.5 text-[11px] tracking-[0.1em]">{group.label}</div>
+							<div className="flex flex-wrap gap-1.5">
+								{columns.map((column) => {
+									const on = isColumnVisible(prefs, config.source, column.id)
+									return (
+										<button
+											key={column.id}
+											type="button"
+											aria-pressed={on}
+											title={column.title}
+											onClick={() => update(withColumn(prefs, config.source, column.id, !on))}
+											className={cn(
+												"inline-flex h-[26px] items-center border px-2 text-[11px] tracking-[0.06em] whitespace-nowrap max-sm:h-11",
+												on
+													? "border-warm bg-warm font-bold text-on-accent"
+													: "border-rule-strong text-dim hover:text-ink",
+											)}
+										>
+											{group.label === "RETURNS" ? column.label.replace(/\s*%$/, "") : column.label}
+										</button>
+									)
+								})}
+							</div>
+						</div>
+					)
+				})}
+			</div>
+		</fieldset>
 	)
 }
 
