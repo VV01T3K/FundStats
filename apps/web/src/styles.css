@@ -2,10 +2,13 @@
 @import "@fontsource-variable/jetbrains-mono";
 
 /*
- * Trader Terminal: the owner's design (variants/v1-terminal.jsx). Dark only, as designed.
- * --dim is the design's #6a727b lifted to #7d858e so 11px labels pass 4.5:1 on --bg.
+ * Themes are token sets on <html data-theme>, chosen in the drawer and kept in the prefs cookie, so the
+ * server renders the first paint in the right one. Components use the tokens only.
+ * Terminal: the owner's design (variants/v1-terminal.jsx). --dim is the design's #6a727b lifted to
+ * #7d858e so 11px labels pass 4.5:1 on --bg.
  */
-:root {
+:root,
+[data-theme="terminal"] {
 	color-scheme: dark;
 	--bg: #0a0b0c;
 	--outer: #050608;
@@ -22,11 +25,66 @@
 	--up: #2ee07a;
 	--down: #ff5a5f;
 	--on-accent: #000;
+	--highlight: var(--warm);
+	--font-ui: "JetBrains Mono Variable", ui-monospace, "IBM Plex Mono", Menlo, monospace;
+}
+
+/*
+ * Classic: the first FundStats (shadcn's dark zinc): violet for the sorted column, blue row highlights,
+ * green-400 and #ff2424 for moves, the system sans-serif. Violet-400 rather than its violet-600, which
+ * is under 4.5:1 for small text on this background.
+ */
+[data-theme="classic"] {
+	color-scheme: dark;
+	--bg: #09090b;
+	--outer: #000;
+	--panel: #18181b;
+	--panel-2: #27272a;
+	--rule: #27272a;
+	--rule-strong: #3f3f46;
+	--rule-hover: #52525b;
+	--ink: #fafafa;
+	--ink-dim: #d4d4d8;
+	--dim: #a1a1aa;
+	--warm: #a78bfa;
+	--cool: #3b82f6;
+	--up: #4ade80;
+	--down: #ff2424;
+	--on-accent: #09090b;
+	--highlight: #2563eb;
+	--font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Light: the terminal on paper; every text colour holds 4.5:1 on white and on the highlight tint. */
+[data-theme="light"] {
+	color-scheme: light;
+	--bg: #fff;
+	--outer: #eef0f2;
+	--panel: #f6f7f8;
+	--panel-2: #eceef0;
+	--rule: #e3e5e8;
+	--rule-strong: #cfd3d8;
+	--rule-hover: #b5bac1;
+	--ink: #14171a;
+	--ink-dim: #3d434a;
+	--dim: #5f6670;
+	--warm: #b45309;
+	--cool: #1d4ed8;
+	--up: #03664a;
+	--down: #b91c1c;
+	--on-accent: #fff;
+	--highlight: var(--warm);
+	--font-ui: "JetBrains Mono Variable", ui-monospace, "IBM Plex Mono", Menlo, monospace;
+}
+
+/* CoinMarketCap's logo is its white mark; on paper it needs its dark one. */
+[data-theme="light"] img[src$="/coinmarketcap.svg"] {
+	filter: invert(1);
 }
 
 @theme inline {
-	--font-mono: "JetBrains Mono Variable", ui-monospace, "IBM Plex Mono", Menlo, monospace;
-	--font-sans: var(--font-mono);
+	--font-mono: var(--font-ui);
+	--font-sans: var(--font-ui);
 	--color-bg: var(--bg);
 	--color-outer: var(--outer);
 	--color-panel: var(--panel);
@@ -41,6 +99,8 @@
 	--color-up: var(--up);
 	--color-down: var(--down);
 	--color-on-accent: var(--on-accent);
+	--color-highlight: var(--highlight);
+	--color-rule-hover: var(--rule-hover);
 	--radius-none: 0;
 }
 
@@ -58,7 +118,7 @@
 		margin: 0;
 		background: var(--bg);
 		color: var(--ink);
-		font-family: var(--font-mono);
+		font-family: var(--font-ui);
 		font-size: 12px;
 		font-variant-numeric: tabular-nums;
 		-webkit-font-smoothing: antialiased;
@@ -163,7 +223,7 @@
 	--ts-chart-tooltip-border: 1px solid var(--rule-strong);
 	--ts-chart-tooltip-border-radius: 0;
 	--ts-chart-tooltip-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
-	--ts-chart-tooltip-font: 11px var(--font-mono);
+	--ts-chart-tooltip-font: 11px var(--font-ui);
 	--ts-chart-focus-fill: var(--bg);
 }
 

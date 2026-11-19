@@ -7,7 +7,20 @@ import { getTable } from "./tables.ts"
  * the URL (a shared link shows the data, not the sender's taste) and not in localStorage (the server
  * reads the cookie, so the first paint already has them).
  */
+/** The colour themes (styles.css): the terminal, the first FundStats's look, and a light one. */
+export const THEMES = [
+	{ id: "terminal", label: "TERMINAL", color: "#0a0b0c" },
+	{ id: "classic", label: "CLASSIC", color: "#09090b" },
+	{ id: "light", label: "LIGHT", color: "#ffffff" },
+] as const
+
+export type ThemeId = (typeof THEMES)[number]["id"]
+
+/** The browser chrome's colour for a theme: its page background. */
+export const themeColor = (theme: ThemeId) => THEMES.find((t) => t.id === theme)!.color
+
 export interface Prefs {
+	readonly theme: ThemeId
 	readonly density: "comfy" | "compact"
 	readonly sparklines: boolean
 	/** Edge to edge, or a floating panel inset from the window. */
@@ -19,6 +32,7 @@ export interface Prefs {
 }
 
 export const DEFAULT_PREFS: Prefs = {
+	theme: "terminal",
 	density: "comfy",
 	sparklines: true,
 	layout: "edge",
@@ -56,6 +70,11 @@ export const parsePrefs = (raw: string | undefined): Prefs => {
 	return {
 		density: oneOf(data.density, ["comfy", "compact"], DEFAULT_PREFS.density),
 		sparklines: typeof data.sparklines === "boolean" ? data.sparklines : DEFAULT_PREFS.sparklines,
+		theme: oneOf(
+			data.theme,
+			THEMES.map((t) => t.id),
+			DEFAULT_PREFS.theme,
+		),
 		layout: oneOf(data.layout, ["edge", "floating"], DEFAULT_PREFS.layout),
 		showSoon: typeof data.showSoon === "boolean" ? data.showSoon : DEFAULT_PREFS.showSoon,
 		columns,

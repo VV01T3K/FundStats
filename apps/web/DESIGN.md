@@ -126,7 +126,11 @@ FundStats looks like a market data terminal: near-black, square, monospace and d
 
 Space is spent on data. There are no docked sidebars, no empty gutters beside the table and no decorative cards. Navigation lives in a drawer behind the menu button, closed by default, and the table runs edge to edge (or, by the viewer's choice, as one floating panel inset on the darker frame). Highlighted numbers change colour or weight, never position, so columns stay aligned.
 
-The system is dark only, by design.
+The Terminal theme above is the default and the reference. Viewers can switch theme in the drawer (Display → Theme): every theme is the same token set with other values (styles.css, `<html data-theme>`), so components never name a colour.
+
+- **Terminal** (default): this document's palette.
+- **Classic**: the first FundStats's look (shadcn's dark zinc): zinc greys, violet-400 (#a78bfa) as the accent, blue-600 (#2563eb) row highlights, green-400 (#4ade80) and #ff2424 for moves, the system sans-serif.
+- **Light**: the terminal on paper: white surfaces, amber-700 (#b45309) accent, #03664a and #b91c1c for moves; every text colour holds 4.5:1 on white and on the highlight tint.
 
 **Key Characteristics:**
 

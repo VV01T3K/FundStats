@@ -212,7 +212,7 @@ export function MarketTable({
 							className={cn(
 								"group cursor-pointer",
 								highlighted
-									? "bg-[linear-gradient(90deg,rgb(247_185_85/0.07),rgb(247_185_85/0.02))] shadow-[inset_2px_0_0_var(--warm)]"
+									? "bg-[linear-gradient(90deg,color-mix(in_oklab,var(--highlight)_9%,transparent),color-mix(in_oklab,var(--highlight)_3%,transparent))] shadow-[inset_2px_0_0_var(--highlight)]"
 									: "hover:bg-panel",
 							)}
 							data-highlighted={highlighted || undefined}
@@ -233,7 +233,7 @@ export function MarketTable({
 											i === 0 && "pl-[18px] @max-[52rem]/market:pl-4",
 											right && "text-right",
 											id === CHART_COLUMN && "pr-[18px] @max-[52rem]/market:pr-4",
-											tinted && "bg-warm/14 font-bold",
+											tinted && "bg-highlight/14 font-bold",
 											column && FILL[column.kind],
 										)}
 									>

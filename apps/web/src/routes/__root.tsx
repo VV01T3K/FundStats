@@ -5,16 +5,17 @@ import { createRootRouteWithContext, HeadContent, Link, Outlet, Scripts } from "
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools"
 import type { ReactNode } from "react"
 
+import { DEFAULT_PREFS, themeColor } from "#/web/prefs.ts"
 import { loadPrefs, PrefsProvider } from "#/web/PrefsContext.tsx"
 
 import appCss from "../styles.css?url"
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
-	head: () => ({
+	head: ({ loaderData }) => ({
 		meta: [
 			{ charSet: "utf-8" },
 			{ name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
-			{ name: "theme-color", content: "#0a0b0c" },
+			{ name: "theme-color", content: themeColor(loaderData?.theme ?? DEFAULT_PREFS.theme) },
 			{ title: "FundStats" },
 			{ name: "description", content: "Ranked returns of mBank investment funds and top cryptocurrencies." },
 		],
@@ -61,8 +62,10 @@ function NotFound() {
 }
 
 function RootDocument({ children }: { children: ReactNode }) {
+	// The server renders the viewer's theme from the cookie; PrefsProvider switches it in the browser.
+	const prefs = Route.useLoaderData()
 	return (
-		<html lang="en">
+		<html lang="en" data-theme={prefs.theme}>
 			<head>
 				<HeadContent />
 			</head>

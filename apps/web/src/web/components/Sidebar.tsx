@@ -20,6 +20,7 @@ import { cn } from "#/lib/utils"
 
 import { formatInterval } from "../format.ts"
 import { sourceState, stateDetail, type SourceState } from "../freshness.ts"
+import { THEMES } from "../prefs.ts"
 import { usePrefs } from "../PrefsContext.tsx"
 import { ProviderLogo } from "./ProviderLogo.tsx"
 import { SoonBadge, soonLabel, Tip } from "./Tip.tsx"
@@ -123,6 +124,12 @@ export function Sidebar({ dialog, source, statuses, onClose }: SidebarProps) {
 				</Section>
 
 				<Section title="Display">
+					<Choice
+						label="THEME"
+						options={THEMES}
+						value={prefs.theme}
+						onChange={(theme) => update({ ...prefs, theme })}
+					/>
 					<Choice
 						label="SOON FEATURES"
 						options={[

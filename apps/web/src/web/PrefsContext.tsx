@@ -1,7 +1,15 @@
 import { createIsomorphicFn } from "@tanstack/react-start"
 import { createContext, type ReactNode, useContext, useState } from "react"
 
-import { DEFAULT_PREFS, parsePrefs, type Prefs, prefsCookie, PREFS_COOKIE, readPrefsCookie } from "./prefs.ts"
+import {
+	DEFAULT_PREFS,
+	parsePrefs,
+	type Prefs,
+	prefsCookie,
+	PREFS_COOKIE,
+	readPrefsCookie,
+	themeColor,
+} from "./prefs.ts"
 
 /** The viewer's settings from the request's cookie on the server, from `document.cookie` in the browser. */
 export const loadPrefs = createIsomorphicFn()
@@ -20,6 +28,9 @@ export function PrefsProvider({ initial, children }: { readonly initial: Prefs; 
 	const [prefs, setPrefs] = useState(initial)
 	const update = (next: Prefs) => {
 		setPrefs(next)
+		// <html> is outside React's tree here (the shell rendered it with the first theme).
+		document.documentElement.dataset.theme = next.theme
+		document.querySelector('meta[name="theme-color"]')?.setAttribute("content", themeColor(next.theme))
 		// A cookie rather than storage: the server reads it to render the first paint with these settings.
 		document.cookie = prefsCookie(next)
 	}

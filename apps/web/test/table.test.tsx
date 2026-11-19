@@ -120,7 +120,7 @@ describe("market table", () => {
 		const highlighted = [...table.querySelectorAll("tbody tr[data-highlighted]")]
 		assert.strictEqual(highlighted.length, 1)
 		assert.strictEqual(highlighted[0]!.querySelector("a .font-semibold")?.textContent, "CCC")
-		const tinted = [...highlighted[0]!.querySelectorAll("td")].filter((td) => td.className.includes("bg-warm"))
+		const tinted = [...highlighted[0]!.querySelectorAll("td")].filter((td) => td.className.includes("bg-highlight"))
 		assert.deepStrictEqual(
 			tinted.map((td) => td.textContent),
 			["+45,00%"],

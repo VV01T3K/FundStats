@@ -205,6 +205,7 @@ describe("table settings", () => {
 		const prefs = {
 			...withColumn(DEFAULT_PREFS, "coinpaprika", "name", false),
 			density: "compact",
+			theme: "classic",
 			layout: "floating",
 			showSoon: false,
 		} as const
@@ -219,6 +220,7 @@ describe("table settings", () => {
 					JSON.stringify({
 						density: "huge",
 						sparklines: "yes",
+						theme: "neon",
 						layout: "wide",
 						showSoon: "no",
 						columns: { mbank: { name: false, "3y": true, x: true } },
