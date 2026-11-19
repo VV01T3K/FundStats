@@ -1,3 +1,4 @@
+import { DataEvents } from "@fundstats/db/DataEvents"
 import { type RunSummary, type SourceSchedule, Store } from "@fundstats/db/Store"
 import { FundStatsApi, InstrumentNotFound, SourceNotFound, type SourceStatus } from "@fundstats/shared/api"
 import { isSourceId, SOURCE_IDS, SOURCES, type SourceId } from "@fundstats/shared/sources"
@@ -6,6 +7,7 @@ import * as Duration from "effect/Duration"
 import * as Effect from "effect/Effect"
 import { HttpApiBuilder, HttpApiError } from "effect/http-api"
 import * as Layer from "effect/Layer"
+import * as Stream from "effect/Stream"
 
 const DEFAULT_HISTORY_LIMIT = 500
 const DEFAULT_SPARKLINE_POINTS = 24
@@ -71,6 +73,7 @@ const SourcesHandlers = HttpApiBuilder.group(
 	"sources",
 	Effect.fn("SourcesApi.handlers")(function* (handlers) {
 		const store = yield* Store
+		const dataEvents = yield* DataEvents
 		const withStore = <A, E>(effect: Effect.Effect<A, E, Store>) => effect.pipe(Effect.provideService(Store, store))
 
 		return handlers
@@ -114,6 +117,14 @@ const SourcesHandlers = HttpApiBuilder.group(
 					const series = yield* store.sparklines(id, points).pipe(Effect.orDie)
 					return { source: id, points, series }
 				}),
+			)
+			.handle("events", () =>
+				Effect.succeed(
+					dataEvents.changes.pipe(
+						Stream.filter(isSourceId),
+						Stream.map((source) => ({ source })),
+					),
+				),
 			)
 	}),
 )

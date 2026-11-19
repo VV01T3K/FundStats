@@ -1,4 +1,5 @@
 import { Database } from "@fundstats/db/Database"
+import { DataEvents } from "@fundstats/db/DataEvents"
 import { DbConfig } from "@fundstats/db/DbConfig"
 import { Store } from "@fundstats/db/Store"
 import { FundStatsApi } from "@fundstats/shared/api"
@@ -16,8 +17,11 @@ import * as Layer from "effect/Layer"
 
 import { ApiHandlers } from "./api/handlers.ts"
 
-/** Config, the read-only database pool and the store. */
-const ServicesLayer = Store.layer.pipe(Layer.provideMerge(Database.layerReadOnly), Layer.provideMerge(DbConfig.layer))
+/** Config, the read-only database pool, the store and the new-data listener. */
+const ServicesLayer = Layer.merge(Store.layer, DataEvents.layer).pipe(
+	Layer.provideMerge(Database.layerReadOnly),
+	Layer.provideMerge(DbConfig.layer),
+)
 
 /** The HTTP API routes, including /api/openapi.json and /api/docs. */
 export const ApiRoutesLayer = Layer.mergeAll(

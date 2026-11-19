@@ -9,7 +9,7 @@ import { MarketTable } from "#/web/components/MarketTable.tsx"
 import { TableControls } from "#/web/components/TableControls.tsx"
 import { formatCompact, formatInteger, formatPercent, formatStamp } from "#/web/format.ts"
 import { collectedAt, tableAsOf } from "#/web/freshness.ts"
-import { isColumnVisible, refreshInterval } from "#/web/prefs.ts"
+import { isColumnVisible } from "#/web/prefs.ts"
 import { usePrefs } from "#/web/PrefsContext.tsx"
 import {
 	categoryPatch,
@@ -32,13 +32,8 @@ function TablePage() {
 	const search = source$.useSearch()
 	const navigate = source$.useNavigate()
 	const { prefs } = usePrefs()
-	const interval = refreshInterval(prefs.refresh)
-	const { data } = useSuspenseQuery({ ...latestQuery(source), refetchInterval: interval })
-	const sparklines = useQuery({
-		...sparklinesQuery(source),
-		enabled: prefs.sparklines,
-		refetchInterval: interval,
-	}).data
+	const { data } = useSuspenseQuery(latestQuery(source))
+	const sparklines = useQuery({ ...sparklinesQuery(source), enabled: prefs.sparklines }).data
 	const config = getTable(source)
 	const view = useMemo(() => resolveView(config, search), [config, search])
 	const rows = useMemo(() => filterRows(data.rows, view), [data.rows, view])

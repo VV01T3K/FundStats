@@ -3,14 +3,12 @@ import { useQuery } from "@tanstack/react-query"
 import { cn } from "#/lib/utils"
 
 import { healthQuery } from "../api.ts"
-import { refreshInterval } from "../prefs.ts"
-import { usePrefs } from "../PrefsContext.tsx"
 import { Tip } from "./Tip.tsx"
 
 /** API status (health and round trip, measured from this browser), collector state, repository and version. */
 export function Footer() {
-	const { prefs } = usePrefs()
-	const health = useQuery({ ...healthQuery(), refetchInterval: refreshInterval(prefs.refresh) })
+	// Health is the server's, not the data's: checked once a minute while the page is open.
+	const health = useQuery({ ...healthQuery(), refetchInterval: 60_000 })
 	const ok = health.isSuccess
 	return (
 		<footer className="border-rule bg-panel text-dim flex shrink-0 items-center gap-[18px] border-t px-4 py-1.5 text-[11px] max-lg:hidden lg:px-[18px]">

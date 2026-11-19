@@ -3,33 +3,26 @@ import { SOURCE_IDS, type SourceId } from "@fundstats/shared/sources"
 import { getTable } from "./tables.ts"
 
 /**
- * The viewer's own settings: how the table looks and how often it refreshes. They live in a cookie,
- * not in the URL (a shared link shows the data, not the sender's taste) and not in localStorage (the
- * server reads the cookie, so the first paint already has them).
+ * The viewer's own settings: how the table looks and what the app shows. They live in a cookie, not in
+ * the URL (a shared link shows the data, not the sender's taste) and not in localStorage (the server
+ * reads the cookie, so the first paint already has them).
  */
 export interface Prefs {
 	readonly density: "comfy" | "compact"
 	readonly sparklines: boolean
-	readonly refresh: RefreshId
+	/** Edge to edge, or a floating panel inset from the window. */
+	readonly layout: "edge" | "floating"
+	/** Whether features without a backend yet (marked SOON) are listed. */
+	readonly showSoon: boolean
 	/** Optional columns the viewer turned on or off, per source; the rest follow the column defaults. */
 	readonly columns: Partial<Record<SourceId, Readonly<Record<string, boolean>>>>
 }
 
-export const REFRESH = [
-	{ id: "off", label: "OFF", ms: false },
-	{ id: "30s", label: "30s", ms: 30_000 },
-	{ id: "1m", label: "1m", ms: 60_000 },
-	{ id: "5m", label: "5m", ms: 300_000 },
-] as const
-
-type RefreshId = (typeof REFRESH)[number]["id"]
-
-export const refreshInterval = (id: RefreshId) => REFRESH.find((r) => r.id === id)!.ms
-
 export const DEFAULT_PREFS: Prefs = {
 	density: "comfy",
 	sparklines: true,
-	refresh: "1m",
+	layout: "edge",
+	showSoon: true,
 	columns: {},
 }
 
@@ -63,11 +56,8 @@ export const parsePrefs = (raw: string | undefined): Prefs => {
 	return {
 		density: oneOf(data.density, ["comfy", "compact"], DEFAULT_PREFS.density),
 		sparklines: typeof data.sparklines === "boolean" ? data.sparklines : DEFAULT_PREFS.sparklines,
-		refresh: oneOf(
-			data.refresh,
-			REFRESH.map((r) => r.id),
-			DEFAULT_PREFS.refresh,
-		),
+		layout: oneOf(data.layout, ["edge", "floating"], DEFAULT_PREFS.layout),
+		showSoon: typeof data.showSoon === "boolean" ? data.showSoon : DEFAULT_PREFS.showSoon,
 		columns,
 	}
 }

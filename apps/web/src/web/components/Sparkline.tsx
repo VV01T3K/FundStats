@@ -18,6 +18,13 @@ const sparklineSvg = (values: ReadonlyArray<number>) => {
 			marks: [lineY(rows, { x: "index", y: "value", stroke: up ? "var(--up)" : "var(--down)", strokeWidth: 1 })],
 			scales: { x: { scale: scaleLinear, axis: false }, y: { scale: scaleLinear, axis: false } },
 			margin: 1,
+			// A sparkline is a picture, not a chart to explore: no focus layer (its hidden points were
+			// ~85% of the markup), pointer, keyboard or tooltip.
+			focus: false,
+			focusRing: false,
+			pointer: false,
+			keyboard: false,
+			tooltip: false,
 		}),
 		{ width: 90, height: 18 },
 	)

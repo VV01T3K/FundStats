@@ -4,6 +4,7 @@ import { cn } from "#/lib/utils"
 
 import { formatStamp } from "../format.ts"
 import { collectedAt, sourceState, stateDetail, stateLabel } from "../freshness.ts"
+import { usePrefs } from "../PrefsContext.tsx"
 import { SearchField } from "./SearchField.tsx"
 import { SoonBadge, soonLabel, Tip } from "./Tip.tsx"
 import { Wordmark } from "./Wordmark.tsx"
@@ -25,6 +26,7 @@ export function AppHeader({
 	readonly onMenu: () => void
 	readonly menuExpanded: boolean
 }) {
+	const { prefs } = usePrefs()
 	return (
 		<header className="border-rule bg-panel text-dim flex shrink-0 items-center gap-3.5 border-b px-4 py-2.5 pt-[max(10px,env(safe-area-inset-top))] text-[11px] lg:px-[18px]">
 			<button
@@ -45,16 +47,18 @@ export function AppHeader({
 			<div className="flex-1" />
 			<FreshnessStamp status={status} />
 			<div aria-hidden className="bg-rule-strong hidden h-[18px] w-px lg:block" />
-			<Tip label={soonLabel("Accounts and sign-in")}>
-				<button
-					type="button"
-					aria-disabled="true"
-					className="border-rule-strong text-ink-dim hidden h-6 cursor-not-allowed items-center gap-2 border px-3 text-[11px] font-bold tracking-[0.1em] lg:inline-flex"
-				>
-					SIGN IN
-					<SoonBadge />
-				</button>
-			</Tip>
+			{prefs.showSoon ? (
+				<Tip label={soonLabel("Accounts and sign-in")}>
+					<button
+						type="button"
+						aria-disabled="true"
+						className="border-rule-strong text-ink-dim hidden h-6 cursor-not-allowed items-center gap-2 border px-3 text-[11px] font-bold tracking-[0.1em] lg:inline-flex"
+					>
+						SIGN IN
+						<SoonBadge />
+					</button>
+				</Tip>
+			) : null}
 		</header>
 	)
 }

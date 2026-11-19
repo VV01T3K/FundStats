@@ -205,7 +205,8 @@ describe("table settings", () => {
 		const prefs = {
 			...withColumn(DEFAULT_PREFS, "coinpaprika", "name", false),
 			density: "compact",
-			refresh: "5m",
+			layout: "floating",
+			showSoon: false,
 		} as const
 		const cookie = prefsCookie(prefs)
 		assert.match(cookie, /; Path=\/; Max-Age=31536000; SameSite=Lax$/)
@@ -218,7 +219,8 @@ describe("table settings", () => {
 					JSON.stringify({
 						density: "huge",
 						sparklines: "yes",
-						refresh: "1h",
+						layout: "wide",
+						showSoon: "no",
 						columns: { mbank: { name: false, "3y": true, x: true } },
 					}),
 				),

@@ -1,6 +1,5 @@
 import type { SourceStatus } from "@fundstats/shared/api"
 import { KIND_SEGMENT, SOURCE_IDS, SOURCES, type SourceId } from "@fundstats/shared/sources"
-import { useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import {
 	Bell,
@@ -15,20 +14,17 @@ import {
 	LayoutDashboard,
 	LogIn,
 	type LucideIcon,
-	RefreshCw,
 	Star,
 	TrendingUp,
 	X,
 } from "lucide-react"
-import { type RefObject, useState } from "react"
+import type { RefObject } from "react"
 
 import { cn } from "#/lib/utils"
 
 import { formatInterval } from "../format.ts"
 import { sourceState, stateDetail, type SourceState } from "../freshness.ts"
-import { REFRESH } from "../prefs.ts"
 import { usePrefs } from "../PrefsContext.tsx"
-import { THRESHOLD_MAX } from "../tables.ts"
 import { SoonBadge, soonLabel, Tip } from "./Tip.tsx"
 import { Wordmark } from "./Wordmark.tsx"
 
@@ -61,8 +57,6 @@ export interface SidebarProps {
 	readonly dialog: RefObject<HTMLDialogElement | null>
 	readonly source: SourceId
 	readonly statuses: ReadonlyArray<SourceStatus>
-	readonly threshold: number
-	readonly onThreshold: (value: number) => void
 	readonly onClose: () => void
 }
 
@@ -71,10 +65,8 @@ export interface SidebarProps {
  * button over a backdrop, so the table always has the full width. A native modal `<dialog>`: the
  * browser makes the page inert, traps focus, closes on Esc and returns focus to the menu button.
  */
-export function Sidebar({ dialog, source, statuses, threshold, onThreshold, onClose }: SidebarProps) {
+export function Sidebar({ dialog, source, statuses, onClose }: SidebarProps) {
 	const { prefs, update } = usePrefs()
-	const queryClient = useQueryClient()
-	const [refreshing, setRefreshing] = useState(false)
 	const close = () => dialog.current?.close()
 
 	return (
@@ -141,71 +133,33 @@ export function Sidebar({ dialog, source, statuses, threshold, onThreshold, onCl
 					</ul>
 				</Section>
 
-				<Section title="Settings">
-					<label className="mb-3.5 block">
-						<span className="mb-1 flex justify-between text-[11px]">
-							<span className="text-dim">HIGHLIGHT THRESHOLD</span>
-							<span className="text-warm tabular-nums">{threshold > 0 ? `+${threshold}%` : "OFF"}</span>
-						</span>
-						<input
-							type="range"
-							min={0}
-							max={THRESHOLD_MAX}
-							step={5}
-							value={threshold}
-							onChange={(event) => onThreshold(Number(event.currentTarget.value))}
-							className="accent-warm h-6 w-full cursor-pointer"
-							aria-valuetext={threshold > 0 ? `above ${threshold} percent` : "off"}
-						/>
-					</label>
-					<div id="refresh-label" className="text-dim mb-1 text-[11px]">
-						AUTO REFRESH
-					</div>
-					<div role="radiogroup" aria-labelledby="refresh-label" className="border-rule flex border">
-						{REFRESH.map((option, i) => {
-							const on = prefs.refresh === option.id
-							return (
-								<button
-									key={option.id}
-									type="button"
-									role="radio"
-									aria-checked={on}
-									onClick={() => update({ ...prefs, refresh: option.id })}
-									className={cn(
-										"h-7 flex-1 text-[11px] transition-colors max-lg:h-11",
-										i > 0 && "border-l border-rule",
-										on ? "bg-warm font-bold text-on-accent" : "text-dim hover:bg-panel hover:text-ink",
-									)}
-								>
-									{option.label}
-								</button>
-							)
-						})}
-					</div>
+				<Section title="Display">
+					<Choice
+						label="TABLE LAYOUT"
+						options={[
+							{ id: "edge", label: "EDGE TO EDGE" },
+							{ id: "floating", label: "FLOATING" },
+						]}
+						value={prefs.layout}
+						onChange={(layout) => update({ ...prefs, layout })}
+					/>
+					<Choice
+						label="SOON FEATURES"
+						options={[
+							{ id: "show", label: "SHOW" },
+							{ id: "hide", label: "HIDE" },
+						]}
+						value={prefs.showSoon ? "show" : "hide"}
+						onChange={(choice) => update({ ...prefs, showSoon: choice === "show" })}
+					/>
 				</Section>
 
 				<Section title="Navigate">
-					<button
-						type="button"
-						disabled={refreshing}
-						onClick={async () => {
-							setRefreshing(true)
-							await queryClient.refetchQueries({ type: "active" })
-							setRefreshing(false)
-						}}
-						className={rowClass("text-dim hover:text-ink disabled:cursor-progress")}
-					>
-						<RefreshCw
-							aria-hidden
-							className={cn("size-3.5", refreshing && "animate-spin motion-reduce:animate-none")}
-						/>
-						<span className="flex-1">{refreshing ? "Refreshing…" : "Force refresh"}</span>
-					</button>
 					<a href="/api/docs" className={rowClass("text-dim hover:text-ink")}>
 						<BookOpen aria-hidden className="size-3.5" />
 						<span className="flex-1">API docs</span>
 					</a>
-					{SOON.map(({ label, icon: Icon }) => (
+					{(prefs.showSoon ? SOON : []).map(({ label, icon: Icon }) => (
 						<Tip key={label} label={soonLabel(label)} side="right">
 							<button type="button" aria-disabled="true" className={rowClass("cursor-not-allowed text-dim")}>
 								<Icon aria-hidden className="size-3.5 opacity-70" />
@@ -218,13 +172,15 @@ export function Sidebar({ dialog, source, statuses, threshold, onThreshold, onCl
 
 				<div className="flex-1" />
 				<div className="border-rule border-t px-[18px] py-3">
-					<Tip label={soonLabel("Accounts and sign-in")} side="top">
-						<button type="button" aria-disabled="true" className={rowClass("cursor-not-allowed text-ink-dim")}>
-							<LogIn aria-hidden className="size-3.5" />
-							<span className="flex-1">Sign in</span>
-							<SoonBadge />
-						</button>
-					</Tip>
+					{prefs.showSoon ? (
+						<Tip label={soonLabel("Accounts and sign-in")} side="top">
+							<button type="button" aria-disabled="true" className={rowClass("cursor-not-allowed text-ink-dim")}>
+								<LogIn aria-hidden className="size-3.5" />
+								<span className="flex-1">Sign in</span>
+								<SoonBadge />
+							</button>
+						</Tip>
+					) : null}
 					<div className="text-dim mt-2 text-[10px]">
 						<div>FundStats Terminal · v{__APP_VERSION__}</div>
 						<a href="https://github.com/VV01T3K/FundStats" className="hover:text-ink mt-0.5 inline-block">
@@ -249,5 +205,48 @@ function Section({ title, children }: { readonly title: string; readonly childre
 			<h2 className="text-dim mb-2.5 text-[10px] font-normal tracking-[0.12em] uppercase">{title}</h2>
 			{children}
 		</section>
+	)
+}
+
+/** A labelled segmented control: one of `options`, the chosen one filled amber. */
+function Choice<Id extends string>({
+	label,
+	options,
+	value,
+	onChange,
+}: {
+	readonly label: string
+	readonly options: ReadonlyArray<{ readonly id: Id; readonly label: string }>
+	readonly value: Id
+	readonly onChange: (id: Id) => void
+}) {
+	const labelId = `choice-${label.toLowerCase().replaceAll(" ", "-")}`
+	return (
+		<div className="mb-3.5 last:mb-0">
+			<div id={labelId} className="text-dim mb-1 text-[11px]">
+				{label}
+			</div>
+			<div role="radiogroup" aria-labelledby={labelId} className="border-rule flex border">
+				{options.map((option, i) => {
+					const on = value === option.id
+					return (
+						<button
+							key={option.id}
+							type="button"
+							role="radio"
+							aria-checked={on}
+							onClick={() => onChange(option.id)}
+							className={cn(
+								"h-7 flex-1 text-[11px] transition-colors max-lg:h-11",
+								i > 0 && "border-l border-rule",
+								on ? "bg-warm font-bold text-on-accent" : "text-dim hover:bg-panel hover:text-ink",
+							)}
+						>
+							{option.label}
+						</button>
+					)
+				})}
+			</div>
+		</div>
 	)
 }

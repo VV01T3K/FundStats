@@ -1,4 +1,4 @@
-import { HttpApi, HttpApiEndpoint, HttpApiError, HttpApiGroup, OpenApi } from "effect/http-api"
+import { HttpApi, HttpApiEndpoint, HttpApiError, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/http-api"
 /**
  * The HTTP API contract. Imported by the server (handlers) and by the web
  * client (typed HttpApiClient), so it must not import server-only code.
@@ -99,6 +99,9 @@ const SourceSparklines = Schema.Struct({
 })
 type SourceSparklines = typeof SourceSparklines.Type
 
+/** A server-sent event: `source` has new data. */
+const DataChanged = Schema.Struct({ source: SourceIdSchema })
+
 const Health = Schema.Struct({
 	status: Schema.Literal("ok"),
 	database: Schema.Literal("ok"),
@@ -146,6 +149,12 @@ class SourcesApi extends HttpApiGroup.make("sources")
 			success: SourceSparklines,
 			error: SourceNotFound,
 		}),
+		HttpApiEndpoint.get("events", "/events", {
+			success: HttpApiSchema.StreamSse({ data: DataChanged, keepAlive: "25 seconds" }),
+		}).annotate(
+			OpenApi.Description,
+			"Server-sent events: one `message` each time the collector stores a run, naming its source.",
+		),
 	)
 	.prefix("/v1")
 	.annotateMerge(

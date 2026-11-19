@@ -1,9 +1,18 @@
 /** The HTTP API against a real Postgres (see @fundstats/db/test/postgres.ts), on data written by hand. */
 import { assert, layer } from "@effect/vitest"
+import { DataEvents } from "@fundstats/db/DataEvents"
 import type { NormalizedRow } from "@fundstats/db/RunStore"
 import { RunStore } from "@fundstats/db/RunStore"
 import { Store } from "@fundstats/db/Store"
-import { capturedAt, reset, startRun, TestStorage, writer } from "@fundstats/db/test/support"
+import {
+	capturedAt,
+	dbConfigOn,
+	reset,
+	startRun,
+	testDatabaseUrl,
+	TestStorage,
+	writer,
+} from "@fundstats/db/test/support"
 import * as DateTime from "effect/DateTime"
 import * as Effect from "effect/Effect"
 import { HttpRouter, HttpServer } from "effect/http"
@@ -12,7 +21,11 @@ import { TestClock } from "effect/testing"
 
 import { ApiRoutesLayer } from "#/server/runtime.ts"
 
-const ApiTest = Layer.mergeAll(TestStorage, HttpServer.layerServices)
+const ApiTest = Layer.mergeAll(
+	TestStorage,
+	DataEvents.layer.pipe(Layer.provide(dbConfigOn(testDatabaseUrl))),
+	HttpServer.layerServices,
+)
 
 const instrument = (
 	externalId: string,
@@ -178,6 +191,32 @@ layer(ApiTest)("HTTP API", (it) => {
 			}
 			assert.strictEqual((yield* call("/api/v1/sources/nope/sparklines")).status, 404)
 			assert.deepStrictEqual((yield* call("/api/v1/sources/coinpaprika/sparklines")).json.series, [])
+		}),
+	)
+
+	it.effect("streams an event naming the source each time a run is stored", () =>
+		Effect.gen(function* () {
+			yield* reset
+			const { handler, dispose } = HttpRouter.toWebHandler(ApiRoutesLayer.pipe(Layer.provide(ApiTest)), {
+				disableLogger: true,
+			})
+			const response = yield* Effect.promise(() => handler(new Request("http://test/api/v1/events")))
+			assert.strictEqual(response.status, 200)
+			assert.include(response.headers.get("content-type"), "text/event-stream")
+			const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader()
+
+			yield* collected("coingecko", [instrument("btc", null, {}, 1)])
+
+			let text = ""
+			while (!text.includes("\n\n")) {
+				const { value, done } = yield* Effect.promise(() => reader.read())
+				if (done) break
+				text += value
+			}
+			assert.include(text, 'data: {"source":"coingecko"}')
+			// Cancelling the body closes the stream, which unsubscribes it.
+			yield* Effect.promise(() => reader.cancel())
+			yield* Effect.promise(dispose)
 		}),
 	)
 })

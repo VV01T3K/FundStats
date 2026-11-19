@@ -3,6 +3,7 @@ import { useQuery, useSuspenseQuery } from "@tanstack/react-query"
 import { createFileRoute, notFound, Outlet } from "@tanstack/react-router"
 import { useRef, useState } from "react"
 
+import { cn } from "#/lib/utils"
 import { latestQuery, sourcesQuery, sparklinesQuery } from "#/web/api.ts"
 import { AppHeader } from "#/web/components/AppHeader.tsx"
 import { Footer } from "#/web/components/Footer.tsx"
@@ -11,9 +12,9 @@ import { SearchField, useSlashToSearch } from "#/web/components/SearchField.tsx"
 import { Sidebar } from "#/web/components/Sidebar.tsx"
 import { SourceTabs } from "#/web/components/SourceTabs.tsx"
 import { TipProvider } from "#/web/components/Tip.tsx"
-import { refreshInterval } from "#/web/prefs.ts"
+import { useDataEvents } from "#/web/events.ts"
 import { usePrefs } from "#/web/PrefsContext.tsx"
-import { resolveView, type TableSearch, thresholdPatch, validateTableSearch } from "#/web/search.ts"
+import { resolveView, validateTableSearch } from "#/web/search.ts"
 import { getTable } from "#/web/tables.ts"
 
 /**
@@ -32,10 +33,14 @@ export const Route = createFileRoute("/$kind/$source")({
 		stringify: (params) => params,
 	},
 	loader: async ({ context, params }) => {
+		// A first page arrives with its sparklines. Switching sources in the browser shows the table at
+		// once: sparklines decorate it, so they fill in when they arrive instead of holding it back.
+		const sparklines = sparklinesQuery(params.source)
+		if (!import.meta.env.SSR) void context.queryClient.prefetchQuery(sparklines)
 		await Promise.all([
 			context.queryClient.ensureQueryData(latestQuery(params.source)),
 			context.queryClient.ensureQueryData(sourcesQuery()),
-			context.queryClient.ensureQueryData(sparklinesQuery(params.source)),
+			import.meta.env.SSR ? context.queryClient.ensureQueryData(sparklines) : undefined,
 		])
 	},
 	head: ({ params }) => ({ meta: [{ title: `${getTable(params.source).title} · FundStats` }] }),
@@ -47,17 +52,16 @@ function SourceLayout() {
 	const search = Route.useSearch()
 	const navigate = Route.useNavigate()
 	const { prefs } = usePrefs()
-	const interval = refreshInterval(prefs.refresh)
-	const { data } = useSuspenseQuery({ ...latestQuery(source), refetchInterval: interval })
-	const statuses = useQuery({ ...sourcesQuery(), refetchInterval: interval }).data ?? [data.source]
+	const floating = prefs.layout === "floating"
+	const { data } = useSuspenseQuery(latestQuery(source))
+	const statuses = useQuery(sourcesQuery()).data ?? [data.source]
+	useDataEvents()
 	const config = getTable(source)
 	const view = resolveView(config, search)
 	const menu = useRef<HTMLDialogElement>(null)
 	const [menuOpen, setMenuOpen] = useState(false)
 	useSlashToSearch()
 
-	const update = (patch: Partial<TableSearch>) =>
-		navigate({ to: ".", search: (prev) => ({ ...prev, ...patch }), replace: true, resetScroll: false })
 	// Searching from an instrument's page goes back to the table it filters.
 	const onQuery = (q: string) =>
 		navigate({
@@ -70,7 +74,7 @@ function SourceLayout() {
 
 	return (
 		<TipProvider>
-			<div className="bg-bg flex h-dvh flex-col overflow-hidden">
+			<div className={cn("flex h-dvh flex-col overflow-hidden", floating ? "bg-outer" : "bg-bg")}>
 				<AppHeader
 					status={data.source}
 					query={view.q}
@@ -85,20 +89,19 @@ function SourceLayout() {
 				<div className="border-rule shrink-0 border-b px-3 py-2 lg:hidden">
 					<SearchField query={view.q} onQuery={onQuery} />
 				</div>
-				<main className="flex min-h-0 flex-1 flex-col [view-transition-name:source-panel]">
+				<main
+					className={cn(
+						"bg-bg flex min-h-0 flex-1 flex-col [view-transition-name:source-panel]",
+						// Floating: the panel sits inset on the darker frame, on screens wide enough to spare it.
+						floating && "lg:border-rule-strong lg:mx-5 lg:my-4 lg:border",
+					)}
+				>
 					<Outlet />
 				</main>
 				<Footer />
-				<MobileTabBar />
+				{prefs.showSoon ? <MobileTabBar /> : null}
 			</div>
-			<Sidebar
-				dialog={menu}
-				source={source}
-				statuses={statuses}
-				threshold={view.threshold}
-				onThreshold={(threshold) => update(thresholdPatch(config, threshold))}
-				onClose={() => setMenuOpen(false)}
-			/>
+			<Sidebar dialog={menu} source={source} statuses={statuses} onClose={() => setMenuOpen(false)} />
 		</TipProvider>
 	)
 }

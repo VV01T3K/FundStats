@@ -248,7 +248,7 @@ export function MarketTable({
 												data-row={row.id}
 												tabIndex={row.id === activeId ? 0 : -1}
 												onFocus={() => setFocused(row.id)}
-												className="block min-w-0 outline-none"
+												className={cn("block min-w-0 outline-none", column.kind === "fund" && NAME_CAP)}
 											>
 												<Cell column={column} row={row.original} position={index + 1} asOf={asOf} />
 											</Link>
@@ -285,15 +285,18 @@ const isNumeric = (column: Column) =>
 	column.kind === "position"
 
 /**
- * The name column takes the width the figures leave (`width: 100%; max-width: 0` makes an auto-layout
- * cell absorb the slack and truncate) so the table fills its container without ever overflowing it.
- * On phones, where crypto names drop out, the ticker takes that role.
+ * Wide tables: the name column shrinks to its longest name up to NAME_CAP (`width: 1%`), so spare
+ * width is spread over the other columns instead of opening one gap. Narrower tables: it absorbs the
+ * slack and truncates (`width: 100%; max-width: 0`). On phones the ticker takes that role.
  */
 const FILL: Partial<Record<Column["kind"], string>> = {
-	fund: "w-full max-w-0 min-w-[14ch]",
-	name: "w-full max-w-0 min-w-[12ch]",
+	fund: "w-full max-w-0 min-w-[14ch] @min-[1100px]/market:w-[1%] @min-[1100px]/market:max-w-none",
+	name: "w-full max-w-0 min-w-[12ch] @min-[1100px]/market:w-[1%] @min-[1100px]/market:max-w-none",
 	ticker: "@max-[52rem]/market:w-full @max-[52rem]/market:max-w-0 @max-[52rem]/market:min-w-[9ch]",
 }
+
+/** The longest name a wide table shows before truncating it. */
+const NAME_CAP = "@min-[1100px]/market:max-w-[44ch]"
 
 /** Dropped on tablet-width tables, unless it is the column the table is sorted by. */
 const secondary = (column: Column | undefined, view: ResolvedView) =>
@@ -337,12 +340,12 @@ function Cell({
 			)
 		case "fund":
 			return (
-				<span title={longName(row) ?? row.name} className="text-ink block truncate font-semibold">
+				<span title={longName(row) ?? row.name} className={cn("text-ink block truncate font-semibold", NAME_CAP)}>
 					{row.name}
 				</span>
 			)
 		case "name":
-			return <span className="text-ink-dim block truncate">{row.name}</span>
+			return <span className={cn("text-ink-dim block truncate", NAME_CAP)}>{row.name}</span>
 		case "category":
 			return row.category ? (
 				<span className="border-rule-strong text-warm border px-1.5 py-px text-[10px] tracking-[0.06em] uppercase">

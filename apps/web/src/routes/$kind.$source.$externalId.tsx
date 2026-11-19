@@ -19,8 +19,6 @@ import {
 	trend,
 } from "#/web/format.ts"
 import { clip, coveredRanges, isRangeId, pickRange, rangeWindow, toPoints } from "#/web/history.ts"
-import { refreshInterval } from "#/web/prefs.ts"
-import { usePrefs } from "#/web/PrefsContext.tsx"
 import {
 	categoryLabel,
 	fundFamily,
@@ -58,10 +56,8 @@ function DetailPage() {
 	const { kind, source, externalId } = Route.useParams()
 	const { range: wantedRange } = Route.useSearch()
 	const navigate = Route.useNavigate()
-	const { prefs } = usePrefs()
-	const interval = refreshInterval(prefs.refresh)
 	const { data: history } = useSuspenseQuery(historyQuery(source, externalId))
-	const { data: latest } = useSuspenseQuery({ ...latestQuery(source), refetchInterval: interval })
+	const { data: latest } = useSuspenseQuery(latestQuery(source))
 	const config = getTable(source)
 	const info = SOURCES[source]
 	const row = latest.rows.find((r) => r.externalId === externalId) ?? null
