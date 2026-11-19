@@ -11,16 +11,7 @@ import { formatCompact, formatInteger, formatPercent, formatStamp } from "#/web/
 import { collectedAt, tableAsOf } from "#/web/freshness.ts"
 import { isColumnVisible } from "#/web/prefs.ts"
 import { usePrefs } from "#/web/PrefsContext.tsx"
-import {
-	categoryPatch,
-	clearFiltersPatch,
-	filterRows,
-	type ResolvedView,
-	resolveView,
-	sortPatch,
-	type TableSearch,
-	thresholdPatch,
-} from "#/web/search.ts"
+import { filterRows, type ResolvedView, resolveView, sortPatch, type TableSearch } from "#/web/search.ts"
 import { getTable, marketCap, type TableConfig } from "#/web/tables.ts"
 
 /** A source's table. */
@@ -37,7 +28,7 @@ function TablePage() {
 	const sparklines = useQuery({ ...sparklinesQuery(source), enabled: prefs.sparklines }).data
 	const config = getTable(source)
 	const view = useMemo(() => resolveView(config, search), [config, search])
-	const rows = useMemo(() => filterRows(data.rows, view), [data.rows, view])
+	const rows = useMemo(() => filterRows(config, data.rows, view), [config, data.rows, view])
 	const columns = config.columns.filter((c) => isColumnVisible(prefs, source, c.id))
 	const asOf = useMemo(() => tableAsOf(data.rows), [data.rows])
 
@@ -48,14 +39,7 @@ function TablePage() {
 		<>
 			<StaleNotice status={data.source} />
 			<MobileSummary config={config} view={view} rows={data.rows} filtered={rows} />
-			<TableControls
-				config={config}
-				view={view}
-				rowCount={rows.length}
-				onCategory={(value) => update(categoryPatch(value))}
-				onThreshold={(value) => update(thresholdPatch(config, value))}
-				onClearFilters={() => update(clearFiltersPatch)}
-			/>
+			<TableControls config={config} view={view} rows={data.rows} rowCount={rows.length} onSearch={update} />
 			<div className="market min-h-0 flex-1 overflow-auto">
 				<MarketTable
 					config={config}
@@ -65,7 +49,9 @@ function TablePage() {
 					prefs={prefs}
 					sparklines={sparklines}
 					asOf={asOf}
+					allRows={data.rows}
 					onSort={(columnId) => update(sortPatch(config, view, columnId))}
+					onSearch={update}
 					emptyAction={
 						view.q ? (
 							<button

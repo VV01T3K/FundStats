@@ -14,6 +14,7 @@ type ColumnKind =
 	| "name"
 	| "category"
 	| "risk"
+	| "text"
 	| "date"
 	| "percent"
 	| "price"
@@ -38,7 +39,22 @@ export interface Column {
 	readonly narrow?: boolean
 	/** Descriptive, not a figure: the first to go when a tablet-width table runs out of room. */
 	readonly secondary?: boolean
+	/** The table can be filtered to some of this column's values, from its header menu. */
+	readonly facet?: Facet
+	/** A `text` column's value. */
+	readonly text?: (row: SnapshotRow) => string | null
 }
+
+/** A filter on a column's values, kept in the URL under `param`. */
+export interface Facet {
+	readonly param: FacetParam
+	/** The row's value; null rows match no selection. */
+	readonly value: (row: SnapshotRow) => string | null
+	/** How a value reads in the menu and its pill; `row` is any row that has it. */
+	readonly label: (value: string, row: SnapshotRow) => string
+}
+
+export type FacetParam = "category" | "risk" | "family"
 
 export interface TableConfig {
 	readonly source: SourceId
@@ -56,7 +72,7 @@ export interface TableConfig {
 	readonly thresholds: ReadonlyArray<number>
 }
 
-/** The highlight presets the first FundStats offered; CoinPaprika's also had 5%. */
+/** The highlight presets the first FundStats offered; CoinPaprika's (and the funds') also start at 5%. */
 const THRESHOLDS = [10, 20, 30, 40, 50] as const
 
 /** The market-cap floors a crypto table can hide coins under. */
@@ -213,6 +229,7 @@ export const TABLES = {
 				sortValue: (row) => row.category,
 				firstDir: "asc",
 				secondary: true,
+				facet: { param: "category", value: (row) => row.category, label: (value) => categoryLabel(value) },
 			},
 			{
 				id: "risk",
@@ -223,6 +240,23 @@ export const TABLES = {
 				firstDir: "asc",
 				hidden: true,
 				secondary: true,
+				facet: {
+					param: "risk",
+					value: (row) => (fundRisk(row) === null ? null : String(fundRisk(row))),
+					label: (value, row) => `${value} · ${fundRiskName(row) ?? ""}`.trim(),
+				},
+			},
+			{
+				id: "family",
+				label: "FAMILY",
+				title: "Fund family (umbrella)",
+				kind: "text",
+				text: fundFamily,
+				sortValue: fundFamily,
+				firstDir: "asc",
+				hidden: true,
+				secondary: true,
+				facet: { param: "family", value: fundFamily, label: (value) => value },
 			},
 			{
 				id: "asOf",
@@ -252,7 +286,7 @@ export const TABLES = {
 		],
 		defaultSort: "1m",
 		defaultThreshold: 0,
-		thresholds: [],
+		thresholds: [5, ...THRESHOLDS],
 	},
 	coingecko: crypto("coingecko", ["24h", "7d", "30d", "200d", "1y"], "1y", 50),
 	coinpaprika: crypto("coinpaprika", ["1h", "24h", "7d"], "7d", 10, [5, ...THRESHOLDS]),

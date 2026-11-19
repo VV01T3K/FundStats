@@ -255,14 +255,18 @@ Square everywhere: radius 0 on buttons, chips, inputs, popovers, tags and scroll
 
 - A native modal dialog sliding in from the left (260ms, `cubic-bezier(0.22, 1, 0.36, 1)`), at most 340px wide, over a 55% black backdrop. Closed by default.
 
-### Source options (drawer)
-- The drawer's first section after Source status holds options only the open source has, kept in the URL like the bar's: funds filter by risk level (toggle chips of mBank's own scale) and fund family (a select); crypto filter by a market-cap floor (ANY, 100M, 1B, 10B) and can pin the column the highlight reads (AUTO follows the sort).
-- While any of them is on, the controls bar shows an amber "N FILTERS ×" chip that clears them.
+### Column menus
+- Clicking a header sorts by it, as before. Columns with more to offer get a small menu button beside the label, hidden until the column is hovered (always shown on touch, and filled amber with its icon while active):
+  - TYPE, RISK, FAMILY: a checklist of the column's values with row counts (a search box from 8 values), SHOW ALL to clear.
+  - Percent columns: "Highlight … above", a slider that stops only at the source's presets (OFF, 10–50%; CoinPaprika and funds also 5%), each stop ticked and labelled.
+  - MKT CAP: "at least" ANY, 100M, 1B or 10B.
+- Funds open filtered to Akcyjne, shown as a TYPE pill like any other filter.
 
-### Highlight slider
-- The crypto bar's threshold is a slider that stops only at the source's presets (OFF, 10–50%; CoinPaprika also 5%), each marked with a tick and labelled under the track; the chosen label is amber and bold.
+### Filter pills
+- The controls bar lists what shapes the rows: one pill per filter ("TYPE Akcyjny +1 ×") and the highlight ("HIGHLIGHT 1Y > 50% ×", amber), then CLEAR FILTERS. With none, it says filters and the highlight come from the column menus.
 
 ### Settings (header gear)
+
 - App-wide settings live behind the gear in the header, not in the drawer: Theme and SOON features.
 
 ## Do's and Don'ts

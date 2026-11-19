@@ -4,9 +4,9 @@ import { roundForDisplay } from "./format.ts"
 import {
 	type Column,
 	columnOf,
+	type Facet,
+	type FacetParam,
 	FUND_CATEGORIES,
-	fundFamily,
-	fundRisk,
 	longName,
 	MARKET_CAP_FLOORS,
 	marketCap,
@@ -24,7 +24,7 @@ export interface TableSearch {
 	readonly q?: string | undefined
 	readonly sort?: string | undefined
 	readonly dir?: "asc" | "desc" | undefined
-	/** A fund category value, or `all`. */
+	/** Fund categories shown, comma-separated, or `all`; funds default to the first category. */
 	readonly category?: string | undefined
 	/** Percent; 0 turns the highlight off. */
 	readonly threshold?: number | undefined
@@ -32,7 +32,7 @@ export interface TableSearch {
 	readonly hl?: string | undefined
 	/** Funds: the risk levels shown, e.g. `2,3`. */
 	readonly risk?: string | undefined
-	/** Funds: the one fund family (umbrella) shown. */
+	/** Funds: the fund families (umbrellas) shown, `|`-separated (names contain commas). */
 	readonly family?: string | undefined
 	/** Crypto: coins under this market cap are hidden. */
 	readonly mincap?: number | undefined
@@ -55,15 +55,17 @@ export const validateTableSearch = (raw: Record<string, unknown>): TableSearch =
 	const sort = text(raw.sort, 32)
 	if (sort) out.sort = sort
 	if (raw.dir === "asc" || raw.dir === "desc") out.dir = raw.dir
-	const category = text(raw.category, 64)
-	if (category) out.category = category
+	const category = text(raw.category, 120)
+	const categories = category?.split(",").filter((c) => FUND_CATEGORIES.some((known) => known.value === c))
+	if (category === ALL) out.category = ALL
+	else if (categories && categories.length > 0) out.category = categories.join(",")
 	const threshold = Number(text(raw.threshold, 8))
 	if (Number.isInteger(threshold) && threshold >= 0 && threshold <= THRESHOLD_MAX) out.threshold = threshold
 	const hl = text(raw.hl, 16)
 	if (hl) out.hl = hl
 	const risk = text(raw.risk, 16)
 	if (risk && /^[1-7](,[1-7])*$/.test(risk)) out.risk = risk
-	const family = text(raw.family, 80)
+	const family = text(raw.family, 600)
 	if (family) out.family = family
 	const mincap = Number(text(raw.mincap, 16))
 	if (MARKET_CAP_FLOORS.some((floor) => floor.value === mincap)) out.mincap = mincap
@@ -74,17 +76,11 @@ export interface ResolvedView {
 	readonly sort: string
 	readonly desc: boolean
 	readonly q: string
-	/** null = every category; always null for crypto. */
-	readonly category: string | null
+	/** Per filterable column param, the values shown; absent = no filter. */
+	readonly facets: Partial<Record<FacetParam, ReadonlySet<string>>>
 	readonly threshold: number
 	/** The percent column the threshold reads: the chosen one, else the sorted one, else the source's default. */
 	readonly highlight: Column
-	/** Whether `highlight` was chosen (?hl) rather than following the sort. */
-	readonly highlightChosen: boolean
-	/** Funds: the risk levels shown; null = all. */
-	readonly risks: ReadonlySet<number> | null
-	/** Funds: the fund family shown; null = all. */
-	readonly family: string | null
 	/** Crypto: the market-cap floor; null = none. */
 	readonly minCap: number | null
 }
@@ -92,24 +88,42 @@ export interface ResolvedView {
 const ALL = "all"
 
 /** Applies the source's defaults to whatever the URL holds. */
+/** Every column the table can filter by its values. */
+export const facetColumns = (config: TableConfig) =>
+	config.columns.filter((column): column is Column & { facet: Facet } => column.facet !== undefined)
+
+const SEPARATOR: Record<FacetParam, string> = { category: ",", risk: ",", family: "|" }
+
+/** Funds open on their first category; `?category=all` shows every one. */
+const defaultFacet = (config: TableConfig, param: FacetParam): ReadonlySet<string> | undefined =>
+	config.kind === "fund" && param === "category" ? new Set([FUND_CATEGORIES[0].value]) : undefined
+
+const facetSelection = (config: TableConfig, param: FacetParam, raw: string | undefined) => {
+	if (raw === ALL) return undefined
+	if (raw === undefined) return defaultFacet(config, param)
+	const values = raw.split(SEPARATOR[param]).filter(Boolean)
+	return values.length > 0 ? new Set(values) : undefined
+}
+
+/** Applies the source's defaults to whatever the URL holds. */
 export const resolveView = (config: TableConfig, search: TableSearch): ResolvedView => {
 	const wanted = search.sort === undefined ? undefined : columnOf(config, search.sort)
 	const sortColumn = wanted?.sortValue ? wanted : columnOf(config, config.defaultSort)!
 	const dir = wanted?.sortValue && search.dir ? search.dir : sortColumn.firstDir
-	const known = FUND_CATEGORIES.some((c) => c.value === search.category)
 	const hl = search.hl === undefined ? undefined : columnOf(config, search.hl)
-	const chosen = hl?.kind === "percent" ? hl : undefined
+	const facets: Partial<Record<FacetParam, ReadonlySet<string>>> = {}
+	for (const column of facetColumns(config)) {
+		const selection = facetSelection(config, column.facet.param, search[column.facet.param])
+		if (selection) facets[column.facet.param] = selection
+	}
 	return {
 		sort: sortColumn.id,
 		desc: dir === "desc",
 		q: search.q ?? "",
-		category:
-			config.kind !== "fund" || search.category === ALL ? null : known ? search.category! : FUND_CATEGORIES[0].value,
+		facets,
 		threshold: search.threshold ?? config.defaultThreshold,
-		highlight: chosen ?? (sortColumn.kind === "percent" ? sortColumn : columnOf(config, config.defaultSort)!),
-		highlightChosen: chosen !== undefined,
-		risks: config.kind === "fund" && search.risk ? new Set(search.risk.split(",").map(Number)) : null,
-		family: config.kind === "fund" ? (search.family ?? null) : null,
+		highlight:
+			hl?.kind === "percent" ? hl : sortColumn.kind === "percent" ? sortColumn : columnOf(config, config.defaultSort)!,
 		minCap: config.kind === "crypto" ? (search.mincap ?? null) : null,
 	}
 }
@@ -123,30 +137,41 @@ export const sortPatch = (config: TableConfig, view: ResolvedView, columnId: str
 	return isDefault ? { sort: undefined, dir: undefined } : { sort: columnId, dir: desc ? "desc" : "asc" }
 }
 
-/** The search change for picking a category; `all` is explicit because funds default to one category. */
-export const categoryPatch = (value: string | null): Partial<TableSearch> => ({
-	category: value === FUND_CATEGORIES[0].value ? undefined : (value ?? ALL),
-})
-
-export const thresholdPatch = (config: TableConfig, threshold: number): Partial<TableSearch> => ({
-	threshold: threshold === config.defaultThreshold ? undefined : threshold,
-})
-
-/** The risk levels shown after toggling `level` (null = all of them). */
-export const riskPatch = (view: ResolvedView, level: number, levels: ReadonlyArray<number>): Partial<TableSearch> => {
-	const current = new Set(view.risks ?? levels)
-	if (current.has(level)) current.delete(level)
-	else current.add(level)
-	const kept = levels.filter((l) => current.has(l))
-	return { risk: kept.length === 0 || kept.length === levels.length ? undefined : kept.join(",") }
+/** The search change for showing only `values` of a filterable column (empty or null: no filter). */
+export const facetPatch = (
+	config: TableConfig,
+	param: FacetParam,
+	values: ReadonlySet<string> | null,
+): Partial<TableSearch> => {
+	const fallback = defaultFacet(config, param)
+	if (values === null || values.size === 0) return { [param]: fallback ? ALL : undefined }
+	const same = fallback !== undefined && fallback.size === values.size && [...values].every((v) => fallback.has(v))
+	return { [param]: same ? undefined : [...values].join(SEPARATOR[param]) }
 }
 
-/** How many of the drawer's per-source filters are in effect. */
-export const activeFilters = (view: ResolvedView) =>
-	[view.risks !== null, view.family !== null, view.minCap !== null].filter(Boolean).length
+/** The search change for highlighting rows above `threshold` in `column` (0 turns it off). */
+export const highlightPatch = (config: TableConfig, columnId: string, threshold: number): Partial<TableSearch> => {
+	if (threshold === 0) return { threshold: config.defaultThreshold === 0 ? undefined : 0, hl: undefined }
+	const isDefault = columnId === config.defaultSort && threshold === config.defaultThreshold
+	return isDefault ? { threshold: undefined, hl: undefined } : { threshold, hl: columnId }
+}
 
-/** Clears the drawer's per-source filters. */
-export const clearFiltersPatch: Partial<TableSearch> = { risk: undefined, family: undefined, mincap: undefined }
+/** The market-cap floor's search change; null removes it. */
+export const minCapPatch = (value: number | null): Partial<TableSearch> => ({ mincap: value ?? undefined })
+
+/** Clears every filter (the highlight is not one): every fund category, every risk and family, any cap. */
+export const clearFiltersPatch = (config: TableConfig): Partial<TableSearch> => ({
+	...Object.fromEntries(
+		facetColumns(config).map((column) => [
+			column.facet.param,
+			defaultFacet(config, column.facet.param) ? ALL : undefined,
+		]),
+	),
+	mincap: undefined,
+})
+
+/** Whether any filter narrows the rows. */
+export const hasFilters = (view: ResolvedView) => Object.keys(view.facets).length > 0 || view.minCap !== null
 
 /** Lower-case, without Polish diacritics, so "zrownowazony" finds "Zrównoważony". */
 const fold = (value: string) =>
@@ -156,13 +181,15 @@ const fold = (value: string) =>
 		.replace(/\p{Diacritic}/gu, "")
 		.replaceAll("ł", "l")
 
-/** Rows passing the view's category and drawer filters whose name, ticker or long name contain every search word. */
-export const filterRows = (rows: ReadonlyArray<SnapshotRow>, view: ResolvedView) => {
+/** Rows passing the view's column filters whose name, ticker or long name contain every search word. */
+export const filterRows = (config: TableConfig, rows: ReadonlyArray<SnapshotRow>, view: ResolvedView) => {
+	const columns = facetColumns(config)
 	const terms = fold(view.q).split(/\s+/).filter(Boolean)
 	return rows.filter((row) => {
-		if (view.category !== null && row.category !== view.category) return false
-		if (view.risks !== null && !view.risks.has(fundRisk(row) ?? -1)) return false
-		if (view.family !== null && fundFamily(row) !== view.family) return false
+		for (const column of columns) {
+			const selected = view.facets[column.facet.param]
+			if (selected && !selected.has(column.facet.value(row) ?? "")) return false
+		}
 		if (view.minCap !== null && (marketCap(row) ?? 0) < view.minCap) return false
 		if (terms.length === 0) return true
 		const haystack = fold([row.name, row.symbol ?? "", longName(row) ?? ""].join(" "))

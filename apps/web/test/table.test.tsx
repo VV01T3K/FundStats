@@ -57,7 +57,9 @@ const render = async (search: TableSearch, prefs: Prefs = DEFAULT_PREFS) => {
 					prefs={prefs}
 					sparklines={new Map([["aaa", [1, 2, 3]]])}
 					asOf={null}
+					allRows={ROWS}
 					onSort={(id) => sorts.push(id)}
+					onSearch={() => {}}
 				/>
 			),
 		}),

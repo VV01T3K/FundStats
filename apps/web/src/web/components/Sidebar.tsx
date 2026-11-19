@@ -1,4 +1,4 @@
-import type { SnapshotRow, SourceStatus } from "@fundstats/shared/api"
+import type { SourceStatus } from "@fundstats/shared/api"
 import { KIND_SEGMENT, SOURCE_IDS, SOURCES, type SourceId } from "@fundstats/shared/sources"
 import { Link } from "@tanstack/react-router"
 import {
@@ -21,8 +21,6 @@ import { cn } from "#/lib/utils"
 import { formatInterval } from "../format.ts"
 import { sourceState, stateDetail, type SourceState } from "../freshness.ts"
 import { usePrefs } from "../PrefsContext.tsx"
-import { type ResolvedView, riskPatch, type TableSearch } from "../search.ts"
-import { fundFamily, fundRisk, fundRiskName, getTable, MARKET_CAP_FLOORS, type TableConfig } from "../tables.ts"
 import { ProviderLogo } from "./ProviderLogo.tsx"
 import { SoonBadge, soonLabel, Tip } from "./Tip.tsx"
 import { Wordmark } from "./Wordmark.tsx"
@@ -49,10 +47,6 @@ export interface SidebarProps {
 	readonly dialog: RefObject<HTMLDialogElement | null>
 	readonly source: SourceId
 	readonly statuses: ReadonlyArray<SourceStatus>
-	/** The open table's view and rows, for its source's own options. */
-	readonly view: ResolvedView
-	readonly rows: ReadonlyArray<SnapshotRow>
-	readonly onSearch: (patch: Partial<TableSearch>) => void
 	readonly onClose: () => void
 }
 
@@ -61,7 +55,7 @@ export interface SidebarProps {
  * button over a backdrop, so the table always has the full width. A native modal `<dialog>`: the
  * browser makes the page inert, traps focus, closes on Esc and returns focus to the menu button.
  */
-export function Sidebar({ dialog, source, statuses, view, rows, onSearch, onClose }: SidebarProps) {
+export function Sidebar({ dialog, source, statuses, onClose }: SidebarProps) {
 	const { prefs } = usePrefs()
 	const close = () => dialog.current?.close()
 
@@ -128,10 +122,6 @@ export function Sidebar({ dialog, source, statuses, view, rows, onSearch, onClos
 					</ul>
 				</Section>
 
-				<Section title={`${getTable(source).title} options`}>
-					<SourceOptions config={getTable(source)} view={view} rows={rows} onSearch={onSearch} />
-				</Section>
-
 				<Section title="Navigate">
 					<a href="/api/docs" className={rowClass("text-dim hover:text-ink")}>
 						<BookOpen aria-hidden className="size-3.5" />
@@ -183,140 +173,5 @@ function Section({ title, children }: { readonly title: string; readonly childre
 			<h2 className="text-dim mb-2.5 text-[11px] font-normal tracking-[0.12em] uppercase">{title}</h2>
 			{children}
 		</section>
-	)
-}
-
-/** A labelled segmented control: one of `options`, the chosen one filled amber. */
-function Choice<Id extends string>({
-	label,
-	options,
-	value,
-	onChange,
-}: {
-	readonly label: string
-	readonly options: ReadonlyArray<{ readonly id: Id; readonly label: string }>
-	readonly value: Id
-	readonly onChange: (id: Id) => void
-}) {
-	const labelId = `choice-${label.toLowerCase().replaceAll(" ", "-")}`
-	return (
-		<div className="mb-3.5 last:mb-0">
-			<div id={labelId} className="text-dim mb-1 text-[11px]">
-				{label}
-			</div>
-			<div role="radiogroup" aria-labelledby={labelId} className="border-rule flex border">
-				{options.map((option, i) => {
-					const on = value === option.id
-					return (
-						<button
-							key={option.id}
-							type="button"
-							role="radio"
-							aria-checked={on}
-							onClick={() => onChange(option.id)}
-							className={cn(
-								"h-7 flex-1 text-[11px] transition-colors max-lg:h-11",
-								i > 0 && "border-l border-rule",
-								on ? "bg-warm font-bold text-on-accent" : "text-dim hover:bg-panel hover:text-ink",
-							)}
-						>
-							{option.label}
-						</button>
-					)
-				})}
-			</div>
-		</div>
-	)
-}
-
-/**
- * Options only this source has, on top of the controls bar: funds filter by risk level and fund family,
- * crypto by market cap and can pin the column the highlight reads. They live in the URL like the bar's.
- */
-function SourceOptions({
-	config,
-	view,
-	rows,
-	onSearch,
-}: {
-	readonly config: TableConfig
-	readonly view: ResolvedView
-	readonly rows: ReadonlyArray<SnapshotRow>
-	readonly onSearch: (patch: Partial<TableSearch>) => void
-}) {
-	if (config.kind === "fund") {
-		const levels = new Map<number, string>()
-		for (const row of rows) {
-			const level = fundRisk(row)
-			if (level !== null && !levels.has(level)) levels.set(level, fundRiskName(row) ?? String(level))
-		}
-		const levelIds = [...levels.keys()].sort((a, b) => a - b)
-		const families = [...new Set(rows.map(fundFamily).filter((f): f is string => f !== null))].sort((a, b) =>
-			a.localeCompare(b, "pl"),
-		)
-		return (
-			<>
-				<div className="mb-3.5">
-					<div id="risk-label" className="text-dim mb-1 text-[11px]">
-						RISK LEVEL
-					</div>
-					<div role="group" aria-labelledby="risk-label" className="flex flex-wrap gap-1.5">
-						{levelIds.map((level) => {
-							const on = view.risks === null || view.risks.has(level)
-							return (
-								<button
-									key={level}
-									type="button"
-									aria-pressed={on}
-									title={levels.get(level)}
-									onClick={() => onSearch(riskPatch(view, level, levelIds))}
-									className={cn(
-										"inline-flex h-7 items-center gap-1.5 border px-2 text-[11px] uppercase max-lg:h-11",
-										on ? "border-warm bg-warm font-bold text-on-accent" : "border-rule-strong text-dim hover:text-ink",
-									)}
-								>
-									{level} · {levels.get(level)}
-								</button>
-							)
-						})}
-					</div>
-				</div>
-				<label className="block">
-					<span className="text-dim mb-1 block text-[11px]">FUND FAMILY</span>
-					<select
-						value={view.family ?? ""}
-						onChange={(event) => onSearch({ family: event.currentTarget.value || undefined })}
-						className="border-rule-strong bg-bg text-ink focus:border-warm h-7 w-full border px-2 text-[11px] outline-none max-lg:h-11"
-					>
-						<option value="">All families</option>
-						{families.map((family) => (
-							<option key={family} value={family}>
-								{family}
-							</option>
-						))}
-					</select>
-				</label>
-			</>
-		)
-	}
-	const percents = config.columns.filter((column) => column.kind === "percent")
-	return (
-		<>
-			<Choice
-				label="MARKET CAP AT LEAST"
-				options={[{ id: "all", label: "ANY" }, ...MARKET_CAP_FLOORS.map((f) => ({ id: f.label, label: f.label }))]}
-				value={MARKET_CAP_FLOORS.find((f) => f.value === view.minCap)?.label ?? "all"}
-				onChange={(id) => onSearch({ mincap: MARKET_CAP_FLOORS.find((f) => f.label === id)?.value })}
-			/>
-			<Choice
-				label="HIGHLIGHT READS"
-				options={[
-					{ id: "sorted", label: "AUTO" },
-					...percents.map((column) => ({ id: column.id, label: column.id.toUpperCase() })),
-				]}
-				value={view.highlightChosen ? view.highlight.id : "sorted"}
-				onChange={(id) => onSearch({ hl: id === "sorted" ? undefined : id })}
-			/>
-		</>
 	)
 }

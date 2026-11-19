@@ -14,7 +14,7 @@ import { SourceTabs } from "#/web/components/SourceTabs.tsx"
 import { TipProvider } from "#/web/components/Tip.tsx"
 import { useDataEvents } from "#/web/events.ts"
 import { usePrefs } from "#/web/PrefsContext.tsx"
-import { resolveView, type TableSearch, validateTableSearch } from "#/web/search.ts"
+import { resolveView, validateTableSearch } from "#/web/search.ts"
 import { getTable } from "#/web/tables.ts"
 
 /**
@@ -62,8 +62,6 @@ function SourceLayout() {
 	const [menuOpen, setMenuOpen] = useState(false)
 	useSlashToSearch()
 
-	const update = (patch: Partial<TableSearch>) =>
-		navigate({ to: ".", search: (prev) => ({ ...prev, ...patch }), replace: true, resetScroll: false })
 	// Searching from an instrument's page goes back to the table it filters.
 	const onQuery = (q: string) =>
 		navigate({
@@ -103,15 +101,7 @@ function SourceLayout() {
 				<Footer />
 				{prefs.showSoon ? <MobileTabBar /> : null}
 			</div>
-			<Sidebar
-				dialog={menu}
-				source={source}
-				statuses={statuses}
-				view={view}
-				rows={data.rows}
-				onSearch={update}
-				onClose={() => setMenuOpen(false)}
-			/>
+			<Sidebar dialog={menu} source={source} statuses={statuses} onClose={() => setMenuOpen(false)} />
 		</TipProvider>
 	)
 }

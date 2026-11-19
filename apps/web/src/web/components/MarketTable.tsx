@@ -19,8 +19,9 @@ import { cn } from "#/lib/utils"
 
 import { formatCompact, formatDate, formatPercent, formatPrice, trend } from "../format.ts"
 import type { Prefs } from "../prefs.ts"
-import { isHighlighted, type ResolvedView } from "../search.ts"
+import { isHighlighted, type ResolvedView, type TableSearch } from "../search.ts"
 import { categoryLabel, type Column, fundRisk, fundRiskName, longName, type TableConfig } from "../tables.ts"
+import { ColumnMenu } from "./ColumnMenu.tsx"
 import { Sparkline } from "./Sparkline.tsx"
 import { Tip } from "./Tip.tsx"
 
@@ -55,7 +56,10 @@ interface MarketTableProps {
 	readonly sparklines: ReadonlyMap<string, ReadonlyArray<number>> | undefined
 	/** The valuation date most rows share; other dates stand out. */
 	readonly asOf: string | null
+	/** Every row of the source, before filtering: the column menus count values in them. */
+	readonly allRows: ReadonlyArray<SnapshotRow>
 	readonly onSort: (columnId: string) => void
+	readonly onSearch: (patch: Partial<TableSearch>) => void
 	readonly emptyAction?: ReactNode
 }
 
@@ -72,7 +76,9 @@ export function MarketTable({
 	prefs,
 	sparklines,
 	asOf,
+	allRows,
 	onSort,
+	onSearch,
 	emptyAction,
 }: MarketTableProps) {
 	const navigate = useNavigate()
@@ -174,26 +180,31 @@ export function MarketTable({
 								data-wide={wide(column, view) || undefined}
 								data-secondary={secondary(column, view) || undefined}
 								className={cn(
-									"sticky top-0 z-[2] border-b border-rule-strong bg-panel py-[7px] pr-3.5 pl-2 @max-[52rem]/market:pr-1.5 @max-[52rem]/market:pl-1.5 text-[11px] font-normal tracking-[0.1em] whitespace-nowrap uppercase",
+									"group/th sticky top-0 z-[2] border-b border-rule-strong bg-panel py-[7px] pr-3.5 pl-2 @max-[52rem]/market:pr-1.5 @max-[52rem]/market:pl-1.5 text-[11px] font-normal tracking-[0.1em] whitespace-nowrap uppercase",
 									i === 0 && "pl-[18px] @max-[52rem]/market:pl-4",
 									right ? "text-right" : "text-left",
 									sortedDir ? "text-warm" : "text-dim",
 									header.column.id === CHART_COLUMN && "pr-[18px] @max-[52rem]/market:pr-4",
 								)}
 							>
-								{header.column.getCanSort() && column ? (
-									<Tip label={column.title} side="top">
-										<button
-											type="button"
-											onClick={() => onSort(column.id)}
-											className="hover:text-ink inline-flex min-h-4 items-center uppercase max-sm:min-h-11"
-										>
-											{label}
-										</button>
-									</Tip>
-								) : (
-									label
-								)}
+								<span className={cn("inline-flex items-center gap-1", right && "flex-row-reverse")}>
+									{header.column.getCanSort() && column ? (
+										<Tip label={column.title} side="top">
+											<button
+												type="button"
+												onClick={() => onSort(column.id)}
+												className="hover:text-ink inline-flex min-h-4 items-center uppercase max-sm:min-h-11"
+											>
+												{label}
+											</button>
+										</Tip>
+									) : (
+										label
+									)}
+									{column ? (
+										<ColumnMenu config={config} column={column} view={view} rows={allRows} onSearch={onSearch} />
+									) : null}
+								</span>
 							</th>
 						)
 					})}
@@ -354,6 +365,8 @@ function Cell({
 			) : (
 				<span className="text-dim">–</span>
 			)
+		case "text":
+			return <span className="text-ink-dim block truncate">{column.text?.(row) ?? "–"}</span>
 		case "risk": {
 			const level = fundRisk(row)
 			if (level === null) return <span className="text-dim">–</span>
